@@ -1,0 +1,16 @@
+:root {
+  --font-sans: "Manrope", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01";
+  letter-spacing: 0;
+}
+
+button,
+a,
+input,
+select {
+  letter-spacing: 0;
+}

@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+:root {
+  --primary: #C62828;
+  --primary-hover: #B71C1C;
+  --primary-light: #FFEBEE;
+  --off-white: #FAF9F7;
+  --charcoal: #1F1F1F;
+  --light-gray: #E5E5E5;
+  --card-border: #E0E0E0;
+  --green: #2E7D32;
+  --green-light: #E8F5E9;
+  --amber: #F9A825;
+  --amber-light: #FFF8E1;
+  --background: #FAF9F7;
+  --foreground: #1F1F1F;
+  --sidebar-bg: #FFFFFF;
+  --header-bg: #FFFFFF;
+  --font-sans: 'Inter', 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-off-white: var(--off-white);
+  --color-charcoal: var(--charcoal);
+  --color-light-gray: var(--light-gray);
+  --color-green: var(--green);
+  --color-green-light: var(--green-light);
+  --color-amber: var(--amber);
+  --color-amber-light: var(--amber-light);
+  --font-inter: 'Inter', sans-serif;
+  --font-manrope: 'Manrope', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--off-white);
+  color: var(--charcoal);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c5c5c5;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(229, 229, 229, 0.8);
+}
+
+/* Subtle Card Hover */
+.card-hover {
+  transition: all 0.2s ease-in-out;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+}

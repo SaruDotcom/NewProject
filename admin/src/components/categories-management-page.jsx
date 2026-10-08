@@ -1,0 +1,671 @@
+import { useEffect, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Edit,
+  FolderOpen,
+  FolderTree,
+  Image as ImageIcon,
+  Layers,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  ShoppingBag,
+  Sparkles,
+  Tag,
+  Trash2,
+} from "lucide-react";
+import { useDebounce } from "@/hooks/use-debounce";
+import { Button } from "@/components/ui/button";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KpiCard, PageHeader, StatusBadge } from "@/components/admin-ui";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { toast } from "sonner";
+
+const initial = {
+  items: [],
+  pagination: { page: 1, limit: 12, total: 0, totalPages: 1 },
+  filters: { parents: [] },
+};
+
+// Default high-quality category image placeholders if category has no imageUrl
+const DEFAULT_CATEGORY_IMAGES = [
+  "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&q=80&w=600",
+];
+
+export function CategoriesManagementPage() {
+  const [viewMode, setViewMode] = useState("GRID"); // 'GRID' | 'TABLE'
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 350);
+  const [parent, setParent] = useState("all");
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState(initial);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ name: "", parent: "", imageUrl: "", description: "" });
+  const [confirmation, setConfirmation] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, parent]);
+
+  useEffect(() => {
+    let mounted = true;
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: viewMode === "GRID" ? "12" : "10",
+      sortBy,
+      sortOrder,
+    });
+
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (parent !== "all") params.set("parent", parent);
+
+    setLoading(true);
+    setError(null);
+
+    apiGet(`/admin/categories?${params.toString()}`)
+      .then((payload) => {
+        if (!mounted) return;
+        const rawItems = Array.isArray(payload)
+          ? payload
+          : payload?.items || payload?.data || [];
+        const parentOptions = rawItems.map((c) => ({
+          _id: String(c._id || c.id),
+          name: c.name,
+        }));
+        const limitNum = viewMode === "GRID" ? 12 : 10;
+        const pagination = payload?.pagination || payload?.meta || {
+          page: 1,
+          limit: limitNum,
+          total: rawItems.length,
+          totalPages: Math.ceil(rawItems.length / limitNum) || 1,
+        };
+        const filters = payload?.filters || { parents: parentOptions };
+        setResult({ items: rawItems, pagination, filters });
+      })
+      .catch((err) => {
+        if (mounted) setError(err.message || "Failed to load categories");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [debouncedSearch, parent, sortBy, sortOrder, page, viewMode, refreshKey]);
+
+  const refresh = () => setRefreshKey((value) => value + 1);
+  const filters = result.filters || initial.filters;
+  const pages = Math.max(1, result.pagination.totalPages || 1);
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        parentId: form.parent || null,
+        imageUrl: form.imageUrl.trim() || null,
+        description: form.description.trim() || "",
+      };
+
+      if (editing.create) {
+        await apiPost("/admin/categories", payload);
+      } else {
+        await apiPatch(`/admin/categories/${editing.id}`, payload);
+      }
+      toast.success(editing.create ? "Category created successfully" : "Category updated successfully");
+      setEditing(null);
+      refresh();
+    } catch (err) {
+      toast.error(err.message || "Unable to save category");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    setSaving(true);
+    try {
+      await apiDelete(`/admin/categories/${confirmation.id}`);
+      toast.success("Category deleted successfully");
+      setConfirmation(null);
+      refresh();
+    } catch (err) {
+      toast.error(err.message || "Unable to delete category");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const exportCsv = () => {
+    const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      ["Category Name", "Parent Category", "Subcategories Count", "Products Count", "Image URL", "Description", "Created Date"],
+      ...result.items.map((row) => [
+        row.name,
+        row.parent?.name || "Root",
+        row.subcategories || 0,
+        row.products || row.productCount || 0,
+        row.imageUrl || "",
+        row.description || "",
+        row.createdAt ? new Date(row.createdAt).toLocaleDateString("en-IN") : "",
+      ]),
+    ]
+      .map((row) => row.map(esc).join(","))
+      .join("\r\n");
+
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "categories.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Categories exported successfully");
+  };
+
+  const openEdit = (row) => {
+    setForm({
+      name: row.name || "",
+      parent: row.parent?._id || row.parentId || "",
+      imageUrl: row.imageUrl || "",
+      description: row.description || "",
+    });
+    setEditing({ id: row._id || row.id, name: row.name });
+  };
+
+  const openAdd = () => {
+    setForm({ name: "", parent: "", imageUrl: "", description: "" });
+    setEditing({ create: true });
+  };
+
+  // Compute KPI metrics
+  const totalCategories = result.pagination.total || result.items.length;
+  const rootCategoriesCount = result.items.filter((c) => !c.parent && !c.parentId).length;
+  const totalSubcategoriesCount = result.items.reduce((acc, c) => acc + (c.subcategories || 0), 0);
+  const totalProductsCount = result.items.reduce((acc, c) => acc + (c.products || c.productCount || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Category Catalog Management"
+        description="Organize catalog categories with visual cards, images, and hierarchy settings."
+        action={
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex items-center rounded-xl border bg-card p-1">
+              <Button
+                variant={viewMode === "GRID" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 px-2.5 text-xs font-bold"
+                onClick={() => setViewMode("GRID")}
+                title="Grid Cards View"
+              >
+                <LayoutGrid className="mr-1.5 size-3.5" /> Grid Cards
+              </Button>
+              <Button
+                variant={viewMode === "TABLE" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 px-2.5 text-xs font-bold"
+                onClick={() => setViewMode("TABLE")}
+                title="Table View"
+              >
+                <List className="mr-1.5 size-3.5" /> Table
+              </Button>
+            </div>
+
+            <Button variant="outline" size="sm" onClick={exportCsv}>
+              <Download className="mr-1.5 size-3.5" /> Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCw className="mr-1.5 size-3.5" /> Refresh
+            </Button>
+            <Button size="sm" className="font-extrabold" onClick={openAdd}>
+              <Plus className="mr-1.5 size-4" /> Add Category
+            </Button>
+          </div>
+        }
+      />
+
+      {/* KPI Cards Header */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard label="Total Categories" value={String(totalCategories)} icon={FolderTree} />
+        <KpiCard label="Root Categories" value={String(rootCategoriesCount)} icon={FolderOpen} tone="primary" />
+        <KpiCard label="Subcategories" value={String(totalSubcategoriesCount)} icon={Layers} tone="warning" />
+        <KpiCard label="Assigned Products" value={String(totalProductsCount)} icon={ShoppingBag} tone="success" />
+      </div>
+
+      <section className="admin-card overflow-hidden">
+        {/* Filters & Search Header */}
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search category name..."
+              className="pl-9"
+            />
+          </div>
+
+          <Select
+            value={parent}
+            onValueChange={(value) => {
+              setParent(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full lg:w-48">
+              <SelectValue placeholder="Parent Filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              <SelectItem value="root">Root categories only</SelectItem>
+              {filters.parents.map((item) => (
+                <SelectItem key={item._id} value={String(item._id)}>
+                  {item.displayPath || item.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Loading / Error States */}
+        {loading ? (
+          <div className="p-12 text-center text-sm text-muted-foreground">Loading categories catalog...</div>
+        ) : error ? (
+          <div className="p-12 text-center text-sm text-destructive">{error}</div>
+        ) : result.items.length === 0 ? (
+          <div className="p-12 text-center text-sm text-muted-foreground space-y-2">
+            <FolderOpen className="mx-auto size-10 text-muted-foreground/60" />
+            <p className="font-bold">No categories found.</p>
+            <p className="text-xs text-muted-foreground">Try adjusting your search query or filter settings.</p>
+          </div>
+        ) : (
+          <>
+            {/* VIEW MODE 1: GRID CARDS VIEW WITH IMAGES */}
+            {viewMode === "GRID" && (
+              <div className="p-5 grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {result.items.map((row, idx) => {
+                  const fallbackImage = DEFAULT_CATEGORY_IMAGES[idx % DEFAULT_CATEGORY_IMAGES.length];
+                  const displayImage = row.imageUrl && row.imageUrl.trim() ? row.imageUrl : fallbackImage;
+                  const isRoot = !row.parent && !row.parentId;
+                  const subCount = row.subcategories || 0;
+                  const prodCount = row.products || row.productCount || 0;
+
+                  return (
+                    <div
+                      key={String(row._id || row.id || idx)}
+                      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-md"
+                    >
+                      {/* Image Header Container */}
+                      <div className="relative h-44 w-full overflow-hidden bg-muted">
+                        <img
+                          src={displayImage}
+                          alt={row.name}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          onError={(e) => {
+                            e.target.src = fallbackImage;
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                        {/* Top Badges */}
+                        <div className="absolute left-3 top-3 flex items-center gap-1.5">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-md ${
+                              isRoot
+                                ? "bg-primary/90 text-primary-foreground"
+                                : "bg-purple-900/90 text-purple-100"
+                            }`}
+                          >
+                            {isRoot ? "Root Category" : `Sub of ${row.parent?.name || "Parent"}`}
+                          </span>
+                        </div>
+
+                        {/* Dropdown Menu Actions */}
+                        <div className="absolute right-3 top-3">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="secondary"
+                                size="icon"
+                                className="size-8 rounded-full bg-black/50 text-white backdrop-blur-md hover:bg-black/70"
+                                aria-label={`Actions for ${row.name}`}
+                              >
+                                <MoreHorizontal className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem onSelect={() => openEdit(row)}>
+                                <Edit className="mr-2 size-3.5" /> Edit Category
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive font-semibold"
+                                onSelect={() => setConfirmation({ id: row._id || row.id, name: row.name })}
+                              >
+                                <Trash2 className="mr-2 size-3.5" /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+
+                        {/* Category Name Overlay */}
+                        <div className="absolute bottom-3 left-3 right-3 text-white">
+                          <h3 className="text-base font-black tracking-tight drop-shadow-sm truncate">
+                            {row.name}
+                          </h3>
+                          {row.slug && (
+                            <p className="text-[10px] font-mono opacity-80 truncate">/{row.slug}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Content & Stats */}
+                      <div className="flex flex-1 flex-col justify-between p-4 space-y-3">
+                        <p className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">
+                          {row.description || "No category description provided."}
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-2 border-t pt-3 text-xs">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <ShoppingBag className="size-3.5 text-primary shrink-0" />
+                            <div>
+                              <span className="text-[10px] uppercase font-bold block leading-none">Products</span>
+                              <span className="font-extrabold text-foreground text-sm">{prodCount}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Layers className="size-3.5 text-amber-500 shrink-0" />
+                            <div>
+                              <span className="text-[10px] uppercase font-bold block leading-none">Subcategories</span>
+                              <span className="font-extrabold text-foreground text-sm">{subCount}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick Edit Footer Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-1 rounded-xl text-xs font-bold hover:bg-accent hover:text-primary"
+                          onClick={() => openEdit(row)}
+                        >
+                          <Edit className="mr-1.5 size-3.5" /> Manage & Edit
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* VIEW MODE 2: TABLE VIEW */}
+            {viewMode === "TABLE" && (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead>Category Image & Name</TableHead>
+                      <TableHead>Parent Category</TableHead>
+                      <TableHead>Subcategories</TableHead>
+                      <TableHead>Products</TableHead>
+                      <TableHead>Created Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {result.items.map((row, idx) => {
+                      const fallbackImage = DEFAULT_CATEGORY_IMAGES[idx % DEFAULT_CATEGORY_IMAGES.length];
+                      const displayImage = row.imageUrl && row.imageUrl.trim() ? row.imageUrl : fallbackImage;
+                      const prodCount = row.products || row.productCount || 0;
+                      const subCount = row.subcategories || 0;
+
+                      return (
+                        <TableRow key={String(row._id || row.id || idx)}>
+                          <TableCell className="font-semibold">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={displayImage}
+                                alt={row.name}
+                                className="size-10 rounded-xl object-cover border bg-muted shrink-0"
+                                onError={(e) => {
+                                  e.target.src = fallbackImage;
+                                }}
+                              />
+                              <div>
+                                <span className="font-bold text-foreground block">{row.name}</span>
+                                {row.slug && <span className="text-[10px] font-mono text-muted-foreground">/{row.slug}</span>}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                                !row.parent && !row.parentId
+                                  ? "bg-primary/10 text-primary"
+                                  : "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                              }`}
+                            >
+                              {row.parent?.name || "Root Category"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-bold">{subCount}</TableCell>
+                          <TableCell className="font-bold">{prodCount}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.createdAt ? new Date(row.createdAt).toLocaleDateString("en-IN") : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" aria-label={`Actions for ${row.name}`}>
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => openEdit(row)}>
+                                  <Edit className="mr-2 size-3.5" /> Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive font-semibold"
+                                  onSelect={() => setConfirmation({ id: row._id || row.id, name: row.name })}
+                                >
+                                  <Trash2 className="mr-2 size-3.5" /> Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Pagination Footer */}
+        <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
+          <span>
+            Showing {result.items.length ? (page - 1) * (viewMode === "GRID" ? 12 : 10) + 1 : 0}-
+            {Math.min(page * (viewMode === "GRID" ? 12 : 10), result.pagination.total)} of {result.pagination.total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={page === 1 || loading}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span>
+              Page {page} of {pages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={page >= pages || loading}
+              onClick={() => setPage((value) => Math.min(pages, value + 1))}
+              aria-label="Next page"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Add / Edit Category Dialog Modal */}
+      <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && !saving && setEditing(null)}>
+        <DialogContent className="max-w-md rounded-2xl p-6 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing?.create ? "Add New Category" : `Edit Category: ${editing?.name}`}</DialogTitle>
+            <DialogDescription>
+              Configure category name, parent hierarchy, image banner URL, and description.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Category Name */}
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1">
+                Category Name <span className="text-destructive">*</span>
+              </label>
+              <Input
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="e.g. Electronics, Women Ethnic, Footwear..."
+                required
+              />
+            </div>
+
+            {/* Parent Category */}
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1">Parent Hierarchy</label>
+              <Select
+                value={form.parent || "none"}
+                onValueChange={(value) => setForm((current) => ({ ...current, parent: value === "none" ? "" : value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Parent category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Root Category (No Parent)</SelectItem>
+                  {filters.parents
+                    .filter((item) => String(item._id) !== String(editing?.id))
+                    .map((item) => (
+                      <SelectItem key={item._id} value={String(item._id)}>
+                        {item.displayPath || item.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Category Image URL */}
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1 flex items-center justify-between">
+                <span>Category Image URL</span>
+                <span className="text-[10px] text-muted-foreground font-normal">Optional</span>
+              </label>
+              <Input
+                value={form.imageUrl}
+                onChange={(event) => setForm((current) => ({ ...current, imageUrl: event.target.value }))}
+                placeholder="https://images.unsplash.com/photo-..."
+              />
+              {form.imageUrl && (
+                <div className="mt-2 relative h-24 w-full rounded-xl overflow-hidden border bg-muted">
+                  <img
+                    src={form.imageUrl}
+                    alt="Category Banner Preview"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.target.src = DEFAULT_CATEGORY_IMAGES[0];
+                    }}
+                  />
+                  <span className="absolute bottom-1 right-2 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded-md">
+                    Banner Preview
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-xs font-bold text-foreground mb-1">Description</label>
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Short description for retail catalog & store front..."
+                className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={saving} className="rounded-xl">
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={saving} className="rounded-xl font-bold">
+              {saving ? "Saving..." : "Save Category"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Modal for Deletion */}
+      <ConfirmationModal
+        open={Boolean(confirmation)}
+        title={`Delete ${confirmation?.name || "category"}?`}
+        description="Categories with active products or subcategories cannot be deleted."
+        confirmLabel="Delete Category"
+        variant="destructive"
+        onCancel={() => !saving && setConfirmation(null)}
+        onConfirm={remove}
+      />
+    </div>
+  );
+}

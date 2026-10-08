@@ -1,0 +1,112 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Inter", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 3px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: #FFFFFF;
+  --foreground: #262626;
+
+  --card: #FFFFFF;
+  --card-foreground: #262626;
+  --popover: #FFFFFF;
+  --popover-foreground: #262626;
+
+  --primary: #C62828;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #F7F5F3;
+  --secondary-foreground: #262626;
+
+  --muted: #F2F1EF;
+  --muted-foreground: #6B6B6B;
+
+  --accent: #FBEAEA;
+  --accent-foreground: #C62828;
+
+  --destructive: #C62828;
+  --destructive-foreground: #FFFFFF;
+
+  --border: #E4E2DF;
+  --input: #E4E2DF;
+  --ring: #C62828;
+
+  --success: #3E8E5B;
+  --success-foreground: #FFFFFF;
+
+  --warning: #B8860B;
+  --warning-foreground: #FFFFFF;
+
+  --info: #3B6FA0;
+
+  --chart-1: #C62828;
+  --chart-2: #3E8E5B;
+  --chart-3: #B8860B;
+  --chart-4: #3B6FA0;
+  --chart-5: #8A6D5C;
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { font-family: var(--font-sans); background: var(--color-background); }
+  body { margin: 0; background-color: var(--color-background); color: var(--color-foreground); font-feature-settings: "tnum" 1; }
+  button, [role="button"] { cursor: pointer; }
+  ::selection { background: color-mix(in oklab, var(--primary) 18%, transparent); }
+}
+
+@utility admin-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+@utility fine-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

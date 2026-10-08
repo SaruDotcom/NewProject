@@ -1,0 +1,932 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import {
+  api,
+  clearAuthToken,
+  getAuthToken,
+  setAuthToken,
+  type ApiCategory,
+  type ApiNotification,
+  type ApiOrder,
+  type ApiProduct,
+  type ApiWholesaler,
+} from "@/api/api";
+
+export type Relationship = "Connected";
+
+export type Product = {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  wholesalerId: string;
+  price: number;
+  mrp: number;
+  moq: number;
+  unit?: string;
+  stock: number;
+  rating: number;
+  image: number;
+  description: string;
+  specs: Record<string, string>;
+  imageUrl?: string;
+  images?: string[];
+  pricingTiers?: Array<{ id: string; minQty: number; pricePerUnit: number }>;
+  sizes?: string[];
+  colors?: string[];
+  additionalOptions?: Array<{ name: string; value: string }>;
+  categoryAttributes?: Record<string, any>;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  description: string;
+  count?: number;
+  slug?: string;
+  imageUrl?: string;
+  parentId?: string;
+  parentName?: string;
+  displayPath?: string;
+  path?: Array<{ id: string; name: string; slug: string }>;
+  level?: number;
+};
+
+export type Wholesaler = {
+  id: string;
+  name: string;
+  initials: string;
+  logo?: string;
+  verified: boolean;
+  rating: number;
+  location: string;
+  products: number;
+  categories: string[];
+  delivery: string;
+  relationship: Relationship;
+  about: string;
+  ownerName?: string;
+  description?: string;
+  businessName?: string;
+};
+
+export type OrderItem = {
+  productId: string;
+  name: string;
+  sku?: string;
+  imageUrl?: string;
+  quantity: number;
+  pricePerUnit: number;
+  subtotal: number;
+  total?: number;
+  product?: Product;
+};
+
+export type OrderStatus = "Pending" | "Confirmed" | "Processing" | "Shipped" | "Delivered" | "Cancelled";
+export type Order = {
+  id: string;
+  date: string;
+  status: OrderStatus;
+  cancellationReason?: string | undefined;
+  cancellationNote?: string | undefined;
+  wholesalerId: string;
+  total: number;
+  items: OrderItem[];
+  paymentMethod?: string | undefined;
+  isCreditOrder?: boolean | undefined;
+  creditDueDate?: string | undefined;
+  creditPeriodDays?: number | undefined;
+  creditPaymentStatus?: "PENDING" | "PAID" | "OVERDUE" | undefined;
+  creditSettledAt?: string | undefined;
+};
+
+export type RetailerProfile = {
+  businessName: string;
+  ownerName: string;
+  phone: string;
+  email: string;
+  gstRegistered: boolean;
+  gstNumber: string;
+  businessType: string;
+  category: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  profileComplete?: boolean;
+};
+
+export type NotificationItem = { id: string; title: string; body: string; time: string; unread: boolean };
+export type CartLine = { productId: string; quantity: number };
+
+export type UserSession = {
+  id: string;
+  email: string;
+};
+
+export type UserData = {
+  linkedWholesalerId: string;
+  profile: RetailerProfile;
+  relationships: Record<string, "Connected">;
+  orders: Order[];
+  cart: CartLine[];
+  wishlist: string[];
+  recentlyViewed: string[];
+  notifications: NotificationItem[];
+};
+
+export type Store = {
+  currentUser: UserSession | null;
+  isLoggedIn: boolean;
+  isLoading: boolean;
+  linkedWholesalerId: string;
+  linkedWholesaler: Wholesaler | null;
+  connectedWholesalers: Wholesaler[];
+  products: Product[];
+  categories: Category[];
+  cart: CartLine[];
+  wishlist: string[];
+  relationships: Record<string, "Connected">;
+  orders: Order[];
+  returns: any[];
+  retailerProfile: RetailerProfile;
+  unread: number;
+  notifications: NotificationItem[];
+  recentlyViewed: string[];
+  dashboard: Record<string, unknown> | null;
+  addedToCartProduct: { product: Product; quantity: number } | null;
+  clearAddedToCartProduct: () => void;
+  login: (email: string, password?: string, targetWholesalerId?: string) => Promise<void>;
+  logout: () => Promise<void>;
+  connectWholesaler: (wholesalerId: string, showToast?: boolean) => Promise<void>;
+  registerWithWholesaler: (profile: RetailerProfile, wholesalerId: string, passwordInput?: string) => Promise<void>;
+  addToCart: (id: string, q?: number) => void;
+  setQuantity: (id: string, q: number) => void;
+  removeCart: (id: string) => void;
+  toggleWishlist: (id: string) => void;
+  saveProfile: (profile: RetailerProfile) => Promise<void>;
+  placeOrder: (paymentMethod?: string, couponCode?: string) => Promise<Order[]>;
+  markRead: () => void;
+  addRecentlyViewed: (id: string) => void;
+  refreshOrders: () => Promise<void>;
+};
+
+const StoreContext = createContext<Store | undefined>(undefined);
+
+const emptyProfile: RetailerProfile = {
+  businessName: "",
+  ownerName: "",
+  phone: "",
+  email: "",
+  gstRegistered: false,
+  gstNumber: "",
+  businessType: "",
+  category: "",
+  address: "",
+  city: "",
+  state: "",
+  pincode: "",
+};
+
+const toInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2 && parts[0] && parts[1]) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return (name || "RT").slice(0, 2).toUpperCase();
+};
+
+function normalizeProfile(data: Record<string, unknown> | undefined): RetailerProfile {
+  const user = (data || {}) as Record<string, any>;
+  const profile = (typeof user["retailerProfile"] === "object" && user["retailerProfile"] !== null ? user["retailerProfile"] : user) as Record<string, any>;
+  const addressObj = typeof profile["address"] === "object" && profile["address"] !== null ? (profile["address"] as Record<string, any>) : {};
+  const addressText = typeof profile["address"] === "string" ? String(profile["address"]) : [addressObj["street"], addressObj["addressLine1"], addressObj["addressLine2"]].filter(Boolean).join(", ");
+
+  return {
+    businessName: String(profile["businessName"] || profile["companyName"] || ""),
+    ownerName: String(profile["ownerName"] || user["name"] || profile["name"] || profile["fullName"] || ""),
+    phone: String(user["phone"] || profile["phone"] || ""),
+    email: String(user["email"] || profile["email"] || ""),
+    gstRegistered: Boolean(profile["gstRegistered"] || profile["gstStatus"] === "REGISTERED" || profile["gstStatus"] === "gst_registered"),
+    gstNumber: String(profile["gstNumber"] || profile["gstin"] || ""),
+    businessType: String(profile["businessType"] || ""),
+    category: String(profile["category"] || ""),
+    address: addressText || String(profile["shopAddress"] || ""),
+    city: String((profile["city"] as string) || (addressObj["city"] as string) || ""),
+    state: String((profile["state"] as string) || (addressObj["state"] as string) || ""),
+    pincode: String((profile["pincode"] as string) || (addressObj["postalCode"] as string) || (addressObj["pincode"] as string) || ""),
+    profileComplete: Boolean(profile["profileComplete"]),
+  };
+}
+
+function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, string>): Product {
+  let categoryName = "Grocery & Staples";
+  if (typeof item.category === "object" && item.category !== null && (item.category as any).name) {
+    categoryName = String((item.category as any).name);
+  } else if (typeof item.category === "string" && item.category.trim()) {
+    const rawCat = item.category.trim();
+    if (categoryMap && categoryMap.has(rawCat)) {
+      categoryName = categoryMap.get(rawCat)!;
+    } else if (categoryMap && categoryMap.has(rawCat.toLowerCase())) {
+      categoryName = categoryMap.get(rawCat.toLowerCase())!;
+    } else if (/^[0-9a-fA-F]{24}$/.test(rawCat)) {
+      categoryName = "General";
+    } else {
+      categoryName = rawCat;
+    }
+  } else if (item.categoryId && categoryMap && categoryMap.has(String(item.categoryId))) {
+    categoryName = categoryMap.get(String(item.categoryId))!;
+  } else if (item.categoryId && typeof item.categoryId === "object" && (item.categoryId as any).name) {
+    categoryName = String((item.categoryId as any).name);
+  }
+
+  const product: Product = {
+    id: item._id || item.id || `product-${index}`,
+    name: item.name || item.title || "Untitled product",
+    brand: item.brand || "Verified brand",
+    category: categoryName,
+    wholesalerId: item.wholesalerId || "",
+    price: Number(item.wholesalePrice ?? item.price ?? item.retailerPrice ?? item.mrp ?? 0),
+    mrp: Number(item.mrp ?? item.wholesalePrice ?? item.price ?? 0),
+    moq: Number(item.moq ?? item.minOrderQty ?? 1),
+    unit: item.unit || 'piece',
+    stock: Number(item.stock ?? item.quantity ?? 0),
+    rating: 4.7,
+    image: index % 6,
+    description: item.description || "Trade-ready product available from your connected wholesaler.",
+    specs: {
+      Unit: item.unit || "piece",
+      Dispatch: "Within 24 hours",
+      MOQ: String(item.moq ?? item.minOrderQty ?? 1),
+    },
+  };
+
+  if (item.imageUrl) product.imageUrl = item.imageUrl;
+  if (item.images) product.images = item.images;
+  if (item.pricingTiers) product.pricingTiers = item.pricingTiers;
+  if (item.sizes) product.sizes = item.sizes;
+  if (item.colors) product.colors = item.colors;
+  if (item.additionalOptions) product.additionalOptions = item.additionalOptions;
+  if (item.categoryAttributes) product.categoryAttributes = item.categoryAttributes;
+
+  return product;
+}
+
+function mapCategory(item: ApiCategory): Category {
+  const cat: Category = {
+    id: item._id || item.id || item.slug || item.name || "category",
+    name: item.name || "Category",
+    description: item.description || "Trade products from your connected wholesaler.",
+    count: item.count || (item as any).productCount || (item as any).products || 0,
+    imageUrl: (item as any).imageUrl || (item as any).image || undefined,
+    parentId: (item as any).parentId ? (typeof (item as any).parentId === 'object' ? (item as any).parentId?._id : String((item as any).parentId)) : undefined,
+    parentName: (item as any).parent?.name,
+    displayPath: (item as any).displayPath || item.name,
+    path: (item as any).path || [],
+    level: (item as any).level || 0,
+  };
+  const slugVal = item.slug || item.name;
+  if (slugVal) cat.slug = slugVal;
+  return cat;
+}
+
+function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | null {
+  if (!item) return null;
+
+  const rawId = String(item._id || item.id || "");
+  const businessName = item.businessName || item.name || "Connected wholesaler";
+
+  const result: Wholesaler = {
+    id: rawId,
+    name: businessName,
+    initials: toInitials(businessName),
+    logo: item.businessLogoUrl || "",
+    verified: true,
+    rating: Number(item.rating || 4.8),
+    location: item.address?.["city"] || item.address?.["state"] || "India",
+    products: 0,
+    categories: [],
+    delivery: "1-2 day dispatch",
+    relationship: "Connected",
+    about: item.description || "Verified wholesaler connected to your retail account.",
+    description: item.description || "",
+    businessName,
+  };
+
+  if (item.name) result.ownerName = item.name;
+  return result;
+}
+
+export function getCategoryHierarchy(
+  item: OrderItem,
+  storeProducts: Product[],
+  storeCategories: Category[]
+): string {
+  const linkedProduct = item.product || storeProducts.find((p) => String(p.id) === String(item.productId));
+  const prodObj: any = item.product || linkedProduct;
+
+  const names: string[] = [];
+
+  if (prodObj) {
+    const catObj = prodObj.categoryId || prodObj.category;
+    const subCatObj = prodObj.subcategoryId || prodObj.subCategory;
+    const subSubCatObj = prodObj.subSubcategoryId || prodObj.subSubCategory;
+
+    if (catObj && typeof catObj === "object" && catObj.name) {
+      names.push(catObj.name);
+    }
+    if (subCatObj && typeof subCatObj === "object" && subCatObj.name) {
+      names.push(subCatObj.name);
+    }
+    if (subSubCatObj && typeof subSubCatObj === "object" && subSubCatObj.name) {
+      names.push(subSubCatObj.name);
+    }
+
+    if (names.length > 0) {
+      return names.join(" > ");
+    }
+
+    if (typeof linkedProduct?.category === "string" && linkedProduct.category.trim() && linkedProduct.category !== "General") {
+      if (!/^[0-9a-fA-F]{24}$/.test(linkedProduct.category.trim())) {
+        names.push(linkedProduct.category.trim());
+      }
+    }
+  }
+
+  if (names.length === 0 && storeCategories && storeCategories.length > 0) {
+    const firstCatName = typeof prodObj?.category === "string" ? prodObj.category : "";
+    const matchedCat = storeCategories.find(
+      (c) => c.name === firstCatName || String(c.id) === String(prodObj?.categoryId) || String(c.id) === String(prodObj?.subcategoryId)
+    );
+
+    if (matchedCat) {
+      if (matchedCat.displayPath && matchedCat.displayPath.includes(">")) {
+        return matchedCat.displayPath;
+      }
+      if (matchedCat.path && matchedCat.path.length > 0) {
+        return matchedCat.path.map((p) => p.name).join(" > ");
+      }
+      const chain: string[] = [matchedCat.name];
+      let curr = matchedCat;
+      while (curr.parentId) {
+        const parent = storeCategories.find((c) => String(c.id) === String(curr.parentId));
+        if (!parent) break;
+        chain.unshift(parent.name);
+        curr = parent;
+      }
+      return chain.join(" > ");
+    }
+  }
+
+  if (names.length > 0) {
+    return names.join(" > ");
+  }
+
+  return "General";
+}
+
+function mapOrder(item: ApiOrder): Order {
+  const id = item._id || item.id || item.orderNumber || "order";
+  const status = String(item.orderStatus || item.status || "PENDING").toUpperCase();
+
+  const mappedItems: OrderItem[] = (item.items || []).map((line: any, idx: number) => {
+    let prodObj: any = null;
+    let pId = "";
+
+    if (line.productId && typeof line.productId === "object") {
+      prodObj = line.productId;
+      pId = String(prodObj._id || prodObj.id || "");
+    } else {
+      pId = String(line.productId || "");
+    }
+
+    const name = line.name || prodObj?.name || prodObj?.title || "Product";
+    const imageUrl = line.imageUrl || (prodObj?.images && prodObj.images.length > 0 ? prodObj.images[0] : "") || prodObj?.imageUrl || "";
+    const quantity = Number(line.quantity || 0);
+    const pricePerUnit = Number(line.pricePerUnit ?? line.price ?? prodObj?.wholesalePrice ?? prodObj?.price ?? 0);
+    const subtotal = Number(line.subtotal ?? (pricePerUnit * quantity));
+    const total = Number(line.total ?? subtotal);
+
+    const itemObj: OrderItem = {
+      productId: pId,
+      name,
+      sku: line.sku || prodObj?.sku || "",
+      imageUrl,
+      quantity,
+      pricePerUnit,
+      subtotal,
+      total,
+    };
+    if (prodObj) {
+      itemObj.product = mapProduct(prodObj, idx);
+    }
+
+    return itemObj;
+  });
+
+  const isCreditOrder = Boolean(item.isCreditOrder || item.paymentMethod === "CREDIT");
+  const creditPaymentStatus = item.creditPaymentStatus || (isCreditOrder ? "PENDING" : undefined);
+
+  return {
+    id,
+    date: item.createdAt ? new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "Today",
+    status:
+      status === "PENDING" ? "Pending" :
+      status === "CONFIRMED" ? "Confirmed" :
+      status === "PROCESSING" ? "Processing" :
+      status === "SHIPPED" || status === "DISPATCHED" ? "Shipped" :
+      status === "DELIVERED" ? "Delivered" :
+      status === "CANCELLED" ? "Cancelled" : "Pending",
+    cancellationReason: item.cancellationReason || "",
+    cancellationNote: item.cancellationNote || "",
+    wholesalerId: String(item.wholesalerId || "connected-wholesaler"),
+    total: Number(item.grandTotal ?? item.total ?? 0),
+    items: mappedItems,
+    paymentMethod: item.paymentMethod || item.paymentMode || (isCreditOrder ? "CREDIT" : "COD"),
+    isCreditOrder,
+    creditDueDate: item.creditDueDate ? new Date(item.creditDueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
+    creditPeriodDays: item.creditPeriodDays ? Number(item.creditPeriodDays) : undefined,
+    creditPaymentStatus,
+    creditSettledAt: item.creditSettledAt ? new Date(item.creditSettledAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
+  };
+}
+
+function mapNotification(item: ApiNotification): NotificationItem {
+  return {
+    id: item._id || item.id || item.title || "notification",
+    title: item.title || "Update",
+    body: item.message || item.body || "New update",
+    time: item.createdAt ? new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "Now",
+    unread: item.isRead === false || item.read === false,
+  };
+}
+
+export function resolveWholesalerId(input?: string | null): string {
+  if (!input) return "";
+  return String(input);
+}
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [profile, setProfile] = useState<RetailerProfile>(emptyProfile);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [returns, setReturns] = useState<any[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
+  const [dashboard, setDashboard] = useState<Record<string, unknown> | null>(null);
+  const [linkedWholesaler, setLinkedWholesaler] = useState<Wholesaler | null>(null);
+  const [relationships, setRelationships] = useState<Record<string, "Connected">>({});
+
+  const syncSession = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setCurrentUser(null);
+      setProfile(emptyProfile);
+      setDashboard(null);
+      setLinkedWholesaler(null);
+      setRelationships({});
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const me = await api.getMe();
+      const user = (me?.data as Record<string, any>) || {};
+      const email = String(user["email"] || "");
+      const userId = String(user["_id"] || user["id"] || email || "retailer");
+      setCurrentUser({ id: userId, email });
+      setProfile(normalizeProfile(user));
+
+      const [dashboardRes, wholesalerRes, productsRes, categoriesRes, cartRes, wishlistRes, ordersRes, notificationsRes, returnsRes] = await Promise.all([
+        api.getDashboard().catch(() => null),
+        api.getConnectedWholesaler().catch(() => null),
+        api.getProducts({ limit: 200 }).catch(() => ({ data: [] })),
+        api.getCategories({ limit: 200 }).catch(() => ({ data: [] })),
+        api.getCart().catch(() => ({ data: { items: [] } })),
+        api.getWishlist().catch(() => ({ data: [] })),
+        api.getOrders({ limit: 200 }).catch(() => ({ data: [] })),
+        api.getNotifications().catch(() => ({ data: [] })),
+        api.getReturns().catch(() => ({ data: [] })),
+      ]);
+
+      const connectedWholesalerData = mapWholesaler((wholesalerRes as { data?: ApiWholesaler } | null)?.data ?? null);
+      setDashboard((dashboardRes as { data?: Record<string, unknown> } | null)?.data ?? null);
+      setLinkedWholesaler(connectedWholesalerData);
+      if (connectedWholesalerData) {
+        setRelationships({ [connectedWholesalerData.id]: "Connected" });
+      } else {
+        setRelationships({});
+      }
+
+      const nextCategories = Array.isArray((categoriesRes as { data?: ApiCategory[] })?.data)
+        ? ((categoriesRes as { data?: ApiCategory[] }).data || []).map(mapCategory)
+        : [];
+      setCategories(nextCategories);
+
+      const categoryMap = new Map<string, string>();
+      nextCategories.forEach((c) => {
+        categoryMap.set(c.id, c.name);
+        categoryMap.set(c.id.toLowerCase(), c.name);
+        categoryMap.set(c.name, c.name);
+        categoryMap.set(c.name.toLowerCase(), c.name);
+      });
+
+      const nextProducts = Array.isArray((productsRes as { data?: ApiProduct[] })?.data)
+        ? ((productsRes as { data?: ApiProduct[] }).data || []).map((item, index) => {
+            const product = mapProduct(item, index, categoryMap);
+            return {
+              ...product,
+              wholesalerId: item.wholesalerId || (product.wholesalerId === "connected-wholesaler" ? connectedWholesalerData?.id : product.wholesalerId) || "",
+            };
+          })
+        : [];
+      setProducts(nextProducts);
+
+      const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number }> } } | null)?.data?.items || []) as Array<{ productId: string; quantity: number }>;
+      setCart(cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0) })));
+
+      const wishlistItems = ((wishlistRes as { data?: Array<{ _id?: string; productId?: string }> } | null)?.data || []) as Array<{ _id?: string; productId?: string }>;
+      setWishlist(wishlistItems.map((item) => String(item.productId || item._id || "")));
+
+      const nextOrders = Array.isArray((ordersRes as { data?: ApiOrder[] })?.data)
+        ? ((ordersRes as { data?: ApiOrder[] }).data || []).map(mapOrder)
+        : [];
+      setOrders(nextOrders);
+
+      const nextNotifications = Array.isArray((notificationsRes as { data?: ApiNotification[] })?.data)
+        ? ((notificationsRes as { data?: ApiNotification[] }).data || []).map(mapNotification)
+        : [];
+      setNotifications(nextNotifications);
+
+      const nextReturns = Array.isArray((returnsRes as any)?.data) ? (returnsRes as any).data : [];
+      setReturns(nextReturns);
+    } catch (error) {
+      console.warn("Unable to sync retailer session", error);
+      clearAuthToken();
+      setCurrentUser(null);
+      setProfile(emptyProfile);
+      setDashboard(null);
+      setLinkedWholesaler(null);
+      setRelationships({});
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const refreshOrders = useCallback(async () => {
+    const token = getAuthToken();
+    if (!token) return;
+    try {
+      const ordersRes = await api.getOrders({ limit: 200 }).catch(() => null);
+      if (ordersRes && Array.isArray((ordersRes as { data?: ApiOrder[] })?.data)) {
+        const nextOrders = ((ordersRes as { data?: ApiOrder[] }).data || []).map(mapOrder);
+        setOrders(nextOrders);
+      }
+    } catch {
+      // Silent catch for background polling
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncSession();
+
+    // Auto-poll orders every 30 seconds for real-time order status updates (Pending -> Confirmed, etc.)
+    const interval = setInterval(() => {
+      void refreshOrders();
+    }, 30000);
+
+    const handleFocus = () => {
+      void refreshOrders();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  }, [syncSession, refreshOrders]);
+
+  const linkedWholesalerId = linkedWholesaler?.id || "";
+  const unread = notifications.filter((item) => item.unread).length;
+
+  const logout = useCallback(async () => {
+    try {
+      await api.logout().catch(() => undefined);
+    } finally {
+      clearAuthToken();
+      localStorage.clear();
+      sessionStorage.clear();
+      setCurrentUser(null);
+      setProfile(emptyProfile);
+      setProducts([]);
+      setCategories([]);
+      setOrders([]);
+      setCart([]);
+      setWishlist([]);
+      setNotifications([]);
+      setDashboard(null);
+      setLinkedWholesaler(null);
+      setRelationships({});
+      toast.success("Signed out successfully");
+    }
+  }, []);
+
+  const login = useCallback(async (identifier: string, password?: string, targetWholesalerId?: string) => {
+    const normalized = identifier.trim();
+    const isPhone = /^\d{10}$/.test(normalized);
+    const loginPayload: Parameters<typeof api.login>[0] = {};
+    if (normalized.includes("@")) loginPayload.email = normalized;
+    else if (!isPhone) loginPayload.loginId = normalized;
+    else {
+      loginPayload.mobile = normalized;
+      loginPayload.phone = normalized;
+    }
+    if (password) loginPayload.password = password;
+
+    const result = await api.login(loginPayload);
+    const token = result?.data?.token || result?.data?.accessToken;
+    if (token) {
+      setAuthToken(token);
+    }
+
+    if (targetWholesalerId) {
+      await api.acceptInvitation(targetWholesalerId).catch(() => undefined);
+    }
+
+    await syncSession();
+    toast.success("Signed in successfully");
+  }, [syncSession]);
+
+  const registerWithWholesaler = useCallback(async (profileInput: RetailerProfile, _targetWholesalerId: string, passwordInput?: string) => {
+    const search = new URLSearchParams(window.location.search);
+    const inviteToken = search.get("invite") || search.get("inviteToken") || search.get("token") || undefined;
+
+    const regPayload: Parameters<typeof api.register>[0] = {
+      name: profileInput.ownerName,
+      email: profileInput.email,
+      password: passwordInput || "ChangeThisPassword123",
+      phone: profileInput.phone,
+      businessName: profileInput.businessName,
+      address: profileInput.address,
+      city: profileInput.city,
+      state: profileInput.state,
+      pincode: profileInput.pincode,
+      gstStatus: profileInput.gstRegistered ? "REGISTERED" : "UNREGISTERED",
+      gstin: profileInput.gstNumber,
+      role: "retailer",
+    };
+    if (inviteToken) regPayload.inviteToken = inviteToken;
+
+    await api.register(regPayload);
+
+    toast.success("Account created successfully. Please sign in to continue.");
+  }, []);
+
+  const connectWholesaler = useCallback(async (wholesalerId: string, showToast = true) => {
+    const token = wholesalerId || new URLSearchParams(window.location.search).get("invite") || new URLSearchParams(window.location.search).get("token");
+    if (token) {
+      await api.acceptInvitation(token).catch(() => undefined);
+    }
+    await syncSession();
+    if (showToast) {
+      toast.success("Wholesaler connection updated");
+    }
+  }, [syncSession]);
+
+  const [addedToCartProduct, setAddedToCartProduct] = useState<{ product: Product; quantity: number } | null>(null);
+
+  const clearAddedToCartProduct = useCallback(() => {
+    setAddedToCartProduct(null);
+  }, []);
+
+  const addToCart = useCallback(async (id: string, q?: number) => {
+    const product = products.find((item) => item.id === id);
+    if (!product) return;
+
+    if (product.stock <= 0) {
+      toast.error(`${product.name} is currently out of stock`);
+      return;
+    }
+
+    const minQty = Math.max(1, Math.ceil(product.moq || 1));
+    const quantity = Math.max(minQty, Number.isInteger(q) ? q : minQty);
+    const token = getAuthToken();
+
+    if (token) {
+      try {
+        await api.addToCart(id, quantity);
+        setCart((current) => {
+          const existing = current.find((item) => item.productId === id);
+          if (existing) {
+            return current.map((item) => (item.productId === id ? { ...item, quantity: item.quantity + quantity } : item));
+          }
+          return [...current, { productId: id, quantity }];
+        });
+        setAddedToCartProduct({ product, quantity });
+        toast.success(`${product.name} added to cart`);
+      } catch (err: any) {
+        if (err?.status === 401) {
+          clearAuthToken();
+          setCurrentUser(null);
+          setCart((current) => {
+            const existing = current.find((item) => item.productId === id);
+            if (existing) {
+              return current.map((item) => (item.productId === id ? { ...item, quantity: item.quantity + quantity } : item));
+            }
+            return [...current, { productId: id, quantity }];
+          });
+          setAddedToCartProduct({ product, quantity });
+          toast.success(`${product.name} added to cart`);
+        } else {
+          const msg = err?.message || err?.data?.message || "Failed to add to cart";
+          toast.error(msg);
+        }
+      }
+    } else {
+      setCart((current) => {
+        const existing = current.find((item) => item.productId === id);
+        if (existing) {
+          return current.map((item) => (item.productId === id ? { ...item, quantity: item.quantity + quantity } : item));
+        }
+        return [...current, { productId: id, quantity }];
+      });
+      setAddedToCartProduct({ product, quantity });
+      toast.success(`${product.name} added to cart`);
+    }
+  }, [products]);
+
+  const setQuantity = useCallback(async (id: string, q: number) => {
+    const product = products.find((item) => item.id === id);
+    const minQty = Math.max(1, Math.ceil(product?.moq || 1));
+    const nextQty = Math.max(minQty, Number.isInteger(q) ? q : minQty);
+    setCart((current) => current.map((item) => (item.productId === id ? { ...item, quantity: nextQty } : item)));
+    const token = getAuthToken();
+    if (token) {
+      try {
+        await api.updateCartItem(id, nextQty);
+      } catch (err: any) {
+        if (err?.status === 401) {
+          clearAuthToken();
+          setCurrentUser(null);
+        } else {
+          toast.error(err?.message || "Failed to update cart");
+        }
+      }
+    }
+  }, [products]);
+
+  const removeCart = useCallback(async (id: string) => {
+    setCart((current) => current.filter((item) => item.productId !== id));
+    const token = getAuthToken();
+    if (token) {
+      try {
+        await api.removeCartItem(id);
+      } catch (err: any) {
+        if (err?.status === 401) {
+          clearAuthToken();
+          setCurrentUser(null);
+        } else {
+          toast.error(err?.message || "Failed to remove item");
+        }
+      }
+    }
+  }, []);
+
+  const toggleWishlist = useCallback(async (id: string) => {
+    const isWished = wishlist.includes(id);
+    try {
+      if (isWished) {
+        await api.removeFromWishlist(id);
+        setWishlist((current) => current.filter((item) => item !== id));
+      } else {
+        await api.addToWishlist(id);
+        setWishlist((current) => [...current, id]);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update wishlist");
+    }
+  }, [wishlist]);
+
+  const saveProfile = useCallback(async (profileInput: RetailerProfile) => {
+    setProfile(profileInput);
+    await api.updateBusinessProfile({
+      ownerName: profileInput.ownerName,
+      phone: profileInput.phone,
+      businessName: profileInput.businessName,
+      businessType: profileInput.businessType,
+      category: profileInput.category,
+      address: profileInput.address,
+      city: profileInput.city,
+      state: profileInput.state,
+      pincode: profileInput.pincode,
+      gstStatus: profileInput.gstRegistered ? "REGISTERED" : "UNREGISTERED",
+      gstin: profileInput.gstNumber,
+    });
+    await syncSession();
+    toast.success("Retailer profile saved");
+  }, [syncSession]);
+
+  const placeOrder = useCallback(async (paymentMethod = "COD", couponCode?: string) => {
+    if (!cart.length) {
+      toast.error("Your cart is empty");
+      return [];
+    }
+
+    const shippingAddress = {
+      addressLine1: profile.address || "Main Market Road",
+      city: profile.city || "New Delhi",
+      state: profile.state || "Delhi",
+      postalCode: profile.pincode || "110001",
+      pincode: profile.pincode || "110001",
+      country: "India",
+      contactName: profile.ownerName || "Retailer contact",
+      phone: profile.phone || "",
+    };
+
+    try {
+      setIsLoading(true);
+      await api.checkout({
+        items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        shippingAddress,
+        paymentMethod,
+        couponCode: couponCode || undefined,
+      } as any);
+
+      setCart([]);
+      await syncSession();
+      toast.success("Wholesale order placed successfully!");
+      return [];
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to place order");
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }, [cart, profile, syncSession]);
+
+  const markRead = useCallback(() => {
+    setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
+  }, []);
+
+  const addRecentlyViewed = useCallback((id: string) => {
+    if (!id) return;
+    setRecentlyViewed((current) => {
+      if (current[0] === id) return current;
+      return [id, ...current.filter((item) => item !== id)].slice(0, 12);
+    });
+  }, []);
+
+  const value = useMemo<Store>(
+    () => ({
+      currentUser,
+      isLoggedIn: Boolean(currentUser && getAuthToken()),
+      isLoading,
+      linkedWholesalerId,
+      linkedWholesaler,
+      connectedWholesalers: linkedWholesaler ? [linkedWholesaler] : [],
+      products,
+      categories,
+      cart,
+      wishlist,
+      relationships,
+      orders,
+      returns,
+      retailerProfile: profile,
+      unread,
+      notifications,
+      recentlyViewed,
+      dashboard,
+      addedToCartProduct,
+      clearAddedToCartProduct,
+      login,
+      logout,
+      connectWholesaler,
+      registerWithWholesaler,
+      addToCart,
+      setQuantity,
+      removeCart,
+      toggleWishlist,
+      saveProfile,
+      placeOrder,
+      markRead,
+      addRecentlyViewed,
+      refreshOrders,
+    }),
+    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, products, categories, cart, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, registerWithWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders]
+  );
+
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+}
+
+export const useStore = () => {
+  const value = useContext(StoreContext);
+  if (!value) throw new Error("StoreProvider missing");
+  return value;
+};

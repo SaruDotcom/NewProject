@@ -1,0 +1,179 @@
+// Prisma Schema for Wholesaler Dashboard
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+}
+
+enum RetailerStatus {
+  CONNECTED
+  PENDING
+  BLOCKED
+}
+
+enum PlanType {
+  MONTHLY
+  ANNUAL
+}
+
+model Wholesaler {
+  id              String         @id @default(uuid())
+  businessName    String
+  ownerName       String
+  email           String         @unique
+  phone           String
+  gstin           String
+  tradeLicense    String?
+  address         String
+  city            String
+  state           String
+  pincode         String
+  bankName        String?
+  accountNumber   String?
+  ifscCode        String?
+  twoFactorEnabled Boolean       @default(false)
+  apiKey          String?        @unique
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  products        Product[]
+  categories      Category[]
+  retailers       Retailer[]
+  orders          Order[]
+  subscriptions   Subscription[]
+  securityLogs    SecurityLog[]
+}
+
+model Category {
+  id           String     @id @default(uuid())
+  name         String
+  slug         String     @unique
+  description  String?
+  icon         String?    @default("Package")
+  wholesalerId String
+  wholesaler   Wholesaler @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  products     Product[]
+  createdAt    DateTime   @default(now())
+}
+
+model Product {
+  id              String                 @id @default(uuid())
+  title           String
+  sku             String                 @unique
+  description     String
+  basePrice       Float
+  stock           Integer
+  minOrderQty     Integer                @default(10)
+  imageUrl        String?
+  isLowStock      Boolean                @default(false)
+  categoryId      String
+  category        Category               @relation(fields: [categoryId], references: [id])
+  wholesalerId    String
+  wholesaler      Wholesaler             @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  pricingTiers    WholesalePricingTier[]
+  orderItems      OrderItem[]
+  inventoryLogs   InventoryLog[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+}
+
+model WholesalePricingTier {
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minQty      Int
+  maxQty      Int?
+  pricePerUnit Float
+}
+
+model Retailer {
+  id                   String         @id @default(uuid())
+  businessName         String
+  contactPerson        String
+  email                String         @unique
+  phone                String
+  gstin                String
+  city                 String
+  state                String
+  status               RetailerStatus @default(PENDING)
+  creditLimit          Float          @default(50000)
+  discountPercent      Float          @default(5)
+  totalOrdersCount     Int            @default(0)
+  totalSpent           Float          @default(0)
+  wholesalerId         String
+  wholesaler           Wholesaler     @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  orders               Order[]
+  createdAt            DateTime       @default(now())
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  orderNumber    String      @unique
+  retailerId     String
+  retailer       Retailer    @relation(fields: [retailerId], references: [id])
+  wholesalerId   String
+  wholesaler     Wholesaler  @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  status         OrderStatus @default(PENDING)
+  totalAmount    Float
+  taxAmount      Float
+  discountAmount Float       @default(0)
+  shippingAddress String
+  trackingNumber String?
+  paymentStatus  String      @default("UNPAID") // UNPAID, PARTIAL, PAID
+  items          OrderItem[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  unitPrice Float
+  quantity  Int
+  subtotal  Float
+}
+
+model InventoryLog {
+  id           String   @id @default(uuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changeAmount Int
+  reason       String   // e.g. "Order Fulfillment #ORD-9912", "Manual Batch Addition", "Stock Audit"
+  createdAt    DateTime @default(now())
+}
+
+model Subscription {
+  id              String     @id @default(uuid())
+  wholesalerId    String
+  wholesaler      Wholesaler @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  plan            PlanType   @default(MONTHLY)
+  amount          Float      @default(300)
+  startDate       DateTime   @default(now())
+  nextBillingDate DateTime
+  status          String     @default("ACTIVE")
+  paymentMethod   String     @default("UPI / Auto-Debit")
+}
+
+model SecurityLog {
+  id           String     @id @default(uuid())
+  wholesalerId String
+  wholesaler   Wholesaler @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  event        String
+  ipAddress    String
+  device       String
+  createdAt    DateTime   @default(now())
+}
