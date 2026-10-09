@@ -1,7 +1,12 @@
-const BASE_URL =
-  (import.meta as any).env?.VITE_API_URL ||
-  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
-  'http://localhost:5001/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
+
+function buildApiUrl(endpoint: string): string {
+  if (!BASE_URL) {
+    throw new Error('VITE_API_BASE_URL is not configured');
+  }
+
+  return `${BASE_URL}/${endpoint.replace(/^\/+/, '')}`;
+}
 
 const TOKEN_KEY = 'wholesaler_jwt_token';
 export const DEMO_AUTH_TOKEN = 'demo-wholesaler-token';
@@ -102,7 +107,7 @@ export function clearAuthToken() {
 }
 
 export async function request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${BASE_URL.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+  const url = buildApiUrl(endpoint);
   const token = getAuthToken();
 
   const headers: Record<string, string> = {
@@ -183,7 +188,7 @@ export const api = {
     }),
 
   getKycDocument: async (documentId: string) => {
-    const url = `${BASE_URL.replace(/\/+$/, '')}/wholesaler/kyc/documents/${encodeURIComponent(documentId)}`;
+    const url = buildApiUrl(`/wholesaler/kyc/documents/${encodeURIComponent(documentId)}`);
     const token = getAuthToken();
     const response = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -245,7 +250,7 @@ export const api = {
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append('images', file));
     
-    const url = `${BASE_URL.replace(/\/+$/, '')}/wholesaler/products/upload`;
+    const url = buildApiUrl('/wholesaler/products/upload');
     const token = getAuthToken();
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -388,7 +393,7 @@ export const api = {
     const endpoint = `/wholesaler/analytics/export?${params.toString()}`;
     const token = getAuthToken();
     const response = await fetch(
-      `${BASE_URL.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`,
+      buildApiUrl(endpoint),
       { headers: token ? { Authorization: `Bearer ${token}` } : {} }
     );
 
