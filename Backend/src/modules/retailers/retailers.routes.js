@@ -9,7 +9,6 @@ const { ROLES } = require('../../config/constants');
 router.use(authenticate, authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
 
 router.get('/', retailerController.listRetailers);
-router.post('/', retailerController.createRetailer);
 router.get('/:id', retailerController.getRetailerById);
 router.put('/:id', retailerController.updateRetailer);
 router.patch('/:id/wholesaler', retailerController.changeWholesaler);
@@ -17,4 +16,3 @@ router.patch('/:id/status', retailerController.updateStatus);
 router.delete('/:id', retailerController.deleteRetailer);
 
 module.exports = router;
-

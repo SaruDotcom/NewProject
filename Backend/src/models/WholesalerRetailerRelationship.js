@@ -19,6 +19,12 @@ const wholesalerRetailerRelationshipSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Invitation',
     },
+    referralCode: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      default: '',
+    },
     status: {
       type: String,
       enum: Object.values(RELATIONSHIP_STATUS),
@@ -52,6 +58,7 @@ const wholesalerRetailerRelationshipSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

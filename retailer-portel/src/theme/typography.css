@@ -1,11 +1,21 @@
 :root {
-  --font-sans: "Manrope", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  --font-heading: "Poppins", "Inter", sans-serif;
 }
 
 body {
   font-family: var(--font-sans);
   font-feature-settings: "ss01";
   letter-spacing: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
 }
 
 button,

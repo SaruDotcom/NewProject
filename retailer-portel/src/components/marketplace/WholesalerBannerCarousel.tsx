@@ -38,7 +38,7 @@ const DEFAULT_BANNER_SLIDES: BannerSlide[] = [
     imageUrl: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=1200&q=80",
     targetCategory: "Clothing",
     discountBadge: "35% EXTRA MARGIN",
-    gradient: "from-[#C62828] via-[#9A0007] to-ink",
+    gradient: "from-tradeflow-navy via-tradeflow-navy-hover to-green-700",
     isActive: true,
   },
   {
@@ -50,7 +50,7 @@ const DEFAULT_BANNER_SLIDES: BannerSlide[] = [
     imageUrl: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=1200&q=80",
     targetCategory: "Electronics",
     discountBadge: "FLAT ₹500 OFF",
-    gradient: "from-indigo-900 via-purple-900 to-ink",
+    gradient: "from-tradeflow-navy via-tradeflow-sky to-tradeflow-navy",
     isActive: true,
   },
   {
@@ -62,10 +62,14 @@ const DEFAULT_BANNER_SLIDES: BannerSlide[] = [
     imageUrl: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80",
     targetCategory: "Grocery & Staples",
     discountBadge: "FREE DELIVERY",
-    gradient: "from-emerald-900 via-teal-900 to-ink",
+    gradient: "from-green-900 via-green-700 to-ink",
     isActive: true,
   },
 ];
+
+function getThemeGradient(gradient: string) {
+  return gradient.includes("tradeflow-") ? gradient : DEFAULT_BANNER_SLIDES[0].gradient;
+}
 
 export function WholesalerBannerCarousel() {
   const { retailerProfile, connectedWholesalers } = useStore();
@@ -152,7 +156,7 @@ export function WholesalerBannerCarousel() {
         alt=""
         className="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
       />
-      <div className={`absolute inset-0 bg-gradient-to-r ${currentSlide.gradient || 'from-ink via-ink/85 to-ink/40'} opacity-90`} />
+      <div className={`absolute inset-0 bg-gradient-to-r ${getThemeGradient(currentSlide.gradient || 'from-ink via-ink/85 to-ink/40')} opacity-90`} />
 
       <div className="shell relative z-10 py-10 sm:py-14 min-h-[340px] sm:min-h-[400px] flex flex-col justify-between">
         {/* Top Bar */}

@@ -1,4 +1,21 @@
+import { getWholesalerId, queryClient, wholesalerQueryKeys } from '@/lib/query-client';
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
+
+export function resolveProductImageUrl(imagePath?: string | null): string | null {
+  const value = imagePath?.trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (!BASE_URL) return value;
+
+  // API base URLs normally end in /api or /api/v1. Images are served from the
+  // backend origin, not from that API mount point.
+  return new URL(value, `${new URL(BASE_URL).origin}/`).toString();
+}
+
+export function isLegacyLocalProductImageUrl(_imagePath?: string | null): boolean {
+  return false;
+}
 
 function buildApiUrl(endpoint: string): string {
   if (!BASE_URL) {
@@ -9,7 +26,26 @@ function buildApiUrl(endpoint: string): string {
 }
 
 const TOKEN_KEY = 'wholesaler_jwt_token';
-export const DEMO_AUTH_TOKEN = 'demo-wholesaler-token';
+
+export interface ApiErrorDetail {
+  field: string;
+  message: string;
+  type?: string;
+}
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  errors: ApiErrorDetail[];
+
+  constructor(message: string, status: number, code?: string, errors: ApiErrorDetail[] = []) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.errors = errors;
+  }
+}
 
 export interface WholesalerAnalyticsProduct {
   _id: string;
@@ -87,8 +123,16 @@ export interface WholesalerAnalyticsReport {
   trend: Array<{ date: string; revenue: number; orders: number }>;
 }
 
-export function isDemoAuthToken(token: string | null): boolean {
-  return token === DEMO_AUTH_TOKEN;
+export interface BulkProductUploadRow {
+  rowNumber: number;
+  data: Record<string, string | number | null>;
+}
+
+export interface BulkProductPreviewRow {
+  rowNumber: number;
+  valid: boolean;
+  errors: string[];
+  data: Record<string, string | number | null>;
 }
 
 export function getAuthToken(): string | null {
@@ -104,6 +148,36 @@ export function setAuthToken(token: string) {
 export function clearAuthToken() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem('wholesaler_user_id');
+  queryClient.clear();
+}
+
+function invalidateMutation(endpoint: string) {
+  const path = endpoint.split('?')[0];
+  const userId = getWholesalerId();
+  if (userId === 'unknown') return;
+
+  let resources: string[] = [];
+  if (path.startsWith('/support/tickets')) resources = ['support'];
+  else if (path.startsWith('/wholesaler/products')) resources = ['products', 'inventory', 'analytics'];
+  else if (path.startsWith('/wholesaler/categories')) resources = ['categories', 'products'];
+  else if (path.startsWith('/orders/returns') || path.startsWith('/wholesaler/returns')) resources = ['returns', 'orders'];
+  else if (path.startsWith('/wholesaler/orders') || path.startsWith('/orders/')) resources = ['orders', 'analytics'];
+  else if (path.startsWith('/wholesaler/retailers')) resources = ['retailers', 'credit-overview'];
+  else if (path.startsWith('/wholesaler/inventory')) resources = ['inventory', 'products', 'analytics'];
+  else if (path.startsWith('/wholesaler/kyc')) resources = ['kyc'];
+  else if (path.startsWith('/wholesaler/coupons')) resources = ['coupons'];
+  else if (path.startsWith('/wholesaler/credit-policy')) resources = ['credit-overview'];
+  else if (path.startsWith('/wholesaler/credit/settle-order')) resources = ['credit-overview', 'orders', 'wallet', 'analytics'];
+  else if (path.startsWith('/reviews')) resources = ['reviews'];
+  else if (path.startsWith('/notifications')) resources = ['notifications'];
+  else if (path.startsWith('/wholesaler/invite-links')) resources = ['invite-links'];
+
+  resources.forEach((resource) => {
+    void queryClient.invalidateQueries({
+      queryKey: wholesalerQueryKeys.resource(userId, resource),
+    });
+  });
 }
 
 export async function request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -115,7 +189,8 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
     ...(options.headers as Record<string, string>),
   };
 
-  if (token) {
+  const isAuthEndpoint = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/register');
+  if (token && !isAuthEndpoint) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
@@ -128,14 +203,22 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
   const data = isJson ? await response.json() : null;
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== 'undefined' && !endpoint.includes('/auth/login')) {
+    if (
+      response.status === 401 &&
+      typeof window !== 'undefined' &&
+      !endpoint.startsWith('/auth/')
+    ) {
       clearAuthToken();
-      if (!window.location.pathname.startsWith('/login')) {
+      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
         window.location.href = '/login?expired=1';
       }
     }
     const errorMsg = data?.message || `HTTP ${response.status}: ${response.statusText}`;
-    throw new Error(errorMsg);
+    throw new ApiError(errorMsg, response.status, data?.code, data?.errors);
+  }
+
+  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
+    invalidateMutation(endpoint);
   }
 
   return data;
@@ -169,11 +252,29 @@ export const api = {
     pickupCity?: string;
     pickupState?: string;
     pickupPincode?: string;
+    inviteToken?: string;
+    ref?: string;
+    adminCode?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
   }) =>
-    request<{ success: boolean; message: string; data: { user: any } }>('/auth/register', {
+    request<{ success: boolean; message: string; data: { token: string; accessToken: string; refreshToken: string; user: any } }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ ...payload, role: 'wholesaler' }),
     }),
+
+  getWholesalerInvite: (token: string) =>
+    request<{ success: boolean; data: { contactName: string; email: string; phone: string; businessName: string; expiresAt: string } }>(
+      `/invites/wholesaler/${encodeURIComponent(token)}`,
+      { method: 'GET' },
+    ),
+
+  validateAdminRef: (code: string) =>
+    request<{ success: boolean; message?: string; data: { valid: boolean; isPaused?: boolean; code?: string; platformName?: string; message?: string } }>(
+      `/invites/validate-ref/${encodeURIComponent(code)}`,
+      { method: 'GET' },
+    ),
 
   getMe: () =>
     request<{ success: boolean; data: any }>('/auth/me', { method: 'GET' }),
@@ -203,12 +304,23 @@ export const api = {
   markAllNotificationsRead: () =>
     request<{ success: boolean }>('/notifications/read', { method: 'PATCH' }),
 
-  // Invite links
-  createInviteLink: () =>
-    request<{ success: boolean; data: any }>('/wholesaler/invite-links', { method: 'POST' }),
+  getRetailerReferral: () =>
+    request<{ success: boolean; data: { code: string; signupsEnabled: boolean; joinedCount: number } }>(
+      '/wholesaler/referral',
+      { method: 'GET' },
+    ),
 
-  getInviteLinks: () =>
-    request<{ success: boolean; data: any[] }>('/wholesaler/invite-links', { method: 'GET' }),
+  regenerateRetailerReferral: () =>
+    request<{ success: boolean; data: { code: string; signupsEnabled: boolean; joinedCount: number } }>(
+      '/wholesaler/referral/regenerate',
+      { method: 'POST' },
+    ),
+
+  setRetailerReferralEnabled: (enabled: boolean) =>
+    request<{ success: boolean; data: { code: string; signupsEnabled: boolean; joinedCount: number } }>(
+      '/wholesaler/referral',
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    ),
 
   // Connected Retailers
   getConnectedRetailers: () =>
@@ -216,12 +328,6 @@ export const api = {
 
   getRetailerDetails: (relationshipId: string) =>
     request<{ success: boolean; data: any }>(`/wholesaler/retailers/${relationshipId}`, { method: 'GET' }),
-
-  resetRetailerPassword: (relationshipId: string, password: string) =>
-    request<{ success: boolean; data: any }>(`/wholesaler/retailers/${relationshipId}/password`, {
-      method: 'PATCH',
-      body: JSON.stringify({ password }),
-    }),
 
   // Categories
   getCategories: () =>
@@ -245,6 +351,39 @@ export const api = {
   // Products
   getProducts: () =>
     request<{ success: boolean; data: any[] }>('/wholesaler/products', { method: 'GET' }),
+
+  previewBulkProducts: (rows: BulkProductUploadRow[]) =>
+    request<{ success: boolean; data: { rows: BulkProductPreviewRow[] } }>('/wholesaler/products/bulk/preview', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
+
+  importBulkProducts: (rows: BulkProductUploadRow[]) =>
+    request<{ success: boolean; data: { imported: Array<{ rowNumber: number; productId: string }>; rejected: Array<{ rowNumber: number; errors: string[] }> } }>('/wholesaler/products/bulk/import', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
+
+  downloadBulkProductTemplate: async (category: string): Promise<Blob> => {
+    const url = buildApiUrl(`/wholesaler/products/bulk/template?category=${encodeURIComponent(category)}`);
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = 'Bearer ' + token;
+    const response = await fetch(url, {
+      headers,
+    });
+    if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined') {
+        clearAuthToken();
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login?expired=1';
+        }
+      }
+      const data = await response.json();
+      throw new Error(data?.message || 'Could not create the Excel template.');
+    }
+    return response.blob();
+  },
 
   uploadProductImages: async (files: FileList | File[]) => {
     const formData = new FormData();
@@ -311,10 +450,61 @@ export const api = {
     request<{ success: boolean; data: any[] }>('/wallets/transactions', { method: 'GET' }),
 
   submitFeedback: (data: { title?: string; comment: string; rating: number; productId?: string }) =>
-    request<{ success: boolean; data: any }>('/reviews', {
+    request<{ success: boolean; data: any }>('/support/tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'Feedback',
+        subject: data.title?.trim() || 'Wholesaler Partner Feedback',
+        message: `Rating: ${data.rating}/5\n\n${data.comment.trim()}`,
+      }),
+    }),
+
+  submitSupportTicket: (data: {
+    type: string;
+    subject: string;
+    message: string;
+    priority?: string;
+    relatedOrderId?: string;
+    attachments?: Array<{ url: string; publicId?: string }>;
+  }) =>
+    request<{ success: boolean; data: any }>('/support/tickets', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  getMySupportTickets: () =>
+    request<{ success: boolean; data: any[] }>('/support/tickets/mine', { method: 'GET' }),
+
+  getSupportTicket: (ticketId: string) =>
+    request<{ success: boolean; data: any }>(`/support/tickets/${encodeURIComponent(ticketId)}`, { method: 'GET' }),
+
+  replySupportTicket: (ticketId: string, message: string) =>
+    request<{ success: boolean; data: any }>(`/support/tickets/${encodeURIComponent(ticketId)}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+
+  markSupportTicketRead: (ticketId: string) =>
+    request<{ success: boolean; data: any }>(`/support/tickets/${encodeURIComponent(ticketId)}/read`, {
+      method: 'PATCH',
+      body: JSON.stringify({}),
+    }),
+
+  uploadSupportAttachments: async (files: FileList | File[]) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append('images', file));
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(buildApiUrl('/support/tickets/attachments'), {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new ApiError(data?.message || 'Support image upload failed', response.status, data?.code, data?.errors);
+    return data as { success: boolean; data: Array<{ url: string; publicId: string }> };
+  },
 
   // Coupons
   validateCoupon: (code: string, planAmount: number, planType?: string) =>
@@ -338,9 +528,15 @@ export const api = {
 
   // Help Request
   submitHelpRequest: (data: { subject?: string; message: string; callbackPhone?: string }) =>
-    request<{ success: boolean; data: any }>('/wholesaler/help-center', {
+    request<{ success: boolean; data: any }>('/support/tickets', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        type: 'Request',
+        subject: data.subject?.trim() || 'Super Admin Help Request',
+        message: data.message.trim(),
+        priority: 'High',
+        callbackPhone: data.callbackPhone?.trim(),
+      }),
     }),
 
   // Credit Policy & Overview

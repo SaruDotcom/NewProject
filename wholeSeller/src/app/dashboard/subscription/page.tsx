@@ -19,10 +19,13 @@ import {
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api from '@/lib/api';
+import { WHOLESALER_PLAN_PRICING } from '@/config/plans';
 
 export default function SubscriptionPage() {
   const { profile, updateSubscription } = useWholesaler();
-  const [selectedPlan, setSelectedPlan] = useState<'MONTHLY' | 'ANNUAL'>(profile.subscriptionPlan);
+  const [selectedPlan, setSelectedPlan] = useState<'MONTHLY' | 'ANNUAL'>(
+    profile.subscriptionPlan === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
+  );
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'SELECT' | 'PROCESSING' | 'SUCCESS'>('SELECT');
   const [selectedUpi, setSelectedUpi] = useState('rajesh@okhdfcbank');
@@ -40,7 +43,7 @@ export default function SubscriptionPage() {
     discountValue: number;
   } | null>(null);
 
-  const getBasePrice = (plan: 'MONTHLY' | 'ANNUAL') => (plan === 'ANNUAL' ? 3000 : 300);
+  const getBasePrice = (plan: 'MONTHLY' | 'ANNUAL') => WHOLESALER_PLAN_PRICING[plan];
 
   const handleOpenCheckout = (plan: 'MONTHLY' | 'ANNUAL') => {
     setSelectedPlan(plan);
@@ -115,57 +118,65 @@ export default function SubscriptionPage() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1F1F1F]">Wholesaler Subscription & Billing</h1>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Wholesaler Subscription & Billing</h1>
           <p className="text-xs text-gray-500">Simple, transparent pricing to power your wholesale business operations</p>
         </div>
       </div>
 
       {/* Active Subscription Status Banner */}
-      <div className="p-6 rounded-2xl bg-white border border-[#E5E5E5] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="p-6 rounded-2xl bg-white border border-tradeflow-gray-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#FFEBEE] text-[#C62828] flex items-center justify-center font-bold">
+          <div className="w-12 h-12 rounded-2xl bg-tradeflow-green-50 text-green-700 flex items-center justify-center font-bold">
             <Sparkles className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-extrabold text-[#1F1F1F]">
-                {profile.subscriptionPlan === 'ANNUAL' ? 'Annual Pro Plan' : 'Monthly Wholesaler Plan'}
+              <h2 className="text-lg font-extrabold text-tradeflow-navy">
+                {profile.subscriptionPlan === 'ANNUAL'
+                  ? 'Annual Pro Plan'
+                  : profile.subscriptionPlan === 'MONTHLY'
+                    ? 'Monthly Wholesaler Plan'
+                    : 'No active plan'}
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20">
-                Active & Auto-Renews
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green-50 text-status-success border border-status-success/20">
+                {profile.subscriptionStatus === 'ACTIVE' ? 'Active & Auto-Renews' : 'No active subscription'}
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Next Billing Date: <span className="font-bold text-[#1F1F1F] font-mono">{profile.nextBillingDate}</span> • Charged via UPI / Auto-Debit
+              Next Billing Date: <span className="font-bold text-tradeflow-navy font-mono">{profile.nextBillingDate || 'Not scheduled'}</span>
             </p>
           </div>
         </div>
 
         <div className="text-right">
-          <span className="text-2xl font-black text-[#C62828]">
-            ₹{profile.subscriptionPlan === 'ANNUAL' ? '3,000' : '300'}
-          </span>
-          <span className="text-xs text-gray-500">
-            /{profile.subscriptionPlan === 'ANNUAL' ? 'year' : 'month'}
-          </span>
+          {profile.subscriptionPlan && (
+            <>
+              <span className="text-2xl font-black text-green-700">
+                ₹{WHOLESALER_PLAN_PRICING[profile.subscriptionPlan].toLocaleString('en-IN')}
+              </span>
+              <span className="text-xs text-gray-500">
+                /{profile.subscriptionPlan === 'ANNUAL' ? 'year' : 'month'}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
       {/* Special Offers & Coupons Banner */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white shadow-lg space-y-4">
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-tradeflow-navy via-tradeflow-navy-hover to-tradeflow-navy-pressed text-white shadow-lg space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-400 text-purple-950 flex items-center justify-center font-bold shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-tradeflow-navy flex items-center justify-center font-bold shadow-md">
               <Gift className="w-6 h-6" />
             </div>
             <div>
               <h3 className="font-extrabold text-base flex items-center gap-2">
                 Available Wholesaler Offers & Coupon Codes
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-400 text-purple-950 font-black uppercase tracking-wider">
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-400 text-tradeflow-navy font-black uppercase tracking-wider">
                   Limited Period
                 </span>
               </h3>
-              <p className="text-xs text-purple-200">
+              <p className="text-xs text-white/75">
                 Apply a promo code at checkout to get instant cash discounts on your subscription!
               </p>
             </div>
@@ -185,7 +196,7 @@ export default function SubscriptionPage() {
             </div>
             <button
               onClick={() => handleQuickApply('WELCOME50')}
-              className="mt-3 py-1.5 px-3 bg-amber-400 hover:bg-amber-300 text-purple-950 font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
+              className="mt-3 py-1.5 px-3 bg-amber-400 hover:bg-amber-300 text-tradeflow-navy font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
             >
               <Ticket className="w-3.5 h-3.5" /> Apply WELCOME50
             </button>
@@ -203,7 +214,7 @@ export default function SubscriptionPage() {
             </div>
             <button
               onClick={() => handleQuickApply('FESTIVE200')}
-              className="mt-3 py-1.5 px-3 bg-amber-400 hover:bg-amber-300 text-purple-950 font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
+              className="mt-3 py-1.5 px-3 bg-amber-400 hover:bg-amber-300 text-tradeflow-navy font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
             >
               <Ticket className="w-3.5 h-3.5" /> Apply FESTIVE200
             </button>
@@ -221,7 +232,7 @@ export default function SubscriptionPage() {
             </div>
             <button
               onClick={() => handleQuickApply('SUPERVIP')}
-              className="mt-3 py-1.5 px-3 bg-amber-400 hover:bg-amber-300 text-purple-950 font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
+              className="mt-3 py-1.5 px-3 bg-amber-400 hover:bg-amber-300 text-tradeflow-navy font-extrabold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5"
             >
               <Ticket className="w-3.5 h-3.5" /> Apply SUPERVIP
             </button>
@@ -234,14 +245,14 @@ export default function SubscriptionPage() {
         {/* Monthly Plan (₹300/mo) */}
         <div className={`p-6 rounded-2xl border transition-all flex flex-col justify-between ${
           profile.subscriptionPlan === 'MONTHLY'
-            ? 'bg-white border-2 border-[#C62828] shadow-lg relative'
-            : 'bg-white border-[#E5E5E5] shadow-xs hover:border-gray-400'
+            ? 'bg-white border-2 border-tradeflow-green shadow-lg relative'
+            : 'bg-white border-tradeflow-gray-200 shadow-xs hover:border-gray-400'
         }`}>
           <div>
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Monthly Tier</span>
               {profile.subscriptionPlan === 'MONTHLY' && (
-                <span className="text-[10px] font-bold bg-[#FFEBEE] text-[#C62828] px-2.5 py-1 rounded-full">
+                <span className="text-[10px] font-bold bg-tradeflow-green-50 text-green-700 px-2.5 py-1 rounded-full">
                   Current Plan
                 </span>
               )}
@@ -251,8 +262,8 @@ export default function SubscriptionPage() {
               {appliedCoupon && selectedPlan === 'MONTHLY' ? (
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-black text-[#2E7D32]">₹{appliedCoupon.netPrice}</span>
-                    <span className="text-lg text-gray-400 line-through font-bold">₹300</span>
+                    <span className="text-4xl font-black text-status-success">₹{appliedCoupon.netPrice}</span>
+                    <span className="text-lg text-gray-400 line-through font-bold">₹{WHOLESALER_PLAN_PRICING.MONTHLY}</span>
                     <span className="text-xs text-gray-500 font-semibold"> / month</span>
                   </div>
                   <span className="inline-block mt-1 px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -261,7 +272,7 @@ export default function SubscriptionPage() {
                 </div>
               ) : (
                 <div>
-                  <span className="text-4xl font-black text-[#1F1F1F]">₹300</span>
+                  <span className="text-4xl font-black text-tradeflow-navy">₹{WHOLESALER_PLAN_PRICING.MONTHLY}</span>
                   <span className="text-xs text-gray-500 font-semibold"> / month</span>
                 </div>
               )}
@@ -279,7 +290,7 @@ export default function SubscriptionPage() {
                 'Basic Income & Sales Analytics',
               ].map((feature, idx) => (
                 <li key={idx} className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-status-success shrink-0" />
                   <span>{feature}</span>
                 </li>
               ))}
@@ -292,7 +303,7 @@ export default function SubscriptionPage() {
             className={`w-full mt-8 py-3 rounded-xl font-bold text-xs transition-all ${
               profile.subscriptionPlan === 'MONTHLY'
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-[#C62828] text-white hover:bg-[#B71C1C] shadow-md'
+                : 'bg-tradeflow-green text-tradeflow-navy hover:bg-tradeflow-green-hover shadow-md'
             }`}
           >
             {profile.subscriptionPlan === 'MONTHLY' ? 'Currently Active' : 'Switch to Monthly Plan'}
@@ -302,19 +313,19 @@ export default function SubscriptionPage() {
         {/* Annual Plan (₹3000/yr - Best Value) */}
         <div className={`p-6 rounded-2xl border transition-all flex flex-col justify-between ${
           profile.subscriptionPlan === 'ANNUAL'
-            ? 'bg-white border-2 border-[#C62828] shadow-lg relative'
-            : 'bg-white border-[#E5E5E5] shadow-xs hover:border-gray-400'
+            ? 'bg-white border-2 border-tradeflow-green shadow-lg relative'
+            : 'bg-white border-tradeflow-gray-200 shadow-xs hover:border-gray-400'
         }`}>
           <div>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-gray-500 uppercase tracking-wider">Annual Value Tier</span>
-                <span className="text-[10px] font-extrabold bg-[#E8F5E9] text-[#2E7D32] px-2 py-0.5 rounded-full border border-[#2E7D32]/20">
+                <span className="text-[10px] font-extrabold bg-tradeflow-green-50 text-status-success px-2 py-0.5 rounded-full border border-status-success/20">
                   SAVE 16%+
                 </span>
               </div>
               {profile.subscriptionPlan === 'ANNUAL' && (
-                <span className="text-[10px] font-bold bg-[#FFEBEE] text-[#C62828] px-2.5 py-1 rounded-full">
+                <span className="text-[10px] font-bold bg-tradeflow-green-50 text-green-700 px-2.5 py-1 rounded-full">
                   Current Plan
                 </span>
               )}
@@ -324,8 +335,8 @@ export default function SubscriptionPage() {
               {appliedCoupon && selectedPlan === 'ANNUAL' ? (
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-black text-[#2E7D32]">₹{appliedCoupon.netPrice.toLocaleString()}</span>
-                    <span className="text-lg text-gray-400 line-through font-bold">₹3,000</span>
+                    <span className="text-4xl font-black text-status-success">₹{appliedCoupon.netPrice.toLocaleString()}</span>
+                    <span className="text-lg text-gray-400 line-through font-bold">₹{WHOLESALER_PLAN_PRICING.ANNUAL.toLocaleString('en-IN')}</span>
                     <span className="text-xs text-gray-500 font-semibold"> / year</span>
                   </div>
                   <span className="inline-block mt-1 px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -334,9 +345,9 @@ export default function SubscriptionPage() {
                 </div>
               ) : (
                 <div>
-                  <span className="text-4xl font-black text-[#1F1F1F]">₹3,000</span>
+                  <span className="text-4xl font-black text-tradeflow-navy">₹{WHOLESALER_PLAN_PRICING.ANNUAL.toLocaleString('en-IN')}</span>
                   <span className="text-xs text-gray-500 font-semibold"> / year</span>
-                  <div className="text-[11px] text-[#2E7D32] font-bold mt-1">Effective ₹250 / month</div>
+                  <div className="text-[11px] text-status-success font-bold mt-1">Effective ₹250 / month</div>
                 </div>
               )}
             </div>
@@ -353,7 +364,7 @@ export default function SubscriptionPage() {
                 'Priority 24/7 Phone & Email Support',
               ].map((feature, idx) => (
                 <li key={idx} className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-status-success shrink-0" />
                   <span>{feature}</span>
                 </li>
               ))}
@@ -366,7 +377,7 @@ export default function SubscriptionPage() {
             className={`w-full mt-8 py-3 rounded-xl font-bold text-xs transition-all ${
               profile.subscriptionPlan === 'ANNUAL'
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-[#C62828] text-white hover:bg-[#B71C1C] shadow-md'
+                : 'bg-tradeflow-green text-tradeflow-navy hover:bg-tradeflow-green-hover shadow-md'
             }`}
           >
             {profile.subscriptionPlan === 'ANNUAL' ? 'Currently Active' : 'Upgrade to Annual Plan (Save ₹600)'}
@@ -377,9 +388,9 @@ export default function SubscriptionPage() {
       {/* Payment Checkout Modal Simulation */}
       {showCheckoutModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 border border-[#E5E5E5] shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
-              <h2 className="text-base font-bold text-[#1F1F1F]">Wholesaler Payment Gateway</h2>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 border border-tradeflow-gray-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
+              <h2 className="text-base font-bold text-tradeflow-navy">Wholesaler Payment Gateway</h2>
               <button onClick={() => setShowCheckoutModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
@@ -388,10 +399,10 @@ export default function SubscriptionPage() {
             {paymentStep === 'SELECT' && (
               <div className="space-y-4 text-xs">
                 {/* Plan Summary Card */}
-                <div className="p-3.5 bg-[#FAF9F7] rounded-xl border border-[#E5E5E5] space-y-2">
+                <div className="p-3.5 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 space-y-2">
                   <div className="flex justify-between items-center">
                     <div>
-                      <div className="font-bold text-[#1F1F1F]">
+                      <div className="font-bold text-tradeflow-navy">
                         {selectedPlan === 'ANNUAL' ? 'Annual Subscription (1 Year)' : 'Monthly Subscription (1 Month)'}
                       </div>
                       <div className="text-gray-500">Includes all portal features & ERP sync</div>
@@ -402,12 +413,12 @@ export default function SubscriptionPage() {
                           <div className="text-xs line-through text-gray-400 font-semibold">
                             ₹{currentBasePrice.toLocaleString()}
                           </div>
-                          <div className="font-black text-base text-[#2E7D32]">
+                          <div className="font-black text-base text-status-success">
                             ₹{finalPrice.toLocaleString()}
                           </div>
                         </div>
                       ) : (
-                        <div className="font-black text-base text-[#C62828]">
+                        <div className="font-black text-base text-green-700">
                           ₹{currentBasePrice.toLocaleString()}
                         </div>
                       )}
@@ -417,10 +428,10 @@ export default function SubscriptionPage() {
                   {/* Coupon Applied Details */}
                   {appliedCoupon && (
                     <div className="pt-2 border-t border-gray-200 flex items-center justify-between text-[11px]">
-                      <span className="text-[#2E7D32] font-extrabold flex items-center gap-1">
+                      <span className="text-status-success font-extrabold flex items-center gap-1">
                         <Tag className="w-3 h-3" /> Coupon `{appliedCoupon.code}` Applied
                       </span>
-                      <span className="font-extrabold text-[#2E7D32]">
+                      <span className="font-extrabold text-status-success">
                         - ₹{savings.toLocaleString()} OFF
                       </span>
                     </div>
@@ -430,7 +441,7 @@ export default function SubscriptionPage() {
                 {/* Promo Code Input Field */}
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <label className="block font-bold text-gray-700 text-[11px] uppercase tracking-wider flex items-center gap-1">
-                    <Ticket className="w-3.5 h-3.5 text-purple-600" /> Have a Promo / Coupon Code?
+                    <Ticket className="w-3.5 h-3.5 text-green-700" /> Have a Promo / Coupon Code?
                   </label>
                   {appliedCoupon ? (
                     <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-300 rounded-lg">
@@ -459,13 +470,13 @@ export default function SubscriptionPage() {
                           setCouponInput(e.target.value.toUpperCase());
                           setCouponError(null);
                         }}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white font-mono uppercase text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                        className="flex-1 px-3 py-2 border border-tradeflow-gray-200 rounded-lg bg-white font-mono uppercase text-xs focus:ring-2 focus:ring-tradeflow-green focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={handleApplyCoupon}
                         disabled={isValidatingCoupon || !couponInput.trim()}
-                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-all"
+                        className="px-4 py-2 bg-tradeflow-green hover:bg-tradeflow-green-hover disabled:opacity-50 text-tradeflow-navy font-bold text-xs rounded-lg transition-all"
                       >
                         {isValidatingCoupon ? 'Validating...' : 'Apply Code'}
                       </button>
@@ -482,9 +493,9 @@ export default function SubscriptionPage() {
                 {/* Payment Method */}
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">Select Payment Method</label>
-                  <div className="p-3 border border-[#C62828] rounded-xl bg-[#FFEBEE] flex items-center justify-between">
-                    <span className="font-bold text-[#C62828]">BHIM UPI / GooglePay / PhonePe</span>
-                    <Check className="w-4 h-4 text-[#C62828]" />
+                  <div className="p-3 border border-tradeflow-green rounded-xl bg-tradeflow-green-50 flex items-center justify-between">
+                    <span className="font-bold text-green-700">BHIM UPI / GooglePay / PhonePe</span>
+                    <Check className="w-4 h-4 text-green-700" />
                   </div>
                 </div>
 
@@ -494,14 +505,14 @@ export default function SubscriptionPage() {
                     type="text"
                     value={selectedUpi}
                     onChange={(e) => setSelectedUpi(e.target.value)}
-                    className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono"
+                    className="w-full px-3 py-2 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-mono"
                   />
                 </div>
 
                 <button
                   type="button"
                   onClick={handleSimulatePayment}
-                  className="w-full py-3 bg-[#C62828] text-white font-bold rounded-xl hover:bg-[#B71C1C] transition-all shadow-md flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md flex items-center justify-center gap-2"
                 >
                   <span>Pay ₹{finalPrice.toLocaleString()} & Activate Plan</span>
                   {appliedCoupon && (
@@ -515,8 +526,8 @@ export default function SubscriptionPage() {
 
             {paymentStep === 'PROCESSING' && (
               <div className="py-8 text-center space-y-3">
-                <div className="w-12 h-12 border-4 border-[#C62828] border-t-transparent rounded-full animate-spin mx-auto" />
-                <div className="font-bold text-sm text-[#1F1F1F]">Processing UPI Payment Request...</div>
+                <div className="w-12 h-12 border-4 border-tradeflow-green border-t-transparent rounded-full animate-spin mx-auto" />
+                <div className="font-bold text-sm text-tradeflow-navy">Processing UPI Payment Request...</div>
                 <div className="text-xs text-gray-500">
                   Communicating with bank servers for instant settlement of ₹{finalPrice.toLocaleString()}
                 </div>
@@ -525,10 +536,10 @@ export default function SubscriptionPage() {
 
             {paymentStep === 'SUCCESS' && (
               <div className="py-6 text-center space-y-3">
-                <div className="w-14 h-14 bg-[#E8F5E9] text-[#2E7D32] rounded-full flex items-center justify-center mx-auto font-bold">
+                <div className="w-14 h-14 bg-tradeflow-green-50 text-status-success rounded-full flex items-center justify-center mx-auto font-bold">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <div className="font-extrabold text-base text-[#1F1F1F]">Payment Successful!</div>
+                <div className="font-extrabold text-base text-tradeflow-navy">Payment Successful!</div>
                 <p className="text-xs text-gray-600">
                   Your Wholesaler {selectedPlan === 'ANNUAL' ? 'Annual' : 'Monthly'} Subscription is now active.
                 </p>
@@ -539,7 +550,7 @@ export default function SubscriptionPage() {
                 )}
                 <button
                   onClick={() => setShowCheckoutModal(false)}
-                  className="px-6 py-2 bg-[#2E7D32] text-white font-bold text-xs rounded-xl hover:bg-[#1b5e20]"
+                  className="px-6 py-2 bg-status-success text-white font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover"
                 >
                   Return to Dashboard
                 </button>

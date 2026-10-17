@@ -58,6 +58,7 @@ const columns = [
     ["totalOrders", "Orders"],
     ["totalSalesAmount", "Sales"],
     ["status", "Status"],
+    ["registrationSource", "Registration source"],
     ["createdAt", "Registered"],
 ];
 
@@ -71,6 +72,7 @@ const columnWidths = {
     totalOrders: "min-w-[80px] text-center",
     totalSalesAmount: "min-w-[110px]",
     status: "min-w-[130px]",
+    registrationSource: "min-w-[170px]",
     createdAt: "min-w-[130px]",
 };
 
@@ -327,7 +329,7 @@ export function WholesalerManagementPage() {
                     <div className="p-8 text-sm text-muted-foreground">No wholesalers found.</div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <Table className="min-w-[1560px] table-fixed">
+                        <Table className="min-w-[1730px] table-fixed">
                             <TableHeader>
                                 <TableRow className="bg-muted/40">
                                     {columns.map(([key, label]) => (
@@ -355,6 +357,7 @@ export function WholesalerManagementPage() {
                                         <TableCell className="text-center">{row.totalOrders ?? 0}</TableCell>
                                         <TableCell>{formatCurrency(row.totalSalesAmount)}</TableCell>
                                         <TableCell><StatusBadge status={getDisplayStatus(row)} /></TableCell>
+                                        <TableCell><StatusBadge status={(row.registrationSource || "DIRECT").replaceAll("_", " ")} /></TableCell>
                                         <TableCell>{formatDate(row.createdAt)}</TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-1.5">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Building2,
@@ -15,10 +15,42 @@ import {
   EyeOff
 } from 'lucide-react';
 import { WholesalerProvider, useWholesaler } from '@/context/WholesalerContext';
+import api, { getAuthToken, clearAuthToken } from '@/lib/api';
+import { BRAND_NAME } from '@/config/brand';
 
-function RegisterForm() {
+type RegisterFormProps = {
+  onSuccess?: () => void;
+  inviteToken?: string;
+  embedded?: boolean;
+};
+
+function readUtmAttribution() {
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const utmSource = searchParams.get('utm_source') || localStorage.getItem('wholesaler_utm_source') || '';
+    const utmMedium = searchParams.get('utm_medium') || localStorage.getItem('wholesaler_utm_medium') || '';
+    const utmCampaign = searchParams.get('utm_campaign') || localStorage.getItem('wholesaler_utm_campaign') || '';
+    return {
+      utmSource,
+      utmMedium,
+      utmCampaign,
+    };
+  } catch (error) {
+    console.error('Unable to read campaign attribution from local storage.', error);
+    return { utmSource: '', utmMedium: '', utmCampaign: '' };
+  }
+}
+
+export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded = false }: RegisterFormProps) {
   const navigate = useNavigate();
   const { registerWholesaler } = useWholesaler();
+  const searchParams = new URLSearchParams(window.location.search);
+  const inviteToken = inviteTokenProp || searchParams.get('invite') || '';
+  const refCode = searchParams.get('ref') || '';
+  const [inviteError, setInviteError] = useState('');
+  const [refValid, setRefValid] = useState(false);
+  const [refError, setRefError] = useState('');
+  const [platformName, setPlatformName] = useState(BRAND_NAME);
 
   // Form Fields State
   const [email, setEmail] = useState('');
@@ -51,6 +83,51 @@ function RegisterForm() {
 
   // Inline Validation Errors State
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    if (getAuthToken() === 'demo-wholesaler-token') {
+      clearAuthToken();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!refCode) return;
+    let active = true;
+    api.validateAdminRef(refCode)
+      .then((res) => {
+        if (!active) return;
+        if (res?.data?.valid) {
+          setRefValid(true);
+          setRefError('');
+          if (res.data.platformName) setPlatformName(res.data.platformName);
+        } else {
+          setRefValid(false);
+          setRefError(res?.data?.message || 'This registration link is not valid or has expired.');
+        }
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        setRefValid(false);
+        setRefError(err?.message || 'This registration link is not valid or has expired.');
+      });
+    return () => { active = false; };
+  }, [refCode]);
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    let active = true;
+    api.getWholesalerInvite(inviteToken).then(({ data }) => {
+      if (!active) return;
+      setEmail(data.email || '');
+      setPhone(data.phone || '');
+      setBusinessName(data.businessName || '');
+      setOwnerName(data.contactName || '');
+      setInviteError('');
+    }).catch((error: Error) => {
+      if (active) setInviteError(error.message || 'This invitation is invalid or has expired.');
+    });
+    return () => { active = false; };
+  }, [inviteToken]);
 
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
@@ -121,7 +198,13 @@ function RegisterForm() {
       return;
     }
 
+    if (refCode && refError) {
+      setErrors((prev) => ({ ...prev, form: refError }));
+      return;
+    }
+
     try {
+      const attribution = readUtmAttribution();
       await registerWholesaler({
         businessName,
         ownerName,
@@ -138,9 +221,12 @@ function RegisterForm() {
         pickupCity: sameAsBusinessAddress ? city : pickupCity,
         pickupState: sameAsBusinessAddress ? state : pickupState,
         pickupPincode: sameAsBusinessAddress ? pincode : pickupPincode,
+        inviteToken: inviteToken || undefined,
+        ref: refValid && refCode ? refCode : undefined,
+        ...attribution,
       }, password);
-
-      navigate(`/login?registered=1&email=${encodeURIComponent(email)}`);
+      if (onSuccess) onSuccess();
+      else navigate('/dashboard', { replace: true, state: { registrationSuccess: true } });
     } catch (err: any) {
       const msg = err?.message || 'Registration failed.';
       if (msg.toLowerCase().includes('mobile') || msg.toLowerCase().includes('phone')) {
@@ -154,21 +240,44 @@ function RegisterForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF9F7] text-[#1F1F1F] flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
+    <div className={`${embedded ? 'bg-white text-tradeflow-navy' : 'min-h-screen bg-tradeflow-gray-50 text-tradeflow-navy'} flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8`}>
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-[#C62828] text-white flex items-center justify-center shadow-lg font-bold text-2xl">
+        <div className="mx-auto w-14 h-14 rounded-2xl bg-tradeflow-green text-tradeflow-navy flex items-center justify-center shadow-lg font-bold text-2xl">
           <Building2 className="w-8 h-8" />
         </div>
-        <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-[#1F1F1F]">
-          Wholesaler Account Registration
+        <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-tradeflow-navy">
+          Create your {BRAND_NAME} account
         </h1>
         <p className="mt-1 text-xs text-gray-600">
-          Register your wholesale business to manage products, automated stock, and retailer network
+          Set up your wholesale business and start managing your retailer network
         </p>
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-2xl">
-        <div className="bg-white py-8 px-8 shadow-xl rounded-3xl border border-[#E5E5E5]">
+        <div className="bg-white py-8 px-8 shadow-xl rounded-3xl border border-tradeflow-gray-200">
+          {refCode && refValid && (
+            <div className="mb-5 rounded-xl border border-tradeflow-green/30 bg-tradeflow-green/10 p-3 text-xs text-tradeflow-navy flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-tradeflow-green shrink-0" />
+              <p className="font-bold">You are invited by {platformName || BRAND_NAME}</p>
+            </div>
+          )}
+
+          {refCode && refError && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Invalid or Inactive Registration Link</p>
+                <p className="mt-0.5">{refError}</p>
+              </div>
+            </div>
+          )}
+
+          {inviteToken && (
+            <div className="mb-5 rounded-xl border border-tradeflow-green/30 bg-tradeflow-green/10 p-3 text-xs text-tradeflow-navy">
+              <p className="font-bold">You are invited by {BRAND_NAME}</p>
+              {inviteError && <p className="mt-1 text-red-700">{inviteError}</p>}
+            </div>
+          )}
           {errors.form && (
             <div className="mb-6 p-4 rounded-2xl border border-red-200 bg-red-50 text-red-700 text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -189,7 +298,7 @@ function RegisterForm() {
           <form onSubmit={handleSubmit} className="space-y-5 text-xs">
             {/* Section 1: Basic Contact Information */}
             <div>
-              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-[#E5E5E5] mb-4">
+              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-tradeflow-gray-200 mb-4">
                 1. Basic Contact Information
               </h2>
 
@@ -207,8 +316,8 @@ function RegisterForm() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value.trim().toLowerCase())}
                       placeholder="Enter your official email"
-                      className={`w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F7] border rounded-xl focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                        errors.email ? 'border-red-500' : 'border-[#E5E5E5]'
+                      className={`w-full pl-10 pr-3.5 py-2.5 bg-tradeflow-gray-50 border rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                        errors.email ? 'border-red-500' : 'border-tradeflow-gray-200'
                       }`}
                     />
                   </div>
@@ -228,8 +337,8 @@ function RegisterForm() {
                       value={phone}
                       onChange={(e) => setPhone(onlyDigits(e.target.value, 10))}
                       placeholder="Enter 10 digit mobile number"
-                      className={`w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F7] border rounded-xl font-mono focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                        errors.phone ? 'border-red-500' : 'border-[#E5E5E5]'
+                      className={`w-full pl-10 pr-3.5 py-2.5 bg-tradeflow-gray-50 border rounded-xl font-mono focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                        errors.phone ? 'border-red-500' : 'border-tradeflow-gray-200'
                       }`}
                     />
                   </div>
@@ -240,7 +349,7 @@ function RegisterForm() {
 
             {/* Section 2: Business & Owner Profile */}
             <div>
-              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-[#E5E5E5] mb-4">
+              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-tradeflow-gray-200 mb-4">
                 2. Business & Owner Profile
               </h2>
 
@@ -254,8 +363,8 @@ function RegisterForm() {
                     value={businessName}
                     onChange={(e) => setBusinessName(limitedText(e.target.value, 80))}
                     placeholder="Enter your business or shop name"
-                    className={`w-full px-3.5 py-2.5 bg-[#FAF9F7] border rounded-xl focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                      errors.businessName ? 'border-red-500' : 'border-[#E5E5E5]'
+                    className={`w-full px-3.5 py-2.5 bg-tradeflow-gray-50 border rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                      errors.businessName ? 'border-red-500' : 'border-tradeflow-gray-200'
                     }`}
                   />
                   {errors.businessName && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.businessName}</span>}
@@ -270,8 +379,8 @@ function RegisterForm() {
                     value={ownerName}
                     onChange={(e) => setOwnerName(onlyLettersSpaces(e.target.value, 60))}
                     placeholder="Enter owner full name"
-                    className={`w-full px-3.5 py-2.5 bg-[#FAF9F7] border rounded-xl focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                      errors.ownerName ? 'border-red-500' : 'border-[#E5E5E5]'
+                    className={`w-full px-3.5 py-2.5 bg-tradeflow-gray-50 border rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                      errors.ownerName ? 'border-red-500' : 'border-tradeflow-gray-200'
                     }`}
                   />
                   {errors.ownerName && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.ownerName}</span>}
@@ -280,7 +389,7 @@ function RegisterForm() {
             </div>
 
             {/* Section 3: GST Status Toggle */}
-            <div className="p-4 bg-[#FAF9F7] rounded-2xl border border-[#E5E5E5] space-y-3">
+            <div className="p-4 bg-tradeflow-gray-50 rounded-2xl border border-tradeflow-gray-200 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-gray-700 uppercase tracking-wider text-[11px]">3. GST Status</span>
                 <div className="flex items-center gap-3">
@@ -290,7 +399,7 @@ function RegisterForm() {
                       name="gstStatus"
                       checked={isGstRegistered}
                       onChange={() => setIsGstRegistered(true)}
-                      className="accent-[#C62828]"
+                      className="accent-tradeflow-green"
                     />
                     <span>GST Registered</span>
                   </label>
@@ -300,7 +409,7 @@ function RegisterForm() {
                       name="gstStatus"
                       checked={!isGstRegistered}
                       onChange={() => setIsGstRegistered(false)}
-                      className="accent-[#C62828]"
+                      className="accent-tradeflow-green"
                     />
                     <span>Non-GST</span>
                   </label>
@@ -318,15 +427,15 @@ function RegisterForm() {
                     value={gstin}
                     onChange={(e) => setGstin(cleanGstin(e.target.value))}
                     placeholder="Enter 15 character GSTIN"
-                    className={`w-full px-3.5 py-2.5 bg-white border rounded-xl uppercase font-mono focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                      errors.gstin ? 'border-red-500' : 'border-[#E5E5E5]'
+                    className={`w-full px-3.5 py-2.5 bg-white border rounded-xl uppercase font-mono focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                      errors.gstin ? 'border-red-500' : 'border-tradeflow-gray-200'
                     }`}
                   />
                   {errors.gstin && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.gstin}</span>}
                 </div>
               ) : (
-                <div className="p-3 bg-[#FFF8E1] border border-[#FFE082] text-xs text-[#1F1F1F] rounded-xl flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-[#F9A825] shrink-0" />
+                <div className="p-3 bg-amber-50 border border-amber-200 text-xs text-tradeflow-navy rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                   <span>Note: Non-GST wholesalers can register freely, but may have limited tax invoice feature access later.</span>
                 </div>
               )}
@@ -334,7 +443,7 @@ function RegisterForm() {
 
             {/* Section 4: Business Address */}
             <div className="space-y-3">
-              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-[#E5E5E5]">
+              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-tradeflow-gray-200">
                 4. Registered Business Address
               </h2>
 
@@ -347,8 +456,8 @@ function RegisterForm() {
                   value={streetAddress}
                   onChange={(e) => setStreetAddress(limitedText(e.target.value, 140))}
                   placeholder="Enter registered business address"
-                  className={`w-full px-3.5 py-2.5 bg-[#FAF9F7] border rounded-xl focus:border-[#C62828] ${
-                    errors.streetAddress ? 'border-red-500' : 'border-[#E5E5E5]'
+                  className={`w-full px-3.5 py-2.5 bg-tradeflow-gray-50 border rounded-xl focus:border-tradeflow-green ${
+                    errors.streetAddress ? 'border-red-500' : 'border-tradeflow-gray-200'
                   }`}
                 />
                 {errors.streetAddress && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.streetAddress}</span>}
@@ -364,8 +473,8 @@ function RegisterForm() {
                     value={city}
                     onChange={(e) => setCity(onlyLettersSpaces(e.target.value, 40))}
                     placeholder="Enter city"
-                    className={`w-full px-3 py-2 bg-[#FAF9F7] border rounded-xl ${
-                      errors.city ? 'border-red-500' : 'border-[#E5E5E5]'
+                    className={`w-full px-3 py-2 bg-tradeflow-gray-50 border rounded-xl ${
+                      errors.city ? 'border-red-500' : 'border-tradeflow-gray-200'
                     }`}
                   />
                   {errors.city && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.city}</span>}
@@ -379,8 +488,8 @@ function RegisterForm() {
                     value={state}
                     onChange={(e) => setState(onlyLettersSpaces(e.target.value, 40))}
                     placeholder="Enter state"
-                    className={`w-full px-3 py-2 bg-[#FAF9F7] border rounded-xl ${
-                      errors.state ? 'border-red-500' : 'border-[#E5E5E5]'
+                    className={`w-full px-3 py-2 bg-tradeflow-gray-50 border rounded-xl ${
+                      errors.state ? 'border-red-500' : 'border-tradeflow-gray-200'
                     }`}
                   />
                   {errors.state && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.state}</span>}
@@ -396,8 +505,8 @@ function RegisterForm() {
                     value={pincode}
                     onChange={(e) => setPincode(onlyDigits(e.target.value, 6))}
                     placeholder="6 digit pincode"
-                    className={`w-full px-3 py-2 bg-[#FAF9F7] border rounded-xl font-mono ${
-                      errors.pincode ? 'border-red-500' : 'border-[#E5E5E5]'
+                    className={`w-full px-3 py-2 bg-tradeflow-gray-50 border rounded-xl font-mono ${
+                      errors.pincode ? 'border-red-500' : 'border-tradeflow-gray-200'
                     }`}
                   />
                   {errors.pincode && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.pincode}</span>}
@@ -407,24 +516,24 @@ function RegisterForm() {
 
             {/* Section 5: Delivery / Product Pickup Address */}
             <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between pb-2 border-b border-[#E5E5E5]">
+              <div className="flex items-center justify-between pb-2 border-b border-tradeflow-gray-200">
                 <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Truck className="w-4 h-4 text-[#C62828]" />
+                  <Truck className="w-4 h-4 text-green-700" />
                   <span>5. Delivery / Product Pickup Address</span>
                 </h2>
-                <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-[#C62828]">
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-green-700">
                   <input
                     type="checkbox"
                     checked={sameAsBusinessAddress}
                     onChange={(e) => setSameAsBusinessAddress(e.target.checked)}
-                    className="accent-[#C62828] w-4 h-4 rounded"
+                    className="accent-tradeflow-green w-4 h-4 rounded"
                   />
                   <span>Same as business address</span>
                 </label>
               </div>
 
               {!sameAsBusinessAddress && (
-                <div className="p-4 bg-[#FAF9F7] rounded-2xl border border-[#E5E5E5] space-y-3 animate-in fade-in duration-150">
+                <div className="p-4 bg-tradeflow-gray-50 rounded-2xl border border-tradeflow-gray-200 space-y-3 animate-in fade-in duration-150">
                   <div>
                     <label className="block font-bold text-gray-700 mb-1">Pickup Warehouse Street Address *</label>
                     <input
@@ -435,7 +544,7 @@ function RegisterForm() {
                       onChange={(e) => setPickupStreetAddress(limitedText(e.target.value, 140))}
                       placeholder="Enter warehouse pickup street address"
                       className={`w-full px-3.5 py-2.5 bg-white border rounded-xl ${
-                        errors.pickupStreetAddress ? 'border-red-500' : 'border-[#E5E5E5]'
+                        errors.pickupStreetAddress ? 'border-red-500' : 'border-tradeflow-gray-200'
                       }`}
                     />
                     {errors.pickupStreetAddress && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.pickupStreetAddress}</span>}
@@ -452,7 +561,7 @@ function RegisterForm() {
                         onChange={(e) => setPickupCity(onlyLettersSpaces(e.target.value, 40))}
                         placeholder="Enter pickup city"
                         className={`w-full px-3 py-2 bg-white border rounded-xl ${
-                          errors.pickupCity ? 'border-red-500' : 'border-[#E5E5E5]'
+                          errors.pickupCity ? 'border-red-500' : 'border-tradeflow-gray-200'
                         }`}
                       />
                     </div>
@@ -466,7 +575,7 @@ function RegisterForm() {
                         onChange={(e) => setPickupState(onlyLettersSpaces(e.target.value, 40))}
                         placeholder="Enter pickup state"
                         className={`w-full px-3 py-2 bg-white border rounded-xl ${
-                          errors.pickupState ? 'border-red-500' : 'border-[#E5E5E5]'
+                          errors.pickupState ? 'border-red-500' : 'border-tradeflow-gray-200'
                         }`}
                       />
                     </div>
@@ -482,7 +591,7 @@ function RegisterForm() {
                         onChange={(e) => setPickupPincode(onlyDigits(e.target.value, 6))}
                         placeholder="6 digit pincode"
                         className={`w-full px-3 py-2 bg-white border rounded-xl font-mono ${
-                          errors.pickupPincode ? 'border-red-500' : 'border-[#E5E5E5]'
+                          errors.pickupPincode ? 'border-red-500' : 'border-tradeflow-gray-200'
                         }`}
                       />
                     </div>
@@ -493,7 +602,7 @@ function RegisterForm() {
 
             {/* Section 6: Password & Confirm Password */}
             <div>
-              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-[#E5E5E5] mb-4">
+              <h2 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-2 border-b border-tradeflow-gray-200 mb-4">
                 6. Account Password
               </h2>
 
@@ -511,14 +620,14 @@ function RegisterForm() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Create password"
-                      className={`w-full pl-10 pr-11 py-2.5 bg-[#FAF9F7] border rounded-xl focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                        errors.password ? 'border-red-500' : 'border-[#E5E5E5]'
+                      className={`w-full pl-10 pr-11 py-2.5 bg-tradeflow-gray-50 border rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                        errors.password ? 'border-red-500' : 'border-tradeflow-gray-200'
                       }`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((value) => !value)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-white hover:text-[#C62828]"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-white hover:text-green-700"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -540,14 +649,14 @@ function RegisterForm() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Re-enter password to confirm"
-                      className={`w-full pl-10 pr-11 py-2.5 bg-[#FAF9F7] border rounded-xl focus:border-[#C62828] focus:ring-1 focus:ring-[#C62828] ${
-                        errors.confirmPassword ? 'border-red-500' : 'border-[#E5E5E5]'
+                      className={`w-full pl-10 pr-11 py-2.5 bg-tradeflow-gray-50 border rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green ${
+                        errors.confirmPassword ? 'border-red-500' : 'border-tradeflow-gray-200'
                       }`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword((value) => !value)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-white hover:text-[#C62828]"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 hover:bg-white hover:text-green-700"
                       aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                     >
                       {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -558,26 +667,28 @@ function RegisterForm() {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#E5E5E5]">
+            <div className="pt-4 border-t border-tradeflow-gray-200">
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-3 bg-[#C62828] text-white text-sm font-bold rounded-xl hover:bg-[#B71C1C] shadow-md transition-all"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-tradeflow-green text-tradeflow-navy text-sm font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all"
               >
-                <span>Submit Registration for Admin Approval</span>
+                <span>Create Account &amp; Open Dashboard</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </form>
         </div>
 
-        <div className="text-center mt-6">
-          <p className="text-xs text-gray-500">
-            Already registered?{' '}
-            <Link to="/login" className="text-[#C62828] font-bold hover:underline">
-              Log in to Wholesaler Portal
-            </Link>
-          </p>
-        </div>
+        {!embedded && (
+          <div className="text-center mt-6">
+            <p className="text-xs text-gray-500">
+              Already registered?{' '}
+              <Link to="/login" className="text-green-700 font-bold hover:underline">
+                Log in to Wholesaler Portal
+              </Link>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,29 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
+@import "../theme/tradeflow.css";
 
 :root {
-  --primary: #C62828;
-  --primary-hover: #B71C1C;
-  --primary-light: #FFEBEE;
-  --off-white: #FAF9F7;
-  --charcoal: #1F1F1F;
-  --light-gray: #E5E5E5;
-  --card-border: #E0E0E0;
-  --green: #2E7D32;
-  --green-light: #E8F5E9;
-  --amber: #F9A825;
-  --amber-light: #FFF8E1;
-  --background: #FAF9F7;
-  --foreground: #1F1F1F;
-  --sidebar-bg: #FFFFFF;
-  --header-bg: #FFFFFF;
-  --font-sans: 'Inter', 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  --off-white: var(--color-tradeflow-gray-50);
+  --charcoal: var(--color-tradeflow-navy);
+  --light-gray: var(--color-tradeflow-gray-200);
+  --card-border: var(--color-tradeflow-gray-200);
+  --green: var(--color-status-success);
+  --green-light: var(--color-tradeflow-green-50);
+  --amber: var(--color-status-warning);
+  --amber-light: var(--color-status-warning-50);
+  --background: var(--color-tradeflow-gray-50);
+  --foreground: var(--color-tradeflow-navy);
+  --sidebar-bg: var(--color-tradeflow-navy);
+  --header-bg: var(--color-tradeflow-navy);
 }
 
 @theme inline {
-  --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
-  --color-primary-light: var(--primary-light);
   --color-off-white: var(--off-white);
   --color-charcoal: var(--charcoal);
   --color-light-gray: var(--light-gray);
@@ -31,8 +25,9 @@
   --color-green-light: var(--green-light);
   --color-amber: var(--amber);
   --color-amber-light: var(--amber-light);
+  --color-ring: var(--color-tradeflow-green);
   --font-inter: 'Inter', sans-serif;
-  --font-manrope: 'Manrope', sans-serif;
+  --font-manrope: "Poppins", "Inter", sans-serif;
 }
 
 * {
@@ -49,6 +44,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
@@ -56,17 +55,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--color-tradeflow-gray-100);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c5c5c5;
+  background: var(--color-tradeflow-gray-300);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--color-tradeflow-gray-400);
 }
 
 /* Glassmorphism utility */
@@ -74,7 +73,7 @@ body {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(229, 229, 229, 0.8);
+  border: 1px solid color-mix(in oklab, var(--color-tradeflow-gray-200) 80%, transparent);
 }
 
 /* Subtle Card Hover */
@@ -83,5 +82,5 @@ body {
 }
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+  box-shadow: var(--shadow-tradeflow-card);
 }

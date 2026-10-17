@@ -20,9 +20,68 @@ const {
   NotFoundError,
   ForbiddenError,
   ConflictError,
+  ValidationError,
 } = require('../../utils/errors');
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
+
+function validateTaxDetails(tax) {
+  const { cgst, sgst, igst } = tax;
+  const supplied = (value) => value !== undefined && value !== null && value !== '';
+  if (supplied(cgst) && supplied(sgst) && Number(cgst) !== Number(sgst)) {
+    throw new ValidationError('Product validation failed', [{ field: 'cgst', message: 'CGST must equal SGST' }]);
+  }
+  if (supplied(cgst) && supplied(sgst) && supplied(igst) && Number(cgst) + Number(sgst) !== Number(igst)) {
+    throw new ValidationError('Product validation failed', [{ field: 'igst', message: 'IGST must equal CGST + SGST' }]);
+  }
+}
+
+function extractImageUrl(image) {
+  if (!image) return '';
+  if (typeof image === 'string') return image.trim();
+  if (typeof image === 'object') {
+    if (image.url && typeof image.url === 'string') return image.url.trim();
+    const keys = Object.keys(image).filter((k) => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    if (keys.length > 5) {
+      return keys.map((k) => image[k]).join('').trim();
+    }
+  }
+  return '';
+}
+
+function normalizeImageUrls(images = [], primaryUrl = '') {
+  const list = (Array.isArray(images) ? images : [images])
+    .map(extractImageUrl)
+    .filter(Boolean);
+  const primary = extractImageUrl(primaryUrl);
+  const merged = primary ? [primary, ...list.filter((u) => u !== primary)] : list;
+  return [...new Set(merged)];
+}
+
+function normalizeColorVariants(variants = []) {
+  if (!Array.isArray(variants)) return [];
+  return variants.map((variant) => {
+    if (!variant || typeof variant !== 'object') return null;
+    const color = String(variant.color || '').trim();
+    if (!color) return null;
+    const sku = String(variant.sku || '').trim().toUpperCase();
+    const images = normalizeImageUrls(variant.images || []);
+    return { color, sku, images };
+  }).filter(Boolean);
+}
+
+function sanitizeProductData(prod) {
+  if (!prod) return prod;
+  const images = normalizeImageUrls(prod.images || [], prod.imageUrl || '');
+  const imageUrl = images[0] || extractImageUrl(prod.imageUrl) || '';
+  const colorVariants = normalizeColorVariants(prod.colorVariants || []);
+  return {
+    ...prod,
+    imageUrl,
+    images,
+    colorVariants,
+  };
+}
 
 class ProductService {
   static async validateCategorySelection(categoryId, subcategoryId, wholesalerId) {
@@ -46,7 +105,21 @@ class ProductService {
       if (!subcategory || subcategory.isDeleted) {
         throw new NotFoundError('Subcategory not found');
       }
-      if (String(subcategory.parentId) !== String(category._id)) {
+
+      // Check that subcategory traces up to the selected main category (handles Level 2 and Level 3)
+      let curr = subcategory;
+      let belongs = false;
+      const visited = new Set();
+      while (curr && curr.parentId && !visited.has(String(curr._id))) {
+        visited.add(String(curr._id));
+        if (String(curr.parentId) === String(category._id)) {
+          belongs = true;
+          break;
+        }
+        curr = await Category.findById(curr.parentId);
+      }
+
+      if (!belongs) {
         throw new BadRequestError('Subcategory must belong to the selected main category');
       }
       if (subcategory.wholesalerId && String(subcategory.wholesalerId) !== String(wholesalerId)) {
@@ -214,7 +287,7 @@ class ProductService {
     ]);
 
     return {
-      products,
+      products: products.map(sanitizeProductData),
       meta: {
         page,
         limit,
@@ -271,7 +344,7 @@ class ProductService {
     ]);
 
     return {
-      products,
+      products: products.map(sanitizeProductData),
       meta: {
         page,
         limit,
@@ -299,10 +372,11 @@ class ProductService {
     const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id || product.wholesalerId }).lean();
     const productDoc = product.toObject ? product.toObject() : product;
     const businessName = profile?.businessName || wholesalerUser.businessName || wholesalerUser.name || 'Wholesaler';
+    const sanitizedProduct = sanitizeProductData(productDoc);
 
     return {
       product: {
-        ...productDoc,
+        ...sanitizedProduct,
         wholesaler: {
           _id: wholesalerUser._id || product.wholesalerId,
           id: wholesalerUser._id || product.wholesalerId,
@@ -323,6 +397,7 @@ class ProductService {
    */
   static async createProduct(productData, wholesalerUser, req = null) {
     const wholesalerId = wholesalerUser._id;
+    validateTaxDetails(productData);
 
     // Check KYC status before allowing product publication
     const wholesalerProfile = await WholesalerProfile.findOne({ userId: wholesalerId });
@@ -341,6 +416,7 @@ class ProductService {
       description,
       categoryId,
       subcategoryId,
+      subSubcategoryId,
       images,
       imageUrl,
       mrp,
@@ -356,7 +432,15 @@ class ProductService {
       hsn,
       sizes,
       colors,
+      colorVariants,
       additionalOptions,
+      lowStockThreshold,
+      weight,
+      weightUnit,
+      dimensions,
+      countryOfOrigin,
+      sizeChart,
+      status,
     } = productData;
 
     const productName = name || title;
@@ -387,25 +471,42 @@ class ProductService {
       description: description || '',
       categoryId,
       subcategoryId: subcategoryId || null,
+      subSubcategoryId: subSubcategoryId || null,
       categoryName,
-      images: images || (imageUrl ? [imageUrl] : []),
-      imageUrl: imageUrl || (images && images.length > 0 ? images[0] : ''),
-      mrp: mrp || wholesalePrice || 0,
+      subcategoryName: productData.subcategoryName || '',
+      subSubcategoryName: productData.subSubcategoryName || '',
+      images: normalizeImageUrls(images || (imageUrl ? [imageUrl] : []), imageUrl),
+      imageUrl: normalizeImageUrls(images || (imageUrl ? [imageUrl] : []), imageUrl)[0] || extractImageUrl(imageUrl) || '',
+      mrp: mrp !== undefined ? mrp : (wholesalePrice !== undefined ? wholesalePrice : 0),
       costPrice: costPrice || 0,
-      wholesalePrice: wholesalePrice || costPrice || 0,
-      retailerPrice: retailerPrice || wholesalePrice || 0,
+      wholesalePrice: wholesalePrice !== undefined ? wholesalePrice : (costPrice || 0),
+      retailerPrice: retailerPrice !== undefined ? retailerPrice : (wholesalePrice || 0),
       moq: moq || minOrderQty || 1,
       minOrderQty: minOrderQty || moq || 1,
       pricingTiers: pricingTiers || [],
       stock: parseInt(stock, 10) || 0,
       unit: unit || 'piece',
-      gst: gst !== undefined ? gst : 18,
+      // Legacy GST remains supported; newly created products with no tax details are tax-free.
+      gst: gst !== undefined ? gst : (productData.gstPercent !== undefined ? productData.gstPercent : (productData.igst ?? 0)),
       hsn: hsn || '',
+      lowStockThreshold: lowStockThreshold !== undefined ? lowStockThreshold : 0,
+      weight: weight !== undefined ? weight : 0,
+      weightUnit: weightUnit || '',
+      dimensions: dimensions || {},
+      countryOfOrigin: countryOfOrigin || 'India',
       sizes: sizes || [],
       colors: colors || [],
+      colorVariants: normalizeColorVariants(colorVariants),
+      hsnCode: productData.hsnCode || hsn || '',
+      cgst: productData.cgst,
+      sgst: productData.sgst,
+      igst: productData.igst,
+      priceIncludesTax: productData.priceIncludesTax,
+      taxConfigured: Boolean(productData.hsnCode || productData.hsn || productData.cgst != null || productData.sgst != null || productData.igst != null),
+      sizeChart: sizeChart || null,
       additionalOptions: additionalOptions || [],
       categoryAttributes: productData.categoryAttributes || {},
-      status: PRODUCT_STATUS.ACTIVE,
+      status: status || PRODUCT_STATUS.ACTIVE,
     });
 
     // Create corresponding Inventory record
@@ -454,92 +555,266 @@ class ProductService {
       throw new NotFoundError('Product not found');
     }
 
-    // Authorization check: Wholesaler can only update their own products; Super Admin can update any
-    if (user.role === ROLES.WHOLESALER && String(product.wholesalerId) !== String(user._id)) {
+    // Ownership check: compare wholesalerId from the JWT with product.wholesalerId as strings
+    const userWholesalerId = String(user._id || user.id || '');
+    const productWholesalerId = String(product.wholesalerId?._id || product.wholesalerId || '');
+    if (user.role === ROLES.WHOLESALER && userWholesalerId !== productWholesalerId) {
       throw new ForbiddenError('You can only update your own products');
     }
 
     const beforeState = product.toJSON();
-
-    if (updateData.categoryId !== undefined || updateData.subcategoryId !== undefined) {
-      const nextCategoryId = updateData.categoryId || product.categoryId;
-      const nextSubcategoryId = updateData.subcategoryId !== undefined
-        ? updateData.subcategoryId
-        : product.subcategoryId;
-      await this.validateCategorySelection(nextCategoryId, nextSubcategoryId, product.wholesalerId);
+    validateTaxDetails({
+      cgst: updateData.cgst ?? product.cgst,
+      sgst: updateData.sgst ?? product.sgst,
+      igst: updateData.igst ?? product.igst,
+    });
+    const set = {};
+    const supplied = (key) => Object.prototype.hasOwnProperty.call(updateData, key);
+    const newName = updateData.name ?? updateData.title ?? updateData.productName;
+    if (newName !== undefined) {
+      set.name = newName;
+      set.productName = newName;
+      set.title = newName;
+      set.slug = await this.generateSlug(newName, product._id);
     }
 
-    if (updateData.name || updateData.title) {
-      const newName = updateData.name || updateData.title;
-      product.name = newName;
-      product.title = newName;
-      product.slug = await this.generateSlug(newName, product._id);
-    }
-
-    if (updateData.sku && updateData.sku.toUpperCase() !== product.sku) {
+    if (supplied('sku')) {
       const cleanSku = updateData.sku.toUpperCase().trim();
-      const existing = await Product.findOne({
-        wholesalerId: product.wholesalerId,
-        sku: cleanSku,
-        _id: { $ne: product._id },
-        isDeleted: false,
-      });
-      if (existing) {
-        throw new ConflictError(`Product with SKU '${cleanSku}' already exists.`, 'DUPLICATE_SKU');
+      if (cleanSku && cleanSku !== product.sku) {
+        const existing = await Product.findOne({
+          wholesalerId: product.wholesalerId,
+          sku: cleanSku,
+          _id: { $ne: product._id },
+          isDeleted: false,
+        });
+        if (existing) {
+          throw new ConflictError(`Product with SKU '${cleanSku}' already exists.`, 'DUPLICATE_SKU');
+        }
       }
-      product.sku = cleanSku;
+      set.sku = cleanSku;
     }
 
-    if (updateData.description !== undefined) product.description = updateData.description;
-    if (updateData.brand !== undefined) product.brand = updateData.brand;
-    if (updateData.wholesalePrice !== undefined) product.wholesalePrice = updateData.wholesalePrice;
-    if (updateData.retailerPrice !== undefined) product.retailerPrice = updateData.retailerPrice;
-    if (updateData.mrp !== undefined) product.mrp = updateData.mrp;
-    if (updateData.costPrice !== undefined) product.costPrice = updateData.costPrice;
-    if (updateData.moq !== undefined) {
-      product.moq = updateData.moq;
-      product.minOrderQty = updateData.moq;
-    }
-    if (updateData.minOrderQty !== undefined) {
-      product.minOrderQty = updateData.minOrderQty;
-      product.moq = updateData.minOrderQty;
-    }
-    if (updateData.unit !== undefined) product.unit = updateData.unit;
-    if (updateData.pricingTiers) product.pricingTiers = updateData.pricingTiers;
-    if (updateData.images) {
-      product.images = updateData.images;
-      if (updateData.images.length > 0) product.imageUrl = updateData.images[0];
-    }
-    if (updateData.imageUrl !== undefined) {
-      product.imageUrl = updateData.imageUrl;
-      product.images = updateData.imageUrl ? [updateData.imageUrl] : [];
-    }
-    if (updateData.status) product.status = updateData.status;
-    if (updateData.categoryId) product.categoryId = updateData.categoryId;
-    if (updateData.subcategoryId !== undefined) product.subcategoryId = updateData.subcategoryId;
-    if (updateData.sizes) product.sizes = updateData.sizes;
-    if (updateData.colors) product.colors = updateData.colors;
-    if (updateData.additionalOptions) product.additionalOptions = updateData.additionalOptions;
-    if (updateData.categoryAttributes) product.categoryAttributes = updateData.categoryAttributes;
+    const mainPrice = updateData.sellingPrice ?? updateData.wholesalePrice
+      ?? updateData.basePrice ?? updateData.retailerPrice;
+    const currentSellingPrice = product.sellingPrice ?? product.wholesalePrice ?? product.basePrice ?? 0;
+    const currentCostPrice = product.costPrice ?? 0;
+    const currentMrp = product.mrp ?? 0;
+    const resultingSellingPrice = mainPrice !== undefined ? Number(mainPrice) : currentSellingPrice;
+    const resultingCostPrice = updateData.costPrice !== undefined ? Number(updateData.costPrice) : currentCostPrice;
+    const resultingMrp = updateData.mrp !== undefined ? Number(updateData.mrp) : currentMrp;
 
-    // If stock changed directly via product update
-    if (updateData.stock !== undefined && updateData.stock !== product.stock) {
-      const diff = updateData.stock - product.stock;
-      product.stock = updateData.stock;
+    const priceErrors = [];
+    const sellingOrCostChanged = mainPrice !== undefined || supplied('costPrice');
+    const mrpSupplied = supplied('mrp');
 
-      const inventory = await Inventory.findOne({ productId: product._id });
+    if (sellingOrCostChanged && resultingSellingPrice < resultingCostPrice) {
+      priceErrors.push({ field: 'sellingPrice', message: 'Selling price must be greater than or equal to cost price' });
+    }
+    if (mrpSupplied) {
+      if (resultingMrp < resultingSellingPrice) {
+        priceErrors.push({ field: 'mrp', message: 'MRP must be greater than or equal to selling price' });
+      }
+    } else if (mainPrice !== undefined && resultingSellingPrice > currentMrp) {
+      // Auto-bump MRP for legacy products where MRP was 0 or omitted
+      set.mrp = resultingSellingPrice;
+    }
+
+    if (priceErrors.length > 0) {
+      throw new ValidationError('Product update validation failed', priceErrors);
+    }
+
+    if (mainPrice !== undefined) {
+      set.sellingPrice = Number(mainPrice);
+      set.wholesalePrice = Number(mainPrice);
+      set.retailerPrice = Number(mainPrice);
+      set.basePrice = Number(mainPrice);
+    }
+    if (supplied('costPrice') && updateData.costPrice !== undefined) {
+      set.costPrice = Number(updateData.costPrice);
+    }
+    if (supplied('mrp') && updateData.mrp !== undefined) {
+      set.mrp = Number(updateData.mrp);
+    }
+
+    if (supplied('moq') || supplied('minOrderQty')) {
+      const moq = updateData.minOrderQty ?? updateData.moq;
+      if (moq !== undefined) {
+        if (Number(moq) < 1) {
+          throw new ValidationError('Product update validation failed', [{
+            field: 'minOrderQty',
+            message: 'Minimum order quantity must be at least 1',
+          }]);
+        }
+        set.moq = Number(moq);
+        set.minOrderQty = Number(moq);
+      }
+    }
+
+    if (supplied('stock') || supplied('stockQuantity')) {
+      const stock = updateData.stock ?? updateData.stockQuantity;
+      if (stock !== undefined) {
+        if (Number(stock) < 0) {
+          throw new ValidationError('Product update validation failed', [{
+            field: 'stock',
+            message: 'Stock cannot be negative',
+          }]);
+        }
+        set.stock = Number(stock);
+        set.stockQuantity = Number(stock);
+      }
+    }
+
+    const simpleFields = [
+      'description', 'brand', 'unit', 'status',
+      'additionalOptions', 'categoryAttributes', 'weight', 'weightUnit',
+      'dimensions', 'lowStockThreshold', 'countryOfOrigin', 'sizeChart',
+    ];
+    simpleFields.forEach((field) => {
+      if (supplied(field)) set[field] = updateData[field];
+    });
+
+    // Map sizes flexibly (array of strings or comma-separated string)
+    if (supplied('sizes') || supplied('size')) {
+      const rawSizes = updateData.sizes !== undefined ? updateData.sizes : updateData.size;
+      if (Array.isArray(rawSizes)) {
+        set.sizes = rawSizes.map((s) => String(s).trim()).filter(Boolean);
+      } else if (typeof rawSizes === 'string') {
+        set.sizes = rawSizes.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+    }
+
+    // Map colors flexibly (array of strings or comma-separated string)
+    if (supplied('colors') || supplied('color')) {
+      const rawColors = updateData.colors !== undefined ? updateData.colors : updateData.color;
+      if (Array.isArray(rawColors)) {
+        set.colors = rawColors.map((c) => String(c).trim()).filter(Boolean);
+      } else if (typeof rawColors === 'string') {
+        set.colors = rawColors.split(',').map((c) => c.trim()).filter(Boolean);
+      }
+    }
+
+    // Map pricing tiers cleanly
+    if (supplied('pricingTiers') || supplied('bulkPricingTiers')) {
+      const rawTiers = updateData.pricingTiers ?? updateData.bulkPricingTiers;
+      if (Array.isArray(rawTiers)) {
+        const cleanTiers = rawTiers
+          .map((tier) => {
+            if (!tier || typeof tier !== 'object') return null;
+            const minQty = Number(tier.minQty ?? tier.minQuantity ?? tier.tierMin ?? 1);
+            const pricePerUnit = Number(tier.pricePerUnit ?? tier.price ?? tier.tierPrice ?? tier.unitPrice ?? 0);
+            const maxQty = tier.maxQty !== undefined && tier.maxQty !== null && tier.maxQty !== '' ? Number(tier.maxQty) : undefined;
+            if (isNaN(minQty) || minQty < 1 || isNaN(pricePerUnit) || pricePerUnit < 0) {
+              return null;
+            }
+            return {
+              minQty,
+              ...(maxQty !== undefined && !isNaN(maxQty) && maxQty >= minQty ? { maxQty } : {}),
+              pricePerUnit,
+            };
+          })
+          .filter(Boolean);
+        set.pricingTiers = cleanTiers;
+        set.bulkPricingTiers = cleanTiers;
+      }
+    }
+
+    if (supplied('gst') || supplied('gstPercent')) {
+      const gstVal = updateData.gstPercent ?? updateData.gst;
+      if (gstVal !== undefined) {
+        set.gst = Number(gstVal);
+        set.gstPercent = Number(gstVal);
+      }
+    }
+
+    if (supplied('hsn') || supplied('hsnCode')) {
+      const hsnVal = updateData.hsnCode ?? updateData.hsn;
+      if (hsnVal !== undefined) {
+        set.hsn = String(hsnVal).trim();
+        set.hsnCode = String(hsnVal).trim();
+      }
+    }
+
+    ['cgst', 'sgst', 'igst', 'priceIncludesTax'].forEach((field) => {
+      if (supplied(field)) set[field] = updateData[field];
+    });
+    if (['hsn', 'hsnCode', 'cgst', 'sgst', 'igst', 'priceIncludesTax'].some(supplied)) {
+      const hsnCode = String(updateData.hsnCode ?? updateData.hsn ?? product.hsnCode ?? product.hsn ?? '').trim();
+      const cgst = updateData.cgst ?? product.cgst;
+      const sgst = updateData.sgst ?? product.sgst;
+      const igst = updateData.igst ?? product.igst;
+      set.taxConfigured = Boolean(hsnCode || cgst !== null && cgst !== undefined || sgst !== null && sgst !== undefined || igst !== null && igst !== undefined);
+    }
+
+    if (supplied('colorVariants')) {
+      set.colorVariants = normalizeColorVariants(updateData.colorVariants);
+    }
+
+    // Map images and imageUrl without dropping existing images
+    if (supplied('images') || supplied('imageUrl')) {
+      const allImages = normalizeImageUrls(
+        supplied('images') ? updateData.images : product.images,
+        supplied('imageUrl') ? updateData.imageUrl : product.imageUrl
+      );
+      set.images = allImages;
+      set.imageUrl = allImages[0] || (updateData.imageUrl ? extractImageUrl(updateData.imageUrl) : '');
+    }
+
+    const incomingCatId = updateData.categoryId || (String(updateData.category).match(/^[0-9a-fA-F]{24}$/) ? updateData.category : null);
+    const categoryChanged = incomingCatId && String(incomingCatId) !== String(product.categoryId || product.category);
+
+    if (categoryChanged || supplied('subcategoryId') || supplied('subCategory')) {
+      const nextCategoryId = incomingCatId || product.categoryId || product.category;
+      const nextSubcategoryId = supplied('subcategoryId')
+        ? (updateData.subcategoryId || null)
+        : supplied('subCategory') ? (updateData.subCategory || null) : product.subcategoryId;
+
+      if (nextCategoryId && String(nextCategoryId).match(/^[0-9a-fA-F]{24}$/)) {
+        const category = await this.validateCategorySelection(
+          nextCategoryId,
+          nextSubcategoryId,
+          product.wholesalerId
+        );
+        set.categoryId = category._id;
+        set.category = category._id;
+        set.categoryName = category.name;
+        set.subcategoryId = nextSubcategoryId || null;
+        set.subCategory = nextSubcategoryId || null;
+      }
+    }
+
+    const previousStock = Number(product.stock || 0);
+    const nextStock = set.stock !== undefined ? Number(set.stock) : previousStock;
+
+    // Use findOneAndUpdate with { new: true, runValidators: true } scoped to { _id, wholesalerId }
+    const updateScope = user.role === ROLES.WHOLESALER
+      ? { _id: product._id, wholesalerId: user._id, isDeleted: false }
+      : { _id: product._id, isDeleted: false };
+
+    const updatedProduct = await Product.findOneAndUpdate(
+      updateScope,
+      { $set: set },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedProduct) {
+      throw new NotFoundError('Product not found or not authorized to update');
+    }
+
+    if (nextStock !== previousStock) {
+      const diff = nextStock - previousStock;
+      const inventory = await Inventory.findOne({ productId: updatedProduct._id });
       if (inventory) {
-        const prev = inventory.available;
+        const previousAvailable = inventory.available;
         inventory.available = Math.max(0, inventory.available + diff);
         await inventory.save();
 
         await InventoryTransaction.create({
           inventoryId: inventory._id,
-          productId: product._id,
-          wholesalerId: product.wholesalerId,
+          productId: updatedProduct._id,
+          wholesalerId: updatedProduct.wholesalerId,
           type: diff >= 0 ? INVENTORY_TRANSACTION_TYPE.RECEIVE : INVENTORY_TRANSACTION_TYPE.ADJUSTMENT,
           quantity: Math.abs(diff),
-          previousAvailable: prev,
+          previousAvailable,
           newAvailable: inventory.available,
           referenceType: 'MANUAL_ADJUSTMENT',
           performedBy: user._id,
@@ -548,20 +823,18 @@ class ProductService {
       }
     }
 
-    await product.save();
-
     await AuditService.log({
       actorId: user._id,
       actorRole: user.role,
       action: AUDIT_ACTION.PRODUCT_STATUS_CHANGED,
       entityType: 'Product',
-      entityId: product._id,
+      entityId: updatedProduct._id,
       before: beforeState,
-      after: product.toJSON(),
+      after: updatedProduct.toJSON(),
       req,
     });
 
-    return product;
+    return updatedProduct;
   }
 
   /**

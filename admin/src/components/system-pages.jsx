@@ -734,23 +734,8 @@ export function AdminUsersPage() {
     ],
   });
 }
-const activityEvents = [
-  [
-    "Sharma Distributors approved",
-    "Verification completed by Arjun Mehta",
-    "1h ago",
-  ],
-  [
-    "Settlement batch #482 completed",
-    "₹4.2 L settled across 96 transactions",
-    "2h ago",
-  ],
-  ["18 products approved", "Catalog review by Neha Kapoor", "3h ago"],
-  ["Coupon BULK10 activated", "Finance team promotion", "5h ago"],
-  ["Admin role updated", "Rohan Jain granted Finance access", "8h ago"],
-  ["Retailer City Mart suspended", "Policy violation review", "1d ago"],
-];
 export function ActivityPage() {
+  const { data: activity, loading, error } = useCollectionData("admin/activity");
   return _jsxs("div", {
     className: "space-y-6",
     children: [
@@ -760,31 +745,48 @@ export function ActivityPage() {
       }),
       _jsx(SectionCard, {
         title: "Recent Activity",
-        children: _jsx("div", {
-          children: activityEvents.map(([title, detail, time]) =>
-            _jsxs(
-              "div",
-              {
-                className: "border-l-2 border-primary/25 pb-6 pl-4 last:pb-0",
-                children: [
-                  _jsx("p", {
-                    className: "text-sm font-semibold",
-                    children: title,
-                  }),
-                  _jsx("p", {
-                    className: "text-xs text-muted-foreground",
-                    children: detail,
-                  }),
-                  _jsx("p", {
-                    className: "mt-1 text-[11px] text-muted-foreground",
-                    children: time,
-                  }),
-                ],
-              },
-              title,
-            ),
-          ),
-        }),
+        children: loading
+          ? _jsx("p", {
+              className: "py-8 text-center text-sm text-muted-foreground",
+              children: "Loading activity…",
+            })
+          : error
+            ? _jsx("p", {
+                className: "py-8 text-center text-sm text-destructive",
+                children: `Unable to load activity: ${error}`,
+              })
+            : activity.length === 0
+              ? _jsx("p", {
+                  className: "py-8 text-center text-sm text-muted-foreground",
+                  children: "No activity recorded yet.",
+                })
+              : _jsx("div", {
+                  children: activity.map((entry) =>
+                    _jsxs(
+                      "div",
+                      {
+                        className: "border-l-2 border-primary/25 pb-6 pl-4 last:pb-0",
+                        children: [
+                          _jsx("p", {
+                            className: "text-sm font-semibold",
+                            children: entry.action,
+                          }),
+                          _jsx("p", {
+                            className: "text-xs text-muted-foreground",
+                            children: [entry.user, entry.entity].filter(Boolean).join(" · "),
+                          }),
+                          _jsx("p", {
+                            className: "mt-1 text-[11px] text-muted-foreground",
+                            children: entry.timestamp
+                              ? new Date(entry.timestamp).toLocaleString()
+                              : "Date unavailable",
+                          }),
+                        ],
+                      },
+                      entry.id,
+                    ),
+                  ),
+                }),
       }),
     ],
   });

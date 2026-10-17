@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileSpreadsheet, MoreHorizontal, Printer, Search } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useNavigate } from "@tanstack/react-router";
@@ -9,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader, StatusBadge } from "@/components/admin-ui";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiGet } from "@/lib/api";
-import { apiPatch } from "@/lib/api";
+import { apiGet, apiPatch } from "@/lib/api";
+import { adminQueryKeys } from "@/lib/query-client";
 import { toast } from "sonner";
 import { downloadOrderInvoice } from "@/components/order-detail-page";
 
@@ -34,48 +35,35 @@ export function OrdersManagementPage() {
     const [sortBy, setSortBy] = useState("createdAt");
     const [sortOrder, setSortOrder] = useState("desc");
     const [page, setPage] = useState(1);
-    const [result, setResult] = useState(initialResult);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
     const [cancelOrder, setCancelOrder] = useState(null);
     const [actionLoading, setActionLoading] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
+    const params = new URLSearchParams({ page: String(page), limit: "10", sortBy, sortOrder });
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (status !== "all") params.set("status", status);
+    if (paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
+    if (wholesaler !== "all") params.set("wholesaler", wholesaler);
+    if (retailer !== "all") params.set("retailer", retailer);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    if (minAmount) params.set("minAmount", minAmount);
+    if (maxAmount) params.set("maxAmount", maxAmount);
+    const listPath = `/admin/orders?${params.toString()}`;
+    const ordersQuery = useQuery({
+        queryKey: adminQueryKeys.collection("orders", listPath),
+        queryFn: async () => {
+            const payload = await apiGet(listPath);
+            const items = Array.isArray(payload) ? payload : (payload?.items || payload?.data || []);
+            const pagination = payload?.pagination || payload?.meta || { page: 1, limit: 10, total: items.length, totalPages: Math.ceil(items.length / 10) || 1 };
+            return { items, pagination, filters: payload?.filters || initialResult.filters };
+        },
+    });
+    const result = ordersQuery.data || initialResult;
+    const loading = ordersQuery.isLoading;
+    const error = ordersQuery.error?.message || null;
 
     useEffect(() => {
         setPage(1);
     }, [debouncedSearch, status, paymentStatus, wholesaler, retailer, dateFrom, dateTo, minAmount, maxAmount]);
-
-    useEffect(() => {
-        let mounted = true;
-        const params = new URLSearchParams({ page: String(page), limit: "10", sortBy, sortOrder });
-        if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
-        if (status !== "all") params.set("status", status);
-        if (paymentStatus !== "all") params.set("paymentStatus", paymentStatus);
-        if (wholesaler !== "all") params.set("wholesaler", wholesaler);
-        if (retailer !== "all") params.set("retailer", retailer);
-        if (dateFrom) params.set("dateFrom", dateFrom);
-        if (dateTo) params.set("dateTo", dateTo);
-        if (minAmount) params.set("minAmount", minAmount);
-        if (maxAmount) params.set("maxAmount", maxAmount);
-
-        setLoading(true);
-        setError(null);
-        apiGet(`/admin/orders?${params.toString()}`)
-            .then((payload) => {
-                if (!mounted) return;
-                const items = Array.isArray(payload) ? payload : (payload?.items || payload?.data || []);
-                const pagination = payload?.pagination || payload?.meta || { page: 1, limit: 10, total: items.length, totalPages: Math.ceil(items.length / 10) || 1 };
-                const filters = payload?.filters || initialResult.filters;
-                setResult({ items, pagination, filters });
-            })
-            .catch((err) => {
-                if (!mounted) return;
-                setResult((current) => ({ ...current, items: [] }));
-                setError(err.message || "Failed to load orders");
-            })
-            .finally(() => mounted && setLoading(false));
-        return () => { mounted = false; };
-    }, [debouncedSearch, status, paymentStatus, wholesaler, retailer, dateFrom, dateTo, minAmount, maxAmount, sortBy, sortOrder, page, refreshKey]);
 
     const toggleSort = (key) => {
         if (sortBy === key) setSortOrder((current) => current === "asc" ? "desc" : "asc");
@@ -94,7 +82,6 @@ export function OrdersManagementPage() {
             await apiPatch(`/admin/orders/${cancelOrder.id}/status`, { status: "cancelled", note: "Cancelled by admin" });
             toast.success(`Order #${cancelOrder.orderNo} cancelled successfully`);
             setCancelOrder(null);
-            setRefreshKey((value) => value + 1);
         } catch (err) {
             toast.error(err.message || "Unable to cancel order");
         } finally { setActionLoading(false); }

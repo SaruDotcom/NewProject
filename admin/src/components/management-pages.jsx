@@ -383,7 +383,7 @@ export function EntityDetailPage({ type }) {
                 _jsxs(DialogTitle, { children: ["Confirm ", confirm] }),
                 _jsx(DialogDescription, {
                   children:
-                    "This updates the record for the demo and adds an activity entry.",
+                    "This updates the selected record and adds an activity entry.",
                 }),
               ],
             }),

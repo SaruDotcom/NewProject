@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   api,
@@ -11,6 +12,7 @@ import {
   type ApiProduct,
   type ApiWholesaler,
 } from "@/api/api";
+import { retailerQueryKeys } from "@/lib/query-client";
 
 export type Relationship = "Connected";
 
@@ -34,6 +36,11 @@ export type Product = {
   pricingTiers?: Array<{ id: string; minQty: number; pricePerUnit: number }>;
   sizes?: string[];
   colors?: string[];
+  colorVariants?: Array<{ color: string; sku?: string; images: string[] }>;
+  sizeChart?: {
+    unit: string;
+    measurements: Array<{ size: string; measurements: Record<string, number> }>;
+  } | null;
   additionalOptions?: Array<{ name: string; value: string }>;
   categoryAttributes?: Record<string, any>;
 };
@@ -79,6 +86,12 @@ export type OrderItem = {
   pricePerUnit: number;
   subtotal: number;
   total?: number;
+  hsnCode?: string;
+  cgst?: number | null;
+  sgst?: number | null;
+  igst?: number | null;
+  gstAmount?: number;
+  priceIncludesTax?: boolean;
   product?: Product;
 };
 
@@ -117,7 +130,7 @@ export type RetailerProfile = {
 };
 
 export type NotificationItem = { id: string; title: string; body: string; time: string; unread: boolean };
-export type CartLine = { productId: string; quantity: number };
+export type CartLine = { productId: string; quantity: number; color?: string };
 
 export type UserSession = {
   id: string;
@@ -154,13 +167,12 @@ export type Store = {
   notifications: NotificationItem[];
   recentlyViewed: string[];
   dashboard: Record<string, unknown> | null;
-  addedToCartProduct: { product: Product; quantity: number } | null;
+  addedToCartProduct: { product: Product; quantity: number; color?: string } | null;
   clearAddedToCartProduct: () => void;
   login: (email: string, password?: string, targetWholesalerId?: string) => Promise<void>;
   logout: () => Promise<void>;
   connectWholesaler: (wholesalerId: string, showToast?: boolean) => Promise<void>;
-  registerWithWholesaler: (profile: RetailerProfile, wholesalerId: string, passwordInput?: string) => Promise<void>;
-  addToCart: (id: string, q?: number) => void;
+  addToCart: (id: string, q?: number, color?: string) => void;
   setQuantity: (id: string, q: number) => void;
   removeCart: (id: string) => void;
   toggleWishlist: (id: string) => void;
@@ -169,6 +181,7 @@ export type Store = {
   markRead: () => void;
   addRecentlyViewed: (id: string) => void;
   refreshOrders: () => Promise<void>;
+  refreshData: (silent?: boolean) => Promise<void>;
 };
 
 const StoreContext = createContext<Store | undefined>(undefined);
@@ -217,6 +230,19 @@ function normalizeProfile(data: Record<string, unknown> | undefined): RetailerPr
   };
 }
 
+function cleanImageUrl(img: any): string {
+  if (!img) return "";
+  if (typeof img === "string") return img.trim();
+  if (typeof img === "object") {
+    if (img.url && typeof img.url === "string") return img.url.trim();
+    const keys = Object.keys(img).filter((k) => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    if (keys.length > 5) {
+      return keys.map((k) => img[k]).join("").trim();
+    }
+  }
+  return "";
+}
+
 function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, string>): Product {
   let categoryName = "Grocery & Staples";
   if (typeof item.category === "object" && item.category !== null && (item.category as any).name) {
@@ -237,6 +263,11 @@ function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, strin
   } else if (item.categoryId && typeof item.categoryId === "object" && (item.categoryId as any).name) {
     categoryName = String((item.categoryId as any).name);
   }
+
+  const rawImages = Array.isArray(item.images) ? item.images : [];
+  const cleanedImages = rawImages.map(cleanImageUrl).filter(Boolean);
+  const cleanedMain = cleanImageUrl(item.imageUrl) || cleanedImages[0] || "";
+  const allImages = [...new Set([cleanedMain, ...cleanedImages].filter(Boolean))];
 
   const product: Product = {
     id: item._id || item.id || `product-${index}`,
@@ -259,11 +290,19 @@ function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, strin
     },
   };
 
-  if (item.imageUrl) product.imageUrl = item.imageUrl;
-  if (item.images) product.images = item.images;
+  if (cleanedMain) product.imageUrl = cleanedMain;
+  if (allImages.length > 0) product.images = allImages;
   if (item.pricingTiers) product.pricingTiers = item.pricingTiers;
   if (item.sizes) product.sizes = item.sizes;
   if (item.colors) product.colors = item.colors;
+  if (item.colorVariants && Array.isArray(item.colorVariants)) {
+    product.colorVariants = item.colorVariants.map((variant) => ({
+      color: String(variant.color || "").trim(),
+      ...(variant.sku ? { sku: String(variant.sku).trim() } : {}),
+      images: Array.isArray(variant.images) ? variant.images.map(cleanImageUrl).filter(Boolean) : [],
+    })).filter((v) => v.color);
+  }
+  if (item.sizeChart) product.sizeChart = item.sizeChart;
   if (item.additionalOptions) product.additionalOptions = item.additionalOptions;
   if (item.categoryAttributes) product.categoryAttributes = item.categoryAttributes;
 
@@ -383,7 +422,7 @@ export function getCategoryHierarchy(
   return "General";
 }
 
-function mapOrder(item: ApiOrder): Order {
+export function mapOrder(item: ApiOrder): Order {
   const id = item._id || item.id || item.orderNumber || "order";
   const status = String(item.orderStatus || item.status || "PENDING").toUpperCase();
 
@@ -414,6 +453,12 @@ function mapOrder(item: ApiOrder): Order {
       pricePerUnit,
       subtotal,
       total,
+      hsnCode: line.hsnCode || '',
+      cgst: line.cgst ?? null,
+      sgst: line.sgst ?? null,
+      igst: line.igst ?? null,
+      gstAmount: Number(line.gstAmount || 0),
+      priceIncludesTax: Boolean(line.priceIncludesTax),
     };
     if (prodObj) {
       itemObj.product = mapProduct(prodObj, idx);
@@ -465,6 +510,7 @@ export function resolveWholesalerId(input?: string | null): string {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<RetailerProfile>(emptyProfile);
@@ -480,7 +526,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [linkedWholesaler, setLinkedWholesaler] = useState<Wholesaler | null>(null);
   const [relationships, setRelationships] = useState<Record<string, "Connected">>({});
 
-  const syncSession = useCallback(async () => {
+  const syncSession = useCallback(async (silent = false) => {
     const token = getAuthToken();
     if (!token) {
       setCurrentUser(null);
@@ -492,25 +538,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
 
       const me = await api.getMe();
       const user = (me?.data as Record<string, any>) || {};
       const email = String(user["email"] || "");
       const userId = String(user["_id"] || user["id"] || email || "retailer");
+      localStorage.setItem("nexora_retailer_user_id", userId);
       setCurrentUser({ id: userId, email });
       setProfile(normalizeProfile(user));
+      const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>) =>
+        queryClient.fetchQuery({
+          queryKey: retailerQueryKeys.resource(userId, resource),
+          queryFn,
+        });
 
       const [dashboardRes, wholesalerRes, productsRes, categoriesRes, cartRes, wishlistRes, ordersRes, notificationsRes, returnsRes] = await Promise.all([
-        api.getDashboard().catch(() => null),
-        api.getConnectedWholesaler().catch(() => null),
-        api.getProducts({ limit: 200 }).catch(() => ({ data: [] })),
-        api.getCategories({ limit: 200 }).catch(() => ({ data: [] })),
-        api.getCart().catch(() => ({ data: { items: [] } })),
-        api.getWishlist().catch(() => ({ data: [] })),
-        api.getOrders({ limit: 200 }).catch(() => ({ data: [] })),
-        api.getNotifications().catch(() => ({ data: [] })),
-        api.getReturns().catch(() => ({ data: [] })),
+        fetchUserData("dashboard", () => api.getDashboard()).catch(() => null),
+        fetchUserData("wholesaler", () => api.getConnectedWholesaler()).catch(() => null),
+        fetchUserData("products", () => api.getProducts({ limit: 200 })).catch(() => ({ data: [] })),
+        fetchUserData("categories", () => api.getCategories({ limit: 200 })).catch(() => ({ data: [] })),
+        fetchUserData("cart", () => api.getCart()).catch(() => ({ data: { items: [] } })),
+        fetchUserData("wishlist", () => api.getWishlist()).catch(() => ({ data: [] })),
+        fetchUserData("orders", () => api.getOrders({ limit: 200 })).catch(() => ({ data: [] })),
+        fetchUserData("notifications", () => api.getNotifications()).catch(() => ({ data: [] })),
+        fetchUserData("returns", () => api.getReturns()).catch(() => ({ data: [] })),
       ]);
 
       const connectedWholesalerData = mapWholesaler((wholesalerRes as { data?: ApiWholesaler } | null)?.data ?? null);
@@ -573,15 +625,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLinkedWholesaler(null);
       setRelationships({});
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   const refreshOrders = useCallback(async () => {
     const token = getAuthToken();
     if (!token) return;
     try {
-      const ordersRes = await api.getOrders({ limit: 200 }).catch(() => null);
+      const userId = currentUser?.id;
+      if (!userId) return;
+      await queryClient.invalidateQueries({
+        queryKey: retailerQueryKeys.resource(userId, "orders"),
+      });
+      const ordersRes = await queryClient.fetchQuery({
+        queryKey: retailerQueryKeys.resource(userId, "orders"),
+        queryFn: () => api.getOrders({ limit: 200 }),
+      }).catch(() => null);
       if (ordersRes && Array.isArray((ordersRes as { data?: ApiOrder[] })?.data)) {
         const nextOrders = ((ordersRes as { data?: ApiOrder[] }).data || []).map(mapOrder);
         setOrders(nextOrders);
@@ -589,7 +649,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       // Silent catch for background polling
     }
-  }, []);
+  }, [currentUser?.id, queryClient]);
 
   useEffect(() => {
     void syncSession();
@@ -615,11 +675,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const linkedWholesalerId = linkedWholesaler?.id || "";
   const unread = notifications.filter((item) => item.unread).length;
+  const invalidateUserData = useCallback((...resources: string[]) => {
+    if (!currentUser?.id) return;
+    resources.forEach((resource) => {
+      void queryClient.invalidateQueries({
+        queryKey: retailerQueryKeys.resource(currentUser.id, resource),
+      });
+    });
+  }, [currentUser?.id, queryClient]);
 
   const logout = useCallback(async () => {
     try {
       await api.logout().catch(() => undefined);
     } finally {
+      queryClient.clear();
+      queryClient.clear();
       clearAuthToken();
       localStorage.clear();
       sessionStorage.clear();
@@ -636,7 +706,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setRelationships({});
       toast.success("Signed out successfully");
     }
-  }, []);
+  }, [queryClient]);
 
   const login = useCallback(async (identifier: string, password?: string, targetWholesalerId?: string) => {
     const normalized = identifier.trim();
@@ -664,49 +734,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast.success("Signed in successfully");
   }, [syncSession]);
 
-  const registerWithWholesaler = useCallback(async (profileInput: RetailerProfile, _targetWholesalerId: string, passwordInput?: string) => {
-    const search = new URLSearchParams(window.location.search);
-    const inviteToken = search.get("invite") || search.get("inviteToken") || search.get("token") || undefined;
-
-    const regPayload: Parameters<typeof api.register>[0] = {
-      name: profileInput.ownerName,
-      email: profileInput.email,
-      password: passwordInput || "ChangeThisPassword123",
-      phone: profileInput.phone,
-      businessName: profileInput.businessName,
-      address: profileInput.address,
-      city: profileInput.city,
-      state: profileInput.state,
-      pincode: profileInput.pincode,
-      gstStatus: profileInput.gstRegistered ? "REGISTERED" : "UNREGISTERED",
-      gstin: profileInput.gstNumber,
-      role: "retailer",
-    };
-    if (inviteToken) regPayload.inviteToken = inviteToken;
-
-    await api.register(regPayload);
-
-    toast.success("Account created successfully. Please sign in to continue.");
-  }, []);
-
   const connectWholesaler = useCallback(async (wholesalerId: string, showToast = true) => {
     const token = wholesalerId || new URLSearchParams(window.location.search).get("invite") || new URLSearchParams(window.location.search).get("token");
     if (token) {
       await api.acceptInvitation(token).catch(() => undefined);
     }
-    await syncSession();
+    invalidateUserData("wholesaler", "products", "categories", "dashboard");
+    await syncSession(true);
     if (showToast) {
       toast.success("Wholesaler connection updated");
     }
-  }, [syncSession]);
+  }, [invalidateUserData, syncSession]);
 
-  const [addedToCartProduct, setAddedToCartProduct] = useState<{ product: Product; quantity: number } | null>(null);
+  const [addedToCartProduct, setAddedToCartProduct] = useState<{ product: Product; quantity: number; color?: string } | null>(null);
 
   const clearAddedToCartProduct = useCallback(() => {
     setAddedToCartProduct(null);
   }, []);
 
-  const addToCart = useCallback(async (id: string, q?: number) => {
+  const addToCart = useCallback(async (id: string, q?: number, color?: string) => {
     const product = products.find((item) => item.id === id);
     if (!product) return;
 
@@ -716,34 +762,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
 
     const minQty = Math.max(1, Math.ceil(product.moq || 1));
-    const quantity = Math.max(minQty, Number.isInteger(q) ? q : minQty);
+    const quantity = Math.max(minQty, typeof q === 'number' && Number.isInteger(q) ? q : minQty);
     const token = getAuthToken();
 
     if (token) {
       try {
-        await api.addToCart(id, quantity);
+        await api.addToCart(id, quantity, color);
+        invalidateUserData("cart");
         setCart((current) => {
-          const existing = current.find((item) => item.productId === id);
+          const existing = current.find((item) => item.productId === id && String(item.color || '') === String(color || ''));
           if (existing) {
-            return current.map((item) => (item.productId === id ? { ...item, quantity: item.quantity + quantity } : item));
+            return current.map((item) => (item.productId === id && String(item.color || '') === String(color || '') ? { ...item, quantity: item.quantity + quantity } : item));
           }
-          return [...current, { productId: id, quantity }];
+          return [...current, { productId: id, quantity, ...(color ? { color } : {}) }];
         });
-        setAddedToCartProduct({ product, quantity });
-        toast.success(`${product.name} added to cart`);
+        setAddedToCartProduct({ product, quantity, color });
+        toast.success(`${product.name}${color ? ` (${color})` : ''} added to cart`);
       } catch (err: any) {
         if (err?.status === 401) {
           clearAuthToken();
           setCurrentUser(null);
           setCart((current) => {
-            const existing = current.find((item) => item.productId === id);
+            const existing = current.find((item) => item.productId === id && String(item.color || '') === String(color || ''));
             if (existing) {
-              return current.map((item) => (item.productId === id ? { ...item, quantity: item.quantity + quantity } : item));
+              return current.map((item) => (item.productId === id && String(item.color || '') === String(color || '') ? { ...item, quantity: item.quantity + quantity } : item));
             }
-            return [...current, { productId: id, quantity }];
+            return [...current, { productId: id, quantity, ...(color ? { color } : {}) }];
           });
-          setAddedToCartProduct({ product, quantity });
-          toast.success(`${product.name} added to cart`);
+          setAddedToCartProduct({ product, quantity, color });
+          toast.success(`${product.name}${color ? ` (${color})` : ''} added to cart`);
         } else {
           const msg = err?.message || err?.data?.message || "Failed to add to cart";
           toast.error(msg);
@@ -751,16 +798,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } else {
       setCart((current) => {
-        const existing = current.find((item) => item.productId === id);
+        const existing = current.find((item) => item.productId === id && String(item.color || '') === String(color || ''));
         if (existing) {
-          return current.map((item) => (item.productId === id ? { ...item, quantity: item.quantity + quantity } : item));
+          return current.map((item) => (item.productId === id && String(item.color || '') === String(color || '') ? { ...item, quantity: item.quantity + quantity } : item));
         }
-        return [...current, { productId: id, quantity }];
+        return [...current, { productId: id, quantity, ...(color ? { color } : {}) }];
       });
-      setAddedToCartProduct({ product, quantity });
-      toast.success(`${product.name} added to cart`);
+      setAddedToCartProduct({ product, quantity, color });
+      toast.success(`${product.name}${color ? ` (${color})` : ''} added to cart`);
     }
-  }, [products]);
+  }, [invalidateUserData, products]);
 
   const setQuantity = useCallback(async (id: string, q: number) => {
     const product = products.find((item) => item.id === id);
@@ -771,6 +818,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (token) {
       try {
         await api.updateCartItem(id, nextQty);
+        invalidateUserData("cart");
       } catch (err: any) {
         if (err?.status === 401) {
           clearAuthToken();
@@ -780,7 +828,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-  }, [products]);
+  }, [invalidateUserData, products]);
 
   const removeCart = useCallback(async (id: string) => {
     setCart((current) => current.filter((item) => item.productId !== id));
@@ -788,6 +836,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (token) {
       try {
         await api.removeCartItem(id);
+        invalidateUserData("cart");
       } catch (err: any) {
         if (err?.status === 401) {
           clearAuthToken();
@@ -797,22 +846,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-  }, []);
+  }, [invalidateUserData]);
 
   const toggleWishlist = useCallback(async (id: string) => {
     const isWished = wishlist.includes(id);
     try {
       if (isWished) {
         await api.removeFromWishlist(id);
+        invalidateUserData("wishlist");
         setWishlist((current) => current.filter((item) => item !== id));
       } else {
         await api.addToWishlist(id);
+        invalidateUserData("wishlist");
         setWishlist((current) => [...current, id]);
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to update wishlist");
     }
-  }, [wishlist]);
+  }, [invalidateUserData, wishlist]);
 
   const saveProfile = useCallback(async (profileInput: RetailerProfile) => {
     setProfile(profileInput);
@@ -829,9 +880,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       gstStatus: profileInput.gstRegistered ? "REGISTERED" : "UNREGISTERED",
       gstin: profileInput.gstNumber,
     });
-    await syncSession();
+    invalidateUserData("profile", "dashboard");
+    await syncSession(true);
     toast.success("Retailer profile saved");
-  }, [syncSession]);
+  }, [invalidateUserData, syncSession]);
 
   const placeOrder = useCallback(async (paymentMethod = "COD", couponCode?: string) => {
     if (!cart.length) {
@@ -860,7 +912,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } as any);
 
       setCart([]);
-      await syncSession();
+      invalidateUserData("cart", "orders", "dashboard");
+      await syncSession(true);
       toast.success("Wholesale order placed successfully!");
       return [];
     } catch (err: any) {
@@ -869,7 +922,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [cart, profile, syncSession]);
+  }, [cart, invalidateUserData, profile, syncSession]);
 
   const markRead = useCallback(() => {
     setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
@@ -897,6 +950,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       wishlist,
       relationships,
       orders,
+      refreshData: syncSession,
       returns,
       retailerProfile: profile,
       unread,
@@ -908,7 +962,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       connectWholesaler,
-      registerWithWholesaler,
       addToCart,
       setQuantity,
       removeCart,
@@ -919,7 +972,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addRecentlyViewed,
       refreshOrders,
     }),
-    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, products, categories, cart, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, registerWithWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders]
+    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, products, categories, cart, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders, syncSession]
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

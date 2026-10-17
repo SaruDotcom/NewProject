@@ -27,6 +27,9 @@ const env = {
   STORAGE_PROVIDER: process.env.STORAGE_PROVIDER || 'local',
   STORAGE_BUCKET: process.env.STORAGE_BUCKET || 'uploads',
   UPLOAD_PATH: process.env.UPLOAD_PATH || path.resolve(__dirname, '../../uploads'),
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
+  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
   
   LOG_LEVEL: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   
@@ -36,6 +39,14 @@ const env = {
 
   SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL || 'admin@yourapp.com',
   SUPER_ADMIN_PASSWORD: process.env.SUPER_ADMIN_PASSWORD || 'ChangeThisPassword123',
+};
+
+env.assertCloudinaryConfigured = () => {
+  const missing = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']
+    .filter((key) => !env[key]);
+  if (missing.length) {
+    throw new Error(`Cloudinary product-image uploads require: ${missing.join(', ')}`);
+  }
 };
 
 module.exports = env;

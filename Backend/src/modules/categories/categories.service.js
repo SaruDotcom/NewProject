@@ -174,7 +174,12 @@ class CategoryService {
 
         const subCount = await Category.countDocuments({ parentId: cat._id, isDeleted: false });
         const prodCount = await Product.countDocuments({
-          $or: [{ categoryId: cat._id }, { subcategoryId: cat._id }, { subCategory: cat._id }],
+          $or: [
+            { categoryId: cat._id },
+            { subcategoryId: cat._id },
+            { subCategory: cat._id },
+            { subSubcategoryId: cat._id },
+          ],
           isDeleted: false,
         });
 

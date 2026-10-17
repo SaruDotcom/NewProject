@@ -19,6 +19,18 @@ const customAttributeSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const colorVariantSchema = new mongoose.Schema(
+  {
+    color: { type: String, required: true, trim: true },
+    sku: { type: String, default: '', trim: true, uppercase: true },
+    images: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
+  },
+  { _id: false }
+);
+
 const productSchema = new mongoose.Schema(
   {
     wholesalerId: {
@@ -85,15 +97,27 @@ const productSchema = new mongoose.Schema(
       ref: 'Category',
       default: null,
     },
+    subSubcategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      default: null,
+    },
     categoryName: {
       type: String,
       default: '',
     },
-    images: [
-      {
-        type: String,
-      },
-    ],
+    subcategoryName: {
+      type: String,
+      default: '',
+    },
+    subSubcategoryName: {
+      type: String,
+      default: '',
+    },
+    images: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
     imageUrl: {
       type: String,
       default: '',
@@ -154,6 +178,12 @@ const productSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Legacy admin analytics reads this stock projection; Inventory remains authoritative.
+    quantity: {
+      type: Number,
+      min: 0,
+      default: undefined,
+    },
     unit: {
       type: String,
       default: 'piece',
@@ -185,10 +215,20 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    weightUnit: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     dimensions: {
       length: { type: Number, default: 0 },
       width: { type: Number, default: 0 },
       height: { type: Number, default: 0 },
+    },
+    lowStockThreshold: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     countryOfOrigin: {
       type: String,
@@ -197,6 +237,18 @@ const productSchema = new mongoose.Schema(
     },
     sizes: [{ type: String, trim: true }],
     colors: [{ type: String, trim: true }],
+    // Optional so existing catalog records remain valid.
+    colorVariants: { type: [colorVariantSchema], default: undefined },
+    cgst: { type: Number, min: 0, default: undefined },
+    sgst: { type: Number, min: 0, default: undefined },
+    igst: { type: Number, min: 0, default: undefined },
+    priceIncludesTax: { type: Boolean, default: undefined },
+    // Explicitly distinguishes a new tax-free listing from legacy records that used gst defaults.
+    taxConfigured: { type: Boolean, default: undefined },
+    sizeChart: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     additionalOptions: [customAttributeSchema],
     
     // Dynamic Category-Specific Attributes Schema
@@ -217,6 +269,7 @@ const productSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,
@@ -271,10 +324,10 @@ productSchema.pre('save', function (next) {
 
   // Sync images
   if (!this.imageUrl && this.images && this.images.length > 0) {
-    this.imageUrl = this.images[0];
+    this.imageUrl = this.images[0].url || this.images[0];
   }
   if ((!this.images || this.images.length === 0) && this.imageUrl) {
-    this.images = [this.imageUrl];
+    this.images = [{ url: this.imageUrl, publicId: '' }];
   }
 
   // Sync pricing tiers

@@ -15,7 +15,10 @@ Table.displayName = "Table";
 const TableHeader = React.forwardRef(({ className, ...props }, ref) =>
   _jsx("thead", {
     ref: ref,
-    className: cn("[&_tr]:border-b", className),
+    className: cn(
+      "admin-table-header bg-card/90 text-foreground [&_tr]:border-b",
+      className,
+    ),
     ...props,
   }),
 );
@@ -43,7 +46,7 @@ const TableRow = React.forwardRef(({ className, ...props }, ref) =>
   _jsx("tr", {
     ref: ref,
     className: cn(
-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "admin-table-row border-b transition-colors data-[state=selected]:bg-muted",
       className,
     ),
     ...props,
@@ -54,7 +57,7 @@ const TableHead = React.forwardRef(({ className, ...props }, ref) =>
   _jsx("th", {
     ref: ref,
     className: cn(
-      "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      "h-10 px-2 text-left align-middle font-semibold text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
       className,
     ),
     ...props,

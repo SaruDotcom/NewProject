@@ -41,6 +41,7 @@ const notificationSchema = new mongoose.Schema(
     readAt: {
       type: Date,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

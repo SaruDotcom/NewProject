@@ -1,13 +1,14 @@
 const mongoose = require('mongoose');
 const {
   User, WholesalerProfile, WholesalerRetailerRelationship, RetailerProfile,
-  Inventory, InventoryTransaction, Product, Order, Earning, Payout, SupportTicket,
+  Inventory, InventoryTransaction, Product, Order, Earning, Payout,
 } = require('../../models');
-const { INVENTORY_TRANSACTION_TYPE, RELATIONSHIP_STATUS, ORDER_STATUS, NOTIFICATION_TYPE } = require('../../config/constants');
+const { INVENTORY_TRANSACTION_TYPE, RELATIONSHIP_STATUS, ORDER_STATUS } = require('../../config/constants');
 const { BadRequestError, NotFoundError, ConflictError } = require('../../utils/errors');
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const WholesalerReportsService = require('../../services/wholesalerReports.service');
+const SupportService = require('../support/support.service');
 
 class WholesalerPortalService {
   static formatRetailerRelationship(row) {
@@ -22,7 +23,6 @@ class WholesalerPortalService {
       name: retailer.name || profile.ownerName || '',
       contactPerson: profile.ownerName || retailer.name || '',
       email: retailer.email || '',
-      loginId: retailer.loginId || '',
       phone: retailer.phone || '',
       businessName: profile.businessName || retailer.name || '',
       businessType: profile.businessType || 'Independent retailer',
@@ -111,7 +111,7 @@ class WholesalerPortalService {
   static async getRetailerDetails(userId, relationshipId) {
     if (!mongoose.isValidObjectId(relationshipId)) throw new BadRequestError('Invalid retailer relationship id');
     const relationship = await WholesalerRetailerRelationship.findOne({ _id: relationshipId, wholesalerId: userId })
-      .populate('retailerId', 'name email loginId phone status createdAt')
+      .populate('retailerId', 'name email phone status createdAt')
       .lean();
     if (!relationship) throw new NotFoundError('Retailer relationship not found');
 
@@ -131,37 +131,6 @@ class WholesalerPortalService {
       }),
       profile,
       orders,
-    };
-  }
-
-  static async resetRetailerPassword(userId, relationshipId, password, actor, req) {
-    if (!mongoose.isValidObjectId(relationshipId)) throw new BadRequestError('Invalid retailer relationship id');
-    const nextPassword = String(password || '').trim();
-    if (nextPassword.length < 6) throw new BadRequestError('Password must be at least 6 characters');
-
-    const relationship = await WholesalerRetailerRelationship.findOne({ _id: relationshipId, wholesalerId: userId })
-      .populate('retailerId', 'name loginId status')
-      .lean();
-    if (!relationship || !relationship.retailerId) throw new NotFoundError('Retailer relationship not found');
-
-    const passwordHash = await User.hashPassword(nextPassword);
-    await User.findByIdAndUpdate(relationship.retailerId._id, { passwordHash }, { runValidators: true });
-
-    await AuditService.log({
-      actorId: actor._id,
-      actorRole: actor.role,
-      action: 'UPDATE',
-      entityType: 'RetailerPassword',
-      entityId: relationship.retailerId._id,
-      metadata: { relationshipId, loginId: relationship.retailerId.loginId },
-      req,
-    });
-
-    return {
-      relationshipId: String(relationship._id),
-      retailerId: String(relationship.retailerId._id),
-      loginId: relationship.retailerId.loginId,
-      temporaryPassword: nextPassword,
     };
   }
 
@@ -230,51 +199,15 @@ class WholesalerPortalService {
       throw new BadRequestError('Message is required');
     }
 
-    const [user, profile] = await Promise.all([
-      User.findById(userId).select('name email phone businessName'),
-      WholesalerProfile.findOne({ userId, isDeleted: false }),
-    ]);
-
-    const businessName = profile?.businessName || user?.businessName || user?.name || 'Wholesaler';
-    const phone = callbackPhone || user?.phone || profile?.phone || '';
-
-    const ticketNumber = `TKT-${Date.now().toString().slice(-6)}`;
-    const ticket = await SupportTicket.create({
-      ticketNumber,
-      creatorId: userId,
-      creatorRole: 'WHOLESALER',
+    const user = await User.findById(userId).populate('wholesalerProfile');
+    if (!user) throw new NotFoundError('Wholesaler account not found');
+    return SupportService.createTicket(user, {
+      type: 'Request',
       subject: subject?.trim() || 'Super Admin Help Request',
-      category: 'ACCOUNT_HELP',
-      priority: 'HIGH',
-      status: 'OPEN',
-      messages: [
-        {
-          senderId: userId,
-          senderRole: 'WHOLESALER',
-          senderName: businessName,
-          message: String(message).trim(),
-        },
-      ],
+      message: String(message).trim(),
+      priority: 'High',
+      callbackPhone,
     });
-
-    const NotificationService = require('../../services/notification.service');
-    await NotificationService.notifyAdmins({
-      title: `Help Center Request: ${businessName}`,
-      message: `Wholesaler "${businessName}" (Phone: ${phone || 'N/A'}) submitted a help request: "${subject?.trim() || 'General Issue'}" - ${String(message).trim()}`,
-      type: NOTIFICATION_TYPE.SYSTEM_ALERT,
-      data: {
-        type: 'HELP_REQUEST',
-        ticketId: String(ticket._id),
-        ticketNumber,
-        wholesalerId: String(userId),
-        wholesalerName: businessName,
-        phone,
-        subject: subject?.trim() || 'Super Admin Help Request',
-        message: String(message).trim(),
-      },
-    });
-
-    return ticket;
   }
 }
 module.exports = WholesalerPortalService;

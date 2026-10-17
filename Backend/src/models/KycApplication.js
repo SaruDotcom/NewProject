@@ -91,6 +91,7 @@ const kycApplicationSchema = new mongoose.Schema(
         changedAt: { type: Date, default: Date.now },
       },
     ],
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

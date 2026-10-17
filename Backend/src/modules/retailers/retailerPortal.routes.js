@@ -8,6 +8,7 @@ const authorize = require('../../middleware/authorize');
 const validate = require('../../middleware/validate');
 const idempotency = require('../../middleware/idempotency');
 const { ROLES } = require('../../config/constants');
+const { createTicketLimit } = require('../support/support.routes');
 const {
   addToCartSchema,
   updateCartItemSchema,
@@ -85,11 +86,11 @@ router.post('/returns/:id/cancel', retailerController.cancelReturn);
 
 // Support Tickets
 router.get('/support/tickets', retailerController.getSupportTickets);
-router.post('/support/tickets', validate(createTicketSchema), retailerController.createSupportTicket);
+router.post('/support/tickets', createTicketLimit, validate(createTicketSchema), retailerController.createSupportTicket);
 router.get('/support/tickets/:id', retailerController.getSupportTicketById);
 router.post('/support/tickets/:id/messages', validate(sendTicketMessageSchema), retailerController.sendSupportMessage);
 router.get('/support', retailerController.getSupportTickets);
-router.post('/support', validate(createTicketSchema), retailerController.createSupportTicket);
+router.post('/support', createTicketLimit, validate(createTicketSchema), retailerController.createSupportTicket);
 router.get('/support/:id', retailerController.getSupportTicketById);
 router.post('/support/:id/messages', validate(sendTicketMessageSchema), retailerController.sendSupportMessage);
 

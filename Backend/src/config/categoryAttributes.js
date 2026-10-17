@@ -30,7 +30,11 @@ const UNIVERSAL_FIELDS = [
   'imageUrl',
   'description',
   'weight',
+  'weightUnit',
+  'lowStockThreshold',
   'dimensions',
+  'sizeChart',
+  'subSubcategoryId',
   'status',
   'countryOfOrigin',
 ];
@@ -155,7 +159,7 @@ const CATEGORY_ATTRIBUTES = {
       key: 'modelNumber',
       label: 'Model Number / Name',
       type: 'text',
-      required: false,
+      required: true,
       placeholder: 'e.g. EB-2026-X',
     },
     {
@@ -296,7 +300,7 @@ const CATEGORY_ATTRIBUTES = {
       label: 'Dietary Preference',
       type: 'select',
       required: true,
-      options: ['Vegetarian', 'Non-Vegetarian', 'Egg', 'Vegan'],
+      options: ['Veg', 'Non-Veg', 'Vegan', 'Egg'],
     },
     {
       key: 'fssaiLicense',
@@ -353,11 +357,11 @@ function normalizeCategoryKey(nameOrSlug) {
   if (!nameOrSlug) return null;
   const str = String(nameOrSlug).toLowerCase().trim();
 
-  if (str.includes('cloth') || str.includes('fashion') || str.includes('apparel') || str.includes('garments') || str.includes('wear')) {
-    return 'clothing';
-  }
   if (str.includes('footwear') || str.includes('shoe') || str.includes('sandal') || str.includes('slipper')) {
     return 'footwear';
+  }
+  if (str.includes('cloth') || str.includes('fashion') || str.includes('apparel') || str.includes('garments') || str.includes('wear')) {
+    return 'clothing';
   }
   if (str.includes('electronic') || str.includes('gadget') || str.includes('mobile') || str.includes('appliances')) {
     return 'electronics';

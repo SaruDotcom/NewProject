@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './app/login/page';
 import RegisterPage from './app/register/page';
@@ -20,11 +20,14 @@ import KycPage from './app/dashboard/kyc/page';
 import BannerSlidesPage from './app/dashboard/banner-slides/page';
 import CreditPolicyPage from './app/dashboard/credit-policy/page';
 import CouponsPage from './app/dashboard/coupons/page';
+import SupportPage from './app/dashboard/support/page';
+
+const LandingPage = lazy(() => import('./app/landing/page'));
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<Suspense fallback={<div className="min-h-screen bg-white" />}><LandingPage /></Suspense>} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       
@@ -46,6 +49,7 @@ export function App() {
         <Route path="kyc" element={<KycPage />} />
         <Route path="subscription" element={<SubscriptionPage />} />
         <Route path="security" element={<SecurityPage />} />
+        <Route path="support" element={<SupportPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

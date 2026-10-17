@@ -60,7 +60,8 @@ Backend/
 │   └── server.js            # Server entrypoint with graceful shutdown
 ├── scripts/
 │   ├── createSuperAdmin.js  # CLI tool to create initial Super Admin
-│   └── seedDevelopmentData.js # Seeds categories, sample wholesalers, products & retailers
+│   ├── seedDevelopmentData.js # Seeds categories, sample wholesalers, products & retailers
+│   └── seed-demo.js         # Idempotent, demo-only marketplace seed
 ├── tests/                   # Automated Jest / Supertest integration test suite
 ├── .env.example
 ├── package.json
@@ -106,17 +107,28 @@ npm install
 npm run seed
 ```
 
-### 3. Create Initial Super Admin via CLI
+### 3. Seed Client-Demo Data
+```bash
+npm run seed:demo
+npm run seed:demo:reset
+npm run seed:demo:clear
+```
+
+These commands create, reset, or clear records tagged `isDemo: true`; they never delete untagged records or create/change the configured Super Admin. The script prints the target database before writing and refuses to run with `NODE_ENV=production` unless `--confirm` is passed (for example, `npm run seed:demo -- --confirm`). Set `DEMO_PASSWORD` to override the shared demo password (default: `Demo@12345`). The generated `scripts/demo-credentials.md` file is git-ignored.
+
+Product and wholesaler images use public HTTPS URLs. KYC statuses are seeded, but private KYC document files are not: the existing document endpoint streams from local private storage, so fabricating file references would produce broken downloads.
+
+### 4. Create Initial Super Admin via CLI
 ```bash
 npm run create:superadmin
 ```
 
-### 4. Start Development Server
+### 5. Start Development Server
 ```bash
 npm run dev
 ```
 
-### 5. Run Automated Tests & Coverage
+### 6. Run Automated Tests & Coverage
 ```bash
 npm test
 npm run test:coverage

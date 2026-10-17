@@ -53,6 +53,7 @@ const paymentSchema = new mongoose.Schema(
     paidAt: {
       type: Date,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

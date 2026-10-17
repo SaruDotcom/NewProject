@@ -196,7 +196,7 @@ export function CouponsManagementPage() {
               <RefreshCw className="size-4 mr-1.5" /> Refresh
             </Button>
             <Button
-              className="bg-[#C62828] hover:bg-[#B71C1C] text-white shadow-sm"
+              className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
               onClick={() => {
                 setForm(blankForm);
                 setEditing({ create: true });
@@ -240,9 +240,9 @@ export function CouponsManagementPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {result.items.slice(0, 3).map((coupon, idx) => {
           const bgGradients = [
-            "from-rose-500 to-red-600 text-white",
-            "from-amber-500 to-orange-600 text-white",
-            "from-indigo-600 to-purple-700 text-white",
+            "from-green-700 to-green-900 text-white",
+            "from-amber-300 to-amber-500 text-tradeflow-navy",
+            "from-tradeflow-navy to-tradeflow-navy-hover text-white",
           ];
           const grad = bgGradients[idx % bgGradients.length];
 
@@ -340,7 +340,7 @@ export function CouponsManagementPage() {
                     <TableCell>
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-extrabold text-sm text-[#C62828] bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
+                          <span className="font-mono font-extrabold text-sm text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-md">
                             {row.code}
                           </span>
                           <button
@@ -446,8 +446,8 @@ export function CouponsManagementPage() {
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && !saving && setEditing(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-[#1F1F1F] flex items-center gap-2">
-              <Sparkles className="size-5 text-[#C62828]" />
+            <DialogTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+              <Sparkles className="size-5 text-primary" />
               <span>{editing?.create ? "Create Coupon Code & Offer" : `Edit Coupon: ${editing?.code || ""}`}</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-gray-500">
@@ -464,7 +464,7 @@ export function CouponsManagementPage() {
                   placeholder="e.g. WELCOME50, FESTIVE200"
                   value={form.code}
                   onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                  className="font-mono font-bold uppercase bg-[#FAF9F7]"
+                  className="font-mono font-bold uppercase bg-background"
                 />
               </div>
 
@@ -474,7 +474,7 @@ export function CouponsManagementPage() {
                   value={form.discountType}
                   onValueChange={(val) => setForm({ ...form, discountType: val })}
                 >
-                  <SelectTrigger className="bg-[#FAF9F7] font-bold">
+                  <SelectTrigger className="bg-background font-bold">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -492,7 +492,7 @@ export function CouponsManagementPage() {
                 placeholder="e.g. 50% Off Wholesaler Annual Plan"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="bg-[#FAF9F7]"
+                className="bg-background"
               />
             </div>
 
@@ -502,7 +502,7 @@ export function CouponsManagementPage() {
                 placeholder="e.g. Special promotion for new wholesalers"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="bg-[#FAF9F7]"
+                className="bg-background"
               />
             </div>
 
@@ -518,7 +518,7 @@ export function CouponsManagementPage() {
                   placeholder={form.discountType === "PERCENTAGE" ? "50" : "200"}
                   value={form.discountValue}
                   onChange={(e) => setForm({ ...form, discountValue: e.target.value })}
-                  className="bg-[#FAF9F7] font-bold text-emerald-700"
+                  className="bg-background font-bold text-success"
                 />
               </div>
 
@@ -529,7 +529,7 @@ export function CouponsManagementPage() {
                   placeholder="0 = No Cap"
                   value={form.maxDiscount}
                   onChange={(e) => setForm({ ...form, maxDiscount: e.target.value })}
-                  className="bg-[#FAF9F7]"
+                  className="bg-background"
                 />
               </div>
 
@@ -540,7 +540,7 @@ export function CouponsManagementPage() {
                   placeholder="0 = Any Plan"
                   value={form.minPlanAmount}
                   onChange={(e) => setForm({ ...form, minPlanAmount: e.target.value })}
-                  className="bg-[#FAF9F7]"
+                  className="bg-background"
                 />
               </div>
             </div>
@@ -553,7 +553,7 @@ export function CouponsManagementPage() {
                   placeholder="1000"
                   value={form.usageLimit}
                   onChange={(e) => setForm({ ...form, usageLimit: e.target.value })}
-                  className="bg-[#FAF9F7]"
+                  className="bg-background"
                 />
               </div>
 
@@ -563,16 +563,16 @@ export function CouponsManagementPage() {
                   type="date"
                   value={form.validUntil}
                   onChange={(e) => setForm({ ...form, validUntil: e.target.value })}
-                  className="bg-[#FAF9F7]"
+                  className="bg-background"
                 />
               </div>
             </div>
 
-            <DialogFooter className="pt-2 border-t border-[#E5E5E5]">
+            <DialogFooter className="pt-2 border-t border-border">
               <Button type="button" variant="outline" onClick={() => setEditing(null)} disabled={saving}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} className="bg-[#C62828] hover:bg-[#B71C1C] text-white">
+              <Button type="submit" disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
                 {saving ? "Saving..." : editing?.create ? "Create Coupon" : "Save Changes"}
               </Button>
             </DialogFooter>

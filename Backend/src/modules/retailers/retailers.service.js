@@ -264,91 +264,6 @@ class RetailerService {
   }
 
   /**
-   * Create new retailer account
-   */
-  static async createRetailer(payload, adminUser, req = null) {
-    const { name, email, phone, businessName, company, city, state, password, wholesalerId } = payload;
-
-    if (!name || !email || !password) {
-      throw new BadRequestError('Name, email, and password are required');
-    }
-
-    const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, ...(phone ? [{ phone }] : [])],
-    });
-    if (existingUser) {
-      throw new ConflictError('User with this email or phone already exists');
-    }
-
-    let wholesalerUser = null;
-    let wholesalerProfile = null;
-    if (wholesalerId && mongoose.Types.ObjectId.isValid(wholesalerId)) {
-      const wObjId = new mongoose.Types.ObjectId(wholesalerId);
-      wholesalerProfile = await WholesalerProfile.findOne({
-        $or: [{ _id: wObjId }, { userId: wObjId }],
-      });
-      if (wholesalerProfile) {
-        wholesalerUser = await User.findById(wholesalerProfile.userId);
-      }
-    }
-
-    const passwordHash = await User.hashPassword(password);
-    const user = await User.create({
-      name,
-      email: email.toLowerCase(),
-      phone: phone || undefined,
-      passwordHash,
-      role: 'RETAILER',
-      status: 'ACTIVE',
-      emailVerified: true,
-    });
-
-    const wUserId = wholesalerUser?._id || wholesalerProfile?.userId;
-    const profile = await RetailerProfile.create({
-      userId: user._id,
-      businessName: businessName || company || `${name}'s Store`,
-      ownerName: name,
-      address: {
-        city: city || '',
-        state: state || '',
-      },
-      assignedWholesalerId: wUserId,
-      wholesalerId: wUserId,
-      wholesalerInfo: wholesalerProfile ? {
-        businessName: wholesalerProfile.businessName || '',
-        ownerName: wholesalerUser?.name || '',
-        email: wholesalerUser?.email || '',
-        phone: wholesalerUser?.phone || '',
-      } : {},
-    });
-
-    if (wUserId) {
-      const relationship = await WholesalerRetailerRelationship.create({
-        wholesalerId: wUserId,
-        retailerId: user._id,
-        status: 'ACTIVE',
-        joinedAt: new Date(),
-      });
-      profile.activeRelationshipId = relationship._id;
-      await profile.save();
-    }
-
-    user.retailerProfile = profile._id;
-    await user.save();
-
-    await AuditService.log({
-      actorId: adminUser._id,
-      actorRole: adminUser.role,
-      action: AUDIT_ACTION.CREATE,
-      entityType: 'RetailerProfile',
-      entityId: profile._id,
-      req,
-    });
-
-    return this.formatRetailer(profile);
-  }
-
-  /**
    * Update retailer profile
    */
   static async updateRetailer(retailerId, payload, adminUser, req = null) {
@@ -530,4 +445,3 @@ class RetailerService {
 }
 
 module.exports = RetailerService;
-

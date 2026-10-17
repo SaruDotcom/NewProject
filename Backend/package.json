@@ -8,6 +8,11 @@
     "dev": "node --watch src/server.js",
     "create:superadmin": "node scripts/createSuperAdmin.js",
     "seed": "node scripts/seedDevelopmentData.js",
+    "seed:demo": "node scripts/seed-demo.js insert",
+    "seed:demo:reset": "node scripts/seed-demo.js reset",
+    "seed:demo:clear": "node scripts/seed-demo.js clear",
+    "seed:catalog": "node scripts/seed-catalog.js insert",
+    "seed:catalog:clear": "node scripts/seed-catalog.js clear",
     "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles --forceExit",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --coverage --runInBand --detectOpenHandles --forceExit"
@@ -25,9 +30,11 @@
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",

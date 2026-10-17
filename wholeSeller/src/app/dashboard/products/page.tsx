@@ -5,7 +5,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
-  Package,
   Edit,
   Trash2,
   Tag,
@@ -13,7 +12,6 @@ import {
   LayoutGrid,
   List,
   ShieldCheck,
-  Image as ImageIcon,
   DollarSign,
   Layers,
   Palette,
@@ -23,12 +21,15 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
-import { Product, Category, WholesaleTier, CustomAttribute } from '@/lib/mock-data';
+import { Product, Category, WholesaleTier, CustomAttribute } from '@/lib/types';
 import { getCategoryAttributeSchema, CategoryAttributeDef } from '@/lib/categoryAttributes';
+import BulkProductUpload from '@/components/products/BulkProductUpload';
+import { ProductImage } from '@/components/products/ProductImage';
 import api from '@/lib/api';
+import type { ApiErrorDetail } from '@/lib/api';
 
 export default function ProductsPage() {
-  const { profile, products, categories, addProduct, updateProduct, deleteProduct } = useWholesaler();
+  const { profile, products, categories, addProduct, updateProduct, deleteProduct, refreshData } = useWholesaler();
   const canCreateProducts = profile.kycStatus === 'APPROVED';
   const location = useLocation();
   const navigate = useNavigate();
@@ -52,6 +53,7 @@ export default function ProductsPage() {
   const [categoryAttributes, setCategoryAttributes] = useState<Record<string, any>>({});
   const [costPrice, setCostPrice] = useState<number | ''>(380);
   const [sellingPrice, setSellingPrice] = useState<number | ''>(550);
+  const [mrp, setMrp] = useState<number | ''>(700);
   const [stock, setStock] = useState<number | ''>(100);
   const [minOrderQty, setMinOrderQty] = useState<number | ''>(10);
   const [unit, setUnit] = useState('piece');
@@ -66,10 +68,23 @@ export default function ProductsPage() {
 
   const [colors, setColors] = useState<string[]>([]);
   const [colorInput, setColorInput] = useState('');
+  const [colorVariants, setColorVariants] = useState<Array<{ color: string; sku: string; images: string[]; files: File[] }>>([]);
+  const [hsnCode, setHsnCode] = useState('');
+  const [cgst, setCgst] = useState<number | ''>('');
+  const [sgst, setSgst] = useState<number | ''>('');
+  const [igst, setIgst] = useState<number | ''>('');
+  const [priceIncludesTax, setPriceIncludesTax] = useState(false);
 
   // Dynamic Tag Input Helper State
   const [dynamicTagInputs, setDynamicTagInputs] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [formFieldErrors, setFormFieldErrors] = useState<ApiErrorDetail[]>([]);
+
+  const getFieldError = (fieldName: string): string | undefined => {
+    return formFieldErrors.find(
+      (e) => e.field === fieldName || e.field?.startsWith(`${fieldName}.`) || (fieldName === 'sellingPrice' && e.field === 'wholesalePrice')
+    )?.message;
+  };
 
   // Generic Additional Options State
   const [additionalOptions, setAdditionalOptions] = useState<CustomAttribute[]>([]);
@@ -109,6 +124,7 @@ export default function ProductsPage() {
     setLevel3CategoryId('');
     setSubcategoryId('');
     setFormError(null);
+    setFormFieldErrors([]);
     if (!newCategory) {
       setCategoryAttributes({});
       return;
@@ -116,6 +132,11 @@ export default function ProductsPage() {
 
     const newSchema = getCategoryAttributeSchema(newCategory);
     const validKeys = new Set(newSchema.map(s => s.key));
+    if (!validKeys.has('size')) setSizes([]);
+    if (!validKeys.has('color')) {
+      setColors([]);
+      setColorVariants([]);
+    }
 
     const cleanedAttrs: Record<string, any> = {};
     Object.entries(categoryAttributes).forEach(([key, val]) => {
@@ -131,18 +152,21 @@ export default function ProductsPage() {
     setLevel3CategoryId('');
     setSubcategoryId(newLevel2Id);
     setFormError(null);
+    setFormFieldErrors([]);
   };
 
   const handleLevel3Change = (newLevel3Id: string) => {
     setLevel3CategoryId(newLevel3Id);
     setSubcategoryId(newLevel3Id || level2CategoryId);
     setFormError(null);
+    setFormFieldErrors([]);
   };
 
   const handleOpenAddModal = useCallback(() => {
     if (!canCreateProducts) return;
     setEditingProduct(null);
     setFormError(null);
+    setFormFieldErrors([]);
     setTitle('');
     setSku(`SKU-${Math.floor(1000 + Math.random() * 9000)}`);
     setCategoryName(''); // Unselected by default
@@ -160,6 +184,12 @@ export default function ProductsPage() {
     setDescription('High quality wholesale product for retail buyers.');
     setSizes([]);
     setColors([]);
+    setColorVariants([]);
+    setHsnCode('');
+    setCgst('');
+    setSgst('');
+    setIgst('');
+    setPriceIncludesTax(false);
     setAdditionalOptions([]);
     setPricingTiers([
       { id: 't1', minQty: 200, pricePerUnit: 500 },
@@ -180,6 +210,7 @@ export default function ProductsPage() {
   const handleOpenEditModal = (product: Product) => {
     setEditingProduct(product);
     setFormError(null);
+    setFormFieldErrors([]);
     setTitle(product.title);
     setSku(product.sku);
     setCategoryName(product.category || '');
@@ -212,6 +243,7 @@ export default function ProductsPage() {
     setCategoryAttributes(product.categoryAttributes || {});
     setCostPrice(product.costPrice || product.basePrice * 0.7);
     setSellingPrice(product.sellingPrice || product.basePrice);
+    setMrp(product.mrp !== undefined && product.mrp > 0 ? product.mrp : Math.round((product.sellingPrice || product.basePrice || 100) * 1.3));
     setStock(product.stock);
     setMinOrderQty(product.minOrderQty);
     setUnit(product.unit || 'piece');
@@ -220,6 +252,13 @@ export default function ProductsPage() {
     setDescription(product.description || '');
     setSizes(product.sizes || []);
     setColors(product.colors || []);
+    setColorVariants((product.colorVariants?.length ? product.colorVariants : (product.colors || []).map((color) => ({ color, sku: '', images: [] })))
+      .map((variant) => ({ ...variant, sku: variant.sku || '', images: (variant.images || []).map((image: any) => typeof image === 'string' ? image : image.url), files: [] })));
+    setHsnCode(product.hsnCode || (product as any).hsn || '');
+    setCgst(product.cgst ?? '');
+    setSgst(product.sgst ?? '');
+    setIgst(product.igst ?? '');
+    setPriceIncludesTax(Boolean(product.priceIncludesTax));
     setAdditionalOptions(product.additionalOptions || []);
     setPricingTiers(product.pricingTiers && product.pricingTiers.length > 0 ? product.pricingTiers : [
       { id: 't1', minQty: 200, pricePerUnit: Math.round((product.sellingPrice || product.basePrice) * 0.9) }
@@ -247,6 +286,7 @@ export default function ProductsPage() {
     if (colorInput.trim() && !colors.includes(colorInput.trim())) {
       const nextColors = [...colors, colorInput.trim()];
       setColors(nextColors);
+      setColorVariants((prev) => [...prev, { color: colorInput.trim(), sku: '', images: [], files: [] }]);
       setCategoryAttributes({ ...categoryAttributes, color: nextColors });
       setColorInput('');
     }
@@ -255,7 +295,33 @@ export default function ProductsPage() {
   const handleRemoveColorTag = (colorToRemove: string) => {
     const nextColors = colors.filter(c => c !== colorToRemove);
     setColors(nextColors);
+    setColorVariants((prev) => prev.filter((variant) => variant.color !== colorToRemove));
     setCategoryAttributes({ ...categoryAttributes, color: nextColors });
+  };
+
+  const syncColorVariants = (nextColors: string[]) => {
+    setColorVariants((previous) => nextColors.map((color, index) => {
+      const existing = previous.find((variant) => variant.color === color) || previous[index];
+      return existing ? { ...existing, color } : { color, sku: '', images: [], files: [] };
+    }));
+  };
+
+  const updateColorVariant = (index: number, update: Partial<{ color: string; sku: string; images: string[]; files: File[] }>) => {
+    setColorVariants((previous) => previous.map((variant, variantIndex) => variantIndex === index ? { ...variant, ...update } : variant));
+  };
+
+  const handleIgstChange = (value: number | '') => {
+    setIgst(value);
+    if (value !== '') {
+      setCgst(value / 2);
+      setSgst(value / 2);
+    }
+  };
+
+  const handleSplitTaxChange = (field: 'cgst' | 'sgst', value: number | '') => {
+    if (field === 'cgst') setCgst(value); else setSgst(value);
+    const counterpart = field === 'cgst' ? sgst : cgst;
+    if (value !== '' && counterpart !== '' && Number(value) === Number(counterpart)) setIgst(Number(value) * 2);
   };
 
   // Generic Additional Options Handlers
@@ -296,6 +362,7 @@ export default function ProductsPage() {
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setFormFieldErrors([]);
 
     if (!categoryName) {
       setFormError('Please select a Main Category from the dropdown.');
@@ -310,21 +377,6 @@ export default function ProductsPage() {
       return;
     }
 
-    // Client-Side Dynamic Category Attributes Validation
-    const currentSchema = getCategoryAttributeSchema(categoryName);
-    for (const field of currentSchema) {
-      if (field.required) {
-        let val = categoryAttributes[field.key];
-        if (field.key === 'size' && (!val || val.length === 0)) val = sizes;
-        if (field.key === 'color' && (!val || val.length === 0)) val = colors;
-
-        if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
-          setFormError(`Please complete required category field: "${field.label}"`);
-          return;
-        }
-      }
-    }
-
     const catObj = categories.find(c => c.name === categoryName);
     const categoryId = catObj?.id || '';
     if (!categoryId) {
@@ -332,8 +384,29 @@ export default function ProductsPage() {
       return;
     }
 
+    const isCategoryActuallyChanged = !editingProduct
+      || (editingProduct.categoryId && categoryId && String(editingProduct.categoryId) !== String(categoryId))
+      || (!editingProduct.categoryId && editingProduct.category && editingProduct.category !== categoryName);
+
+    if (isCategoryActuallyChanged) {
+      const currentSchema = getCategoryAttributeSchema(categoryName);
+      for (const field of currentSchema) {
+        if (field.required) {
+          let val = categoryAttributes[field.key];
+          if (field.key === 'size' && (!val || val.length === 0)) val = sizes;
+          if (field.key === 'color' && (!val || val.length === 0)) val = colors;
+
+          if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
+            setFormError(`Please complete required category field: "${field.label}"`);
+            return;
+          }
+        }
+      }
+    }
+
     const numSellingPrice = Number(sellingPrice) || 0;
     const numCostPrice = Number(costPrice) || 0;
+    const numMrp = mrp !== '' ? Number(mrp) : undefined;
     const numStock = Number(stock) || 0;
     const numMinOrder = Number(minOrderQty);
     if (!Number.isInteger(numMinOrder) || numMinOrder < 1) {
@@ -344,6 +417,14 @@ export default function ProductsPage() {
       setFormError('Enter the product order unit, such as piece or set (12 pieces).');
       return;
     }
+    if (cgst !== '' && sgst !== '' && Number(cgst) !== Number(sgst)) {
+      setFormError('CGST must equal SGST.');
+      return;
+    }
+    if (cgst !== '' && sgst !== '' && igst !== '' && Number(cgst) + Number(sgst) !== Number(igst)) {
+      setFormError('IGST must equal CGST + SGST.');
+      return;
+    }
 
     const validOptions = additionalOptions.filter(opt => opt.name.trim() !== '' && opt.value.trim() !== '');
 
@@ -352,13 +433,17 @@ export default function ProductsPage() {
     if (colors && colors.length > 0) finalCategoryAttrs.color = colors;
 
     try {
-      let finalImageUrl = imageUrl;
+      let finalImages: string[] = editingProduct?.images?.length ? [...editingProduct.images] : (imageUrl ? [imageUrl] : []);
+      let finalImageUrl = finalImages[0] || imageUrl;
+
       if (imageFiles.length > 0) {
         setIsUploading(true);
         try {
           const res = await api.uploadProductImages(imageFiles);
           if (res.data && res.data.length > 0) {
-            finalImageUrl = res.data[0];
+            const uploadedUrls = (res.data || []).map((image: any) => typeof image === 'string' ? image : image.url).filter(Boolean);
+            finalImages = [...new Set([...finalImages, ...uploadedUrls])];
+            finalImageUrl = finalImages[0] || imageUrl;
           }
         } catch (err: any) {
           setIsUploading(false);
@@ -368,6 +453,23 @@ export default function ProductsPage() {
         setIsUploading(false);
       }
 
+      const uploadedColorVariants = await Promise.all(colorVariants.map(async (variant) => {
+        const uploaded = variant.files.length > 0 ? await api.uploadProductImages(variant.files) : { data: [] };
+        const rawUploaded: string[] = ((uploaded as any).data || []).map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
+        return {
+          color: variant.color,
+          sku: variant.sku.trim(),
+          images: [...new Set([...variant.images, ...rawUploaded])],
+        };
+      }));
+      const taxDetails = {
+        hsnCode: hsnCode.trim(),
+        cgst: cgst === '' ? null : Number(cgst),
+        sgst: sgst === '' ? null : Number(sgst),
+        igst: igst === '' ? null : Number(igst),
+        priceIncludesTax,
+      };
+
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
           title,
@@ -376,15 +478,19 @@ export default function ProductsPage() {
           categoryId,
           subcategoryId: subcategoryId || null,
           costPrice: numCostPrice,
+          mrp: numMrp,
           sellingPrice: numSellingPrice,
           basePrice: numSellingPrice,
           stock: numStock,
           minOrderQty: numMinOrder,
           unit: unit.trim(),
           imageUrl: finalImageUrl,
+          images: finalImages.length ? finalImages : undefined,
           description,
           sizes,
           colors,
+          colorVariants: uploadedColorVariants,
+          ...taxDetails,
           additionalOptions: validOptions,
           pricingTiers,
           categoryAttributes: finalCategoryAttrs,
@@ -398,15 +504,19 @@ export default function ProductsPage() {
           categoryId,
           subcategoryId: subcategoryId || null,
           costPrice: numCostPrice,
+          mrp: numMrp,
           sellingPrice: numSellingPrice,
           basePrice: numSellingPrice,
           stock: numStock,
           minOrderQty: numMinOrder,
           unit: unit.trim(),
           imageUrl: finalImageUrl,
+          images: finalImages.length ? finalImages : undefined,
           description,
           sizes,
           colors,
+          colorVariants: uploadedColorVariants,
+          ...taxDetails,
           additionalOptions: validOptions,
           pricingTiers,
           categoryAttributes: finalCategoryAttrs,
@@ -415,6 +525,7 @@ export default function ProductsPage() {
       }
     } catch (err: any) {
       setFormError(err?.message || 'Failed to save product. Please check form fields.');
+      setFormFieldErrors(Array.isArray(err?.errors) ? err.errors : []);
     }
   };
 
@@ -424,28 +535,28 @@ export default function ProductsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20 flex items-center gap-1">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green-50 text-status-success border border-status-success/20 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3" />
               <span>Wholesaler Catalog: {profile.businessName}</span>
             </span>
           </div>
-          <h1 className="text-2xl font-extrabold text-[#1F1F1F]">Wholesale Products Catalog</h1>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Products Catalog</h1>
           <p className="text-xs text-gray-500">Manage category-driven product attributes, wholesale prices, MOQ, and bulk pricing tiers</p>
         </div>
 
         <div className="flex items-center gap-3">
           {/* View Toggle */}
-          <div className="flex items-center bg-white p-1 rounded-xl border border-[#E5E5E5]">
+          <div className="flex items-center bg-white p-1 rounded-xl border border-tradeflow-gray-200">
             <button
               onClick={() => setViewMode('GRID')}
-              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'GRID' ? 'bg-[#FFEBEE] text-[#C62828]' : 'text-gray-400 hover:text-gray-600'}`}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'GRID' ? 'bg-tradeflow-green-50 text-green-700' : 'text-gray-400 hover:text-gray-600'}`}
               title="Grid View"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('TABLE')}
-              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'TABLE' ? 'bg-[#FFEBEE] text-[#C62828]' : 'text-gray-400 hover:text-gray-600'}`}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'TABLE' ? 'bg-tradeflow-green-50 text-green-700' : 'text-gray-400 hover:text-gray-600'}`}
               title="Table View"
             >
               <List className="w-4 h-4" />
@@ -455,7 +566,7 @@ export default function ProductsPage() {
           <button
             onClick={handleOpenAddModal}
             disabled={!canCreateProducts}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#C62828] text-white text-xs font-bold rounded-xl hover:bg-[#B71C1C] shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
             title={!canCreateProducts ? 'Complete KYC verification before adding products' : undefined}
           >
             <Plus className="w-4 h-4" />
@@ -465,19 +576,24 @@ export default function ProductsPage() {
       </div>
 
       {!canCreateProducts && (
-        <div className="flex flex-col gap-3 border border-[#F9A825]/30 bg-[#FFF8E1] p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border border-amber-500/30 bg-amber-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-bold text-[#6D4C00]">KYC approval is required to add products.</p>
-            <p className="mt-1 text-xs text-[#795900]">Current status: {profile.kycStatus || 'DRAFT'}</p>
+            <p className="font-bold text-status-warning-foreground">KYC approval is required to add products.</p>
+            <p className="mt-1 text-xs text-status-warning-foreground">Current status: {profile.kycStatus || 'DRAFT'}</p>
           </div>
-          <Link to="/dashboard/kyc" className="inline-flex w-fit items-center rounded-md bg-[#C62828] px-3 py-2 text-xs font-bold text-white hover:bg-[#B71C1C]">
+          <Link to="/dashboard/kyc" className="inline-flex w-fit items-center rounded-md bg-tradeflow-green px-3 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-green-hover">
             Complete KYC
           </Link>
         </div>
       )}
 
+      <BulkProductUpload
+        canImport={canCreateProducts}
+        onImported={() => refreshData(true)}
+      />
+
       {/* Filter Bar */}
-      <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+      <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
         <div className="relative w-full md:w-80">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -485,7 +601,7 @@ export default function ProductsPage() {
             placeholder="Search catalog by product title or SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-xs bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl focus:outline-none focus:border-[#C62828]"
+            className="w-full pl-10 pr-4 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green"
           />
         </div>
 
@@ -495,8 +611,8 @@ export default function ProductsPage() {
             onClick={() => setSelectedCategory('ALL')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
               selectedCategory === 'ALL'
-                ? 'bg-[#C62828] text-white'
-                : 'bg-[#FAF9F7] text-gray-600 hover:bg-[#E5E5E5]'
+                ? 'bg-tradeflow-green text-tradeflow-navy'
+                : 'bg-tradeflow-gray-50 text-gray-600 hover:bg-tradeflow-gray-200'
             }`}
           >
             All Products ({products.length})
@@ -507,8 +623,8 @@ export default function ProductsPage() {
               onClick={() => setSelectedCategory(c.name)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 selectedCategory === c.name
-                  ? 'bg-[#C62828] text-white'
-                  : 'bg-[#FAF9F7] text-gray-600 hover:bg-[#E5E5E5]'
+                  ? 'bg-tradeflow-green text-tradeflow-navy'
+                  : 'bg-tradeflow-gray-50 text-gray-600 hover:bg-tradeflow-gray-200'
               }`}
             >
               {c.name} ({products.filter(p => p.category === c.name).length})
@@ -528,51 +644,43 @@ export default function ProductsPage() {
             return (
               <div
                 key={product.id || (product as any)._id || `grid-p-${pIdx}`}
-                className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-[#E5E5E5] bg-white shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-[#C62828]/35 hover:shadow-lg"
+                className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-tradeflow-gray-200 bg-white shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-tradeflow-green/35 hover:shadow-lg"
               >
                 <div className="flex flex-1 flex-col">
-                  <div className="relative h-56 w-full overflow-hidden bg-[#f4f3f0]">
-                    {product.imageUrl ? (
-                      <img
-                        src={product.imageUrl}
-                        alt={product.title}
-                        className="h-full w-full object-contain p-3 transition-transform duration-300 hover:scale-[1.03]"
-                      />
-                    ) : (
-                      <div className="grid h-full place-items-center text-gray-300"><ImageIcon className="h-10 w-10" /></div>
-                    )}
+                  <div className="relative h-56 w-full overflow-hidden bg-tradeflow-gray-50">
+                    <ProductImage src={product.imageUrl || product.images?.[0]} alt={product.title} className="h-full w-full object-contain p-3 transition-transform duration-300 hover:scale-[1.03]" />
                     <div className="absolute right-3 top-3 flex items-center gap-1.5">
                       <span className={`rounded-sm px-2.5 py-1 text-[10px] font-extrabold uppercase ${
                         product.isLowStock
-                          ? 'border border-[#C62828]/20 bg-[#FFEBEE] text-[#C62828]'
-                          : 'border border-[#2E7D32]/20 bg-[#E8F5E9] text-[#2E7D32]'
+                          ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border border-status-success/20 bg-tradeflow-green-50 text-status-success'
                       }`}>
                         {product.isLowStock ? 'Low stock' : 'In stock'} · {product.stock}
                       </span>
                     </div>
-                    <div className="absolute bottom-3 left-3 rounded-sm bg-[#1F1F1F]/80 px-2.5 py-1 font-mono text-[10px] text-white backdrop-blur-sm">
+                    <div className="absolute bottom-3 left-3 rounded-sm bg-tradeflow-navy/80 px-2.5 py-1 font-mono text-[10px] text-white backdrop-blur-sm">
                       SKU: {product.sku}
                     </div>
                   </div>
 
                   <div className="flex flex-1 flex-col space-y-3 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold">
-                      <span className="rounded-sm bg-[#FAF9F7] px-2 py-1 text-gray-600">{product.category}{product.subcategoryName ? ` / ${product.subcategoryName}` : ''}</span>
-                      <span className="text-[#C62828]">MOQ {product.minOrderQty}</span>
+                      <span className="rounded-sm bg-tradeflow-gray-50 px-2 py-1 text-gray-600">{product.category}{product.subcategoryName ? ` / ${product.subcategoryName}` : ''}</span>
+                      <span className="text-tradeflow-navy">MOQ {product.minOrderQty}</span>
                     </div>
 
-                    <h3 className="min-h-12 line-clamp-2 text-base font-extrabold leading-snug text-[#1F1F1F]">
+                    <h3 className="min-h-12 line-clamp-2 text-base font-extrabold leading-snug text-tradeflow-navy">
                       {product.title}
                     </h3>
 
-                    <div className="grid grid-cols-2 gap-3 border-t border-[#E5E5E5] pt-3">
+                    <div className="grid grid-cols-2 gap-3 border-t border-tradeflow-gray-200 pt-3">
                       <div>
                         <span className="block text-[10px] font-bold uppercase text-gray-400">Cost price</span>
                         <span className="font-mono text-xs font-bold text-gray-600">₹{cost.toLocaleString('en-IN')}</span>
                       </div>
                       <div>
-                        <span className="block text-[10px] font-bold uppercase text-[#C62828]">Wholesale price</span>
-                        <span className="text-base font-extrabold text-[#C62828]">₹{selling.toLocaleString('en-IN')}</span>
+                        <span className="block text-[10px] font-bold uppercase text-tradeflow-navy">Wholesale price</span>
+                        <span className="text-base font-extrabold text-tradeflow-navy">₹{selling.toLocaleString('en-IN')}</span>
                       </div>
                     </div>
 
@@ -580,7 +688,7 @@ export default function ProductsPage() {
                     {product.categoryAttributes && Object.keys(product.categoryAttributes).length > 0 && (
                       <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 text-[11px] space-y-1">
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-[#C62828]" />
+                          <Sparkles className="w-3 h-3 text-green-700" />
                           <span>Category Attributes:</span>
                         </span>
                         {Object.entries(product.categoryAttributes).map(([k, v], idx) => (
@@ -596,15 +704,15 @@ export default function ProductsPage() {
                   </div>
                 </div>
 
-                <div className="mt-auto flex items-center justify-between border-t border-[#E5E5E5] bg-[#FAF9F7] px-4 py-3">
+                <div className="mt-auto flex items-center justify-between border-t border-tradeflow-gray-200 bg-tradeflow-gray-50 px-4 py-3">
                   <div className="text-xs">
                     <span className="text-gray-400 block text-[10px]">Estimated Margin</span>
-                    <span className="font-extrabold text-[#2E7D32]">₹{profitMargin} / unit</span>
+                    <span className="font-extrabold text-status-success">₹{profitMargin} / unit</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleOpenEditModal(product)}
-                      className="p-2 text-gray-500 hover:text-[#C62828] hover:bg-[#FFEBEE] rounded-lg transition-colors"
+                      className="p-2 text-gray-500 hover:text-green-700 hover:bg-tradeflow-green-50 rounded-lg transition-colors"
                       title="Edit Product"
                     >
                       <Edit className="w-4 h-4" />
@@ -630,11 +738,11 @@ export default function ProductsPage() {
 
       {/* VIEW MODE 2: TABLE VIEW */}
       {viewMode === 'TABLE' && (
-        <div className="bg-white rounded-2xl border border-[#E5E5E5] p-6 shadow-xs">
+        <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-[#E5E5E5] text-gray-400 font-bold uppercase tracking-wider">
+                <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Product Item & SKU</th>
                   <th className="pb-3">Category</th>
                   <th className="pb-3">Cost Price</th>
@@ -643,30 +751,28 @@ export default function ProductsPage() {
                   <th className="pb-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E5E5E5]">
+              <tbody className="divide-y divide-tradeflow-gray-200">
                 {filteredProducts.map((product, pIdx) => {
                   const cost = product.costPrice || product.basePrice * 0.7;
                   const selling = product.sellingPrice || product.basePrice;
 
                   return (
-                    <tr key={product.id || (product as any)._id || `tbl-p-${pIdx}`} className="hover:bg-[#FAF9F7] transition-colors">
+                    <tr key={product.id || (product as any)._id || `tbl-p-${pIdx}`} className="hover:bg-tradeflow-gray-50 transition-colors">
                       <td className="py-3.5 flex items-center gap-3">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.title}
-                          className="w-10 h-10 rounded-lg object-cover border border-[#E5E5E5] shrink-0"
-                        />
+                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-tradeflow-gray-200">
+                          <ProductImage src={product.imageUrl || product.images?.[0]} alt={product.title} className="h-full w-full object-cover" />
+                        </div>
                         <div>
-                          <div className="font-bold text-[#1F1F1F] max-w-xs truncate">{product.title}</div>
+                          <div className="font-bold text-tradeflow-navy max-w-xs truncate">{product.title}</div>
                           <div className="text-[10px] font-mono text-gray-400">SKU: {product.sku}</div>
                         </div>
                       </td>
                       <td className="py-3.5 text-gray-600 font-semibold">{product.category}</td>
                       <td className="py-3.5 font-mono text-gray-500 font-bold">₹{cost}</td>
-                      <td className="py-3.5 font-bold text-[#C62828] text-sm">₹{selling}</td>
+                      <td className="py-3.5 font-bold text-tradeflow-navy text-sm">₹{selling}</td>
                       <td className="py-3.5">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          product.isLowStock ? 'bg-[#FFEBEE] text-[#C62828]' : 'bg-[#E8F5E9] text-[#2E7D32]'
+                          product.isLowStock ? 'bg-amber-50 text-amber-700' : 'bg-tradeflow-green-50 text-tradeflow-navy'
                         }`}>
                           {product.stock} units
                         </span>
@@ -675,7 +781,7 @@ export default function ProductsPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleOpenEditModal(product)}
-                            className="px-2.5 py-1 bg-[#FAF9F7] border border-[#E5E5E5] hover:border-[#C62828] hover:text-[#C62828] text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1 bg-tradeflow-gray-50 border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
                           >
                             <Edit className="w-3.5 h-3.5" />
                             <span>Edit</span>
@@ -704,10 +810,10 @@ export default function ProductsPage() {
       {/* DYNAMIC CATEGORY-DRIVEN ADD / EDIT PRODUCT MODAL FORM */}
       {(showAddModal || editingProduct) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto border border-[#E5E5E5] shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto border border-tradeflow-gray-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
               <div>
-                <h2 className="text-lg font-extrabold text-[#1F1F1F]">
+                <h2 className="text-lg font-extrabold text-tradeflow-navy">
                   {editingProduct ? `Edit Product: ${editingProduct.title}` : 'Add New Wholesale Product'}
                 </h2>
                 <p className="text-xs text-gray-500">Dynamic category-driven product listing form</p>
@@ -717,6 +823,7 @@ export default function ProductsPage() {
                   setShowAddModal(false);
                   setEditingProduct(null);
                   setFormError(null);
+                  setFormFieldErrors([]);
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -725,9 +832,20 @@ export default function ProductsPage() {
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                <span>{formError}</span>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
+                <div className="font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  <span>{formError}</span>
+                </div>
+                {formFieldErrors.length > 0 && (
+                  <ul className="mt-2 ml-6 list-disc space-y-1">
+                    {formFieldErrors.map((error, index) => (
+                      <li key={`${error.field}-${index}`}>
+                        <span className="font-bold">{error.field}:</span> {error.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
 
@@ -740,28 +858,40 @@ export default function ProductsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Product Name <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Product Name <span className="text-tradeflow-navy">*</span></label>
                     <input
                       type="text"
                       required
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="e.g. Premium Cotton Formal Shirt"
-                      className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3.5 py-2.5 border rounded-xl bg-tradeflow-gray-50 focus:outline-none ${getFieldError('title') || getFieldError('name') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    {(getFieldError('title') || getFieldError('name')) && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('title') || getFieldError('name')}
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Main Category <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Main Category <span className="text-tradeflow-navy">*</span></label>
                     <select
                       value={categoryName}
                       onChange={(e) => handleCategoryChange(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] focus:border-[#C62828] focus:outline-none font-bold text-gray-800"
+                      className={`w-full px-3.5 py-2.5 border rounded-xl bg-tradeflow-gray-50 focus:outline-none font-bold text-gray-800 ${getFieldError('category') || getFieldError('categoryId') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     >
                       <option value="">-- Select Main Category --</option>
                       {categories.filter((category) => !category.parentId).map(c => (
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
+                    {(getFieldError('category') || getFieldError('categoryId')) && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('category') || getFieldError('categoryId')}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -773,7 +903,7 @@ export default function ProductsPage() {
                       value={level2CategoryId}
                       onChange={(event) => handleLevel2Change(event.target.value)}
                       disabled={!categoryName || availableLevel2Categories.length === 0}
-                      className="w-full rounded-xl border border-[#E5E5E5] bg-[#FAF9F7] px-3.5 py-2.5 font-bold text-gray-800 focus:border-[#C62828] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      className="w-full rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 px-3.5 py-2.5 font-bold text-gray-800 focus:border-tradeflow-green focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <option value="">
                         {!categoryName
@@ -797,7 +927,7 @@ export default function ProductsPage() {
                       value={level3CategoryId}
                       onChange={(event) => handleLevel3Change(event.target.value)}
                       disabled={!level2CategoryId || availableLevel3Categories.length === 0}
-                      className="w-full rounded-xl border border-[#E5E5E5] bg-[#FAF9F7] px-3.5 py-2.5 font-bold text-gray-800 focus:border-[#C62828] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      className="w-full rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 px-3.5 py-2.5 font-bold text-gray-800 focus:border-tradeflow-green focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <option value="">
                         {!level2CategoryId
@@ -817,20 +947,26 @@ export default function ProductsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">SKU Number <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">SKU Number <span className="text-tradeflow-navy">*</span></label>
                     <input
                       type="text"
                       required
                       value={sku}
                       onChange={(e) => setSku(e.target.value.toUpperCase())}
                       placeholder="e.g. SKU-9901"
-                      className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('sku') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    {getFieldError('sku') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('sku')}
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Product Image (Drag & Drop) <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Product Image (Drag & Drop) <span className="text-tradeflow-navy">*</span></label>
                     <div 
-                      className="border-2 border-dashed border-[#C62828] rounded-xl bg-[#FAF9F7] p-4 text-center cursor-pointer hover:bg-[#FCE4E4] transition"
+                      className="border-2 border-dashed border-tradeflow-green rounded-xl bg-tradeflow-gray-50 p-4 text-center cursor-pointer hover:bg-red-50 transition"
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => {
                         e.preventDefault();
@@ -903,11 +1039,11 @@ export default function ProductsPage() {
                 const attributeCategoryName = selectedSubcategory?.name || categoryName;
 
                 return (
-                  <div className="p-4 bg-[#F4F6F8] rounded-2xl border border-[#D0D7DE] space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-[#D0D7DE]">
+                  <div className="p-4 bg-tradeflow-gray-50 rounded-2xl border border-tradeflow-gray-200 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-tradeflow-gray-200">
                       <div>
-                        <h4 className="font-extrabold text-[#1F1F1F] text-xs uppercase tracking-wider flex items-center gap-1.5">
-                          <Sparkles className="w-4 h-4 text-[#C62828]" />
+                        <h4 className="font-extrabold text-tradeflow-navy text-xs uppercase tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-green-700" />
                           <span>Product Options ({attributeCategoryName})</span>
                         </h4>
                         <p className="text-[10px] text-gray-500">Complete the available options for {attributeCategoryName} products.</p>
@@ -921,14 +1057,14 @@ export default function ProductsPage() {
                         return (
                           <div key={field.key} className={field.type === 'multiselect' ? 'sm:col-span-2' : ''}>
                             <label className="block font-bold text-gray-700 mb-1 text-xs">
-                              {field.label} {field.required && <span className="text-red-500 font-bold">*</span>}
+                              {field.label} {field.required && <span className="text-tradeflow-navy font-bold">*</span>}
                             </label>
 
                             {field.type === 'select' && (
                               <select
                                 value={val || ''}
                                 onChange={(e) => setCategoryAttributes({ ...categoryAttributes, [field.key]: e.target.value })}
-                                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-white text-xs focus:border-[#C62828] focus:outline-none font-medium text-gray-800"
+                                className="w-full px-3 py-2 border border-tradeflow-gray-200 rounded-xl bg-white text-xs focus:border-tradeflow-green focus:outline-none font-medium text-gray-800"
                               >
                                 <option value="">-- Select {field.label} --</option>
                                 {field.options?.map((opt) => (
@@ -943,7 +1079,7 @@ export default function ProductsPage() {
                                 value={val || ''}
                                 onChange={(e) => setCategoryAttributes({ ...categoryAttributes, [field.key]: e.target.value })}
                                 placeholder={field.placeholder || `Enter ${field.label}`}
-                                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-white text-xs focus:border-[#C62828] focus:outline-none"
+                                className="w-full px-3 py-2 border border-tradeflow-gray-200 rounded-xl bg-white text-xs focus:border-tradeflow-green focus:outline-none"
                               />
                             )}
 
@@ -953,7 +1089,7 @@ export default function ProductsPage() {
                                 value={val !== undefined && val !== null ? val : ''}
                                 onChange={(e) => setCategoryAttributes({ ...categoryAttributes, [field.key]: e.target.value === '' ? '' : Number(e.target.value) })}
                                 placeholder={field.placeholder || `Enter ${field.label}`}
-                                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-white text-xs font-mono focus:border-[#C62828] focus:outline-none"
+                                className="w-full px-3 py-2 border border-tradeflow-gray-200 rounded-xl bg-white text-xs font-mono focus:border-tradeflow-green focus:outline-none"
                               />
                             )}
 
@@ -962,12 +1098,12 @@ export default function ProductsPage() {
                                 type="date"
                                 value={val || ''}
                                 onChange={(e) => setCategoryAttributes({ ...categoryAttributes, [field.key]: e.target.value })}
-                                className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-white text-xs focus:border-[#C62828] focus:outline-none"
+                                className="w-full px-3 py-2 border border-tradeflow-gray-200 rounded-xl bg-white text-xs focus:border-tradeflow-green focus:outline-none"
                               />
                             )}
 
                             {field.type === 'multiselect' && (
-                              <div className="p-3 bg-white rounded-xl border border-[#E5E5E5] space-y-2">
+                              <div className="p-3 bg-white rounded-xl border border-tradeflow-gray-200 space-y-2">
                                 <div className="flex gap-2">
                                   <input
                                     type="text"
@@ -983,14 +1119,14 @@ export default function ProductsPage() {
                                             const updatedArr = [...existingArr, inputVal];
                                             setCategoryAttributes({ ...categoryAttributes, [field.key]: updatedArr });
                                             if (field.key === 'size') setSizes(updatedArr);
-                                            if (field.key === 'color') setColors(updatedArr);
+                                            if (field.key === 'color') { setColors(updatedArr); syncColorVariants(updatedArr); }
                                           }
                                           setDynamicTagInputs({ ...dynamicTagInputs, [field.key]: '' });
                                         }
                                       }
                                     }}
                                     placeholder={field.placeholder || `Add ${field.label} tag and press Enter`}
-                                    className="w-full px-3 py-1.5 bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl text-xs"
+                                    className="w-full px-3 py-1.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl text-xs"
                                   />
                                   {field.options && field.options.length > 0 && (
                                     <select
@@ -1001,12 +1137,12 @@ export default function ProductsPage() {
                                             const updatedArr = [...existingArr, e.target.value];
                                             setCategoryAttributes({ ...categoryAttributes, [field.key]: updatedArr });
                                             if (field.key === 'size') setSizes(updatedArr);
-                                            if (field.key === 'color') setColors(updatedArr);
+                                            if (field.key === 'color') { setColors(updatedArr); syncColorVariants(updatedArr); }
                                           }
                                           e.target.value = '';
                                         }
                                       }}
-                                      className="px-2 py-1.5 bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl text-xs"
+                                      className="px-2 py-1.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl text-xs"
                                     >
                                       <option value="">Preset Tags...</option>
                                       {field.options.map((opt) => (
@@ -1018,7 +1154,7 @@ export default function ProductsPage() {
 
                                 <div className="flex flex-wrap gap-1.5 pt-1">
                                   {(Array.isArray(val) ? val : (field.key === 'size' ? sizes : field.key === 'color' ? colors : [])).map((tagItem: string, idx: number) => (
-                                    <span key={`tag-${field.key}-${tagItem}-${idx}`} className="px-2.5 py-1 bg-[#FFEBEE] border border-[#C62828]/20 rounded-lg text-xs font-bold text-[#C62828] flex items-center gap-1">
+                                    <span key={`tag-${field.key}-${tagItem}-${idx}`} className="px-2.5 py-1 bg-tradeflow-green-50 border border-tradeflow-green/20 rounded-lg text-xs font-bold text-green-700 flex items-center gap-1">
                                       <span>{tagItem}</span>
                                       <button
                                         type="button"
@@ -1030,9 +1166,9 @@ export default function ProductsPage() {
                                             [field.key]: updatedArr,
                                           });
                                           if (field.key === 'size') setSizes(updatedArr);
-                                          if (field.key === 'color') setColors(updatedArr);
+                                          if (field.key === 'color') { setColors(updatedArr); syncColorVariants(updatedArr); }
                                         }}
-                                        className="text-[#C62828]/60 hover:text-red-700"
+                                        className="text-gray-400 hover:text-red-700"
                                       >
                                         <X className="w-3 h-3" />
                                       </button>
@@ -1049,6 +1185,47 @@ export default function ProductsPage() {
                 );
               })()}
 
+              {categoryName && getCategoryAttributeSchema(categoryName).some((field) => field.key === 'color') && (
+                <div className="space-y-3 rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-4">
+                  <div>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Color-wise images & SKU</h3>
+                    <p className="mt-1 text-[10px] text-gray-500">Optional. Each color uses the main gallery when no images are added.</p>
+                  </div>
+                  {colorVariants.map((variant, index) => (
+                    <div key={`${variant.color}-${index}`} className="rounded-xl border border-tradeflow-gray-200 bg-white p-3">
+                      <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+                        <div>
+                          <label className="mb-1 block font-bold text-gray-700">Color</label>
+                          <div className="flex items-center gap-2">
+                            <span className="h-5 w-5 rounded-full border border-gray-300 bg-gray-200" title={variant.color} />
+                            <input value={variant.color} onChange={(event) => {
+                              const next = [...colors]; next[index] = event.target.value; setColors(next); setCategoryAttributes({ ...categoryAttributes, color: next }); updateColorVariant(index, { color: event.target.value });
+                            }} className="w-full rounded-lg border border-tradeflow-gray-200 px-2 py-1.5" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block font-bold text-gray-700">Color SKU <span className="font-normal text-gray-400">(optional)</span></label>
+                          <input value={variant.sku} onChange={(event) => updateColorVariant(index, { sku: event.target.value.toUpperCase() })} placeholder="e.g. GOWN-BLUE" className="w-full rounded-lg border border-tradeflow-gray-200 px-2 py-1.5 font-mono" />
+                        </div>
+                      </div>
+                      <label className="mt-3 block cursor-pointer rounded-lg border border-dashed border-tradeflow-green bg-tradeflow-green-50 p-3 text-center text-[11px] font-bold text-green-700">
+                        Add up to 4 JPG, JPEG, PNG or WEBP images (5 MB each)
+                        <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(event) => {
+                          const files = Array.from(event.target.files || []).filter((file) => file.size <= 5 * 1024 * 1024).slice(0, 4);
+                          if (files.length !== (event.target.files?.length || 0)) setFormError('Color images must be JPG, JPEG, PNG or WEBP and no larger than 5 MB.');
+                          updateColorVariant(index, { files });
+                        }} />
+                      </label>
+                      {(variant.images.length > 0 || variant.files.length > 0) && <div className="mt-2 flex flex-wrap gap-2">
+                        {variant.images.map((image) => <img key={image} src={image} alt={`${variant.color} product`} className="h-12 w-12 rounded-md border object-cover" />)}
+                        {variant.files.map((file) => <img key={file.name} src={URL.createObjectURL(file)} alt={file.name} className="h-12 w-12 rounded-md border object-cover" />)}
+                      </div>}
+                    </div>
+                  ))}
+                  {colors.length === 0 && <p className="text-[11px] italic text-gray-500">Add a color tag above to create its image and SKU card.</p>}
+                </div>
+              )}
+
               {/* Universal Section 3: Pricing & Stock Inventory */}
               <div className="space-y-3">
                 <h3 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-1 border-b border-gray-200">
@@ -1058,7 +1235,7 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div>
                     <label className="block font-bold text-gray-700 mb-1 flex items-center justify-between">
-                      <span>Cost Price (₹) <span className="text-red-500">*</span></span>
+                      <span>Cost Price (₹) <span className="text-tradeflow-navy">*</span></span>
                     </label>
                     <input
                       type="number"
@@ -1067,12 +1244,18 @@ export default function ProductsPage() {
                       value={costPrice}
                       onChange={(e) => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Acquisition price"
-                      className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('costPrice') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    {getFieldError('costPrice') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('costPrice')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block font-bold text-[#C62828] mb-1">Wholesale Price (₹) <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-tradeflow-navy mb-1">Wholesale Price (₹) <span className="text-tradeflow-navy">*</span></label>
                     <input
                       type="number"
                       required
@@ -1080,12 +1263,36 @@ export default function ProductsPage() {
                       value={sellingPrice}
                       onChange={(e) => setSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Retailer price"
-                      className="w-full px-3 py-2 border border-[#C62828]/40 rounded-xl bg-white font-mono font-bold text-[#C62828] focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3 py-2 border rounded-xl bg-white font-mono font-bold text-tradeflow-navy focus:outline-none ${getFieldError('sellingPrice') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-green/40 focus:border-tradeflow-green'}`}
                     />
+                    {getFieldError('sellingPrice') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('sellingPrice')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Stock Quantity <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Maximum Retail Price (MRP ₹)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={mrp}
+                      onChange={(e) => setMrp(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="e.g. 799 (>= Wholesale)"
+                      className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('mrp') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
+                    />
+                    {getFieldError('mrp') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('mrp')}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-gray-700 mb-1">Stock Quantity <span className="text-tradeflow-navy">*</span></label>
                     <input
                       type="number"
                       required
@@ -1093,12 +1300,18 @@ export default function ProductsPage() {
                       value={stock}
                       onChange={(e) => setStock(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Total available stock"
-                      className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 focus:outline-none ${getFieldError('stock') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    {getFieldError('stock') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('stock')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Minimum Order Quantity <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Minimum Order Quantity <span className="text-tradeflow-navy">*</span></label>
                     <input
                       type="number"
                       required
@@ -1107,12 +1320,18 @@ export default function ProductsPage() {
                       value={minOrderQty}
                       onChange={(e) => setMinOrderQty(e.target.value === '' ? '' : Number(e.target.value))}
                       placeholder="Minimum units per order"
-                      className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('minOrderQty') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    {getFieldError('minOrderQty') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('minOrderQty')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Order Unit <span className="text-red-500">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Order Unit <span className="text-tradeflow-navy">*</span></label>
                     <input
                       type="text"
                       required
@@ -1120,10 +1339,32 @@ export default function ProductsPage() {
                       value={unit}
                       onChange={(e) => setUnit(e.target.value)}
                       placeholder="piece or set (12 pieces)"
-                      className="w-full px-3 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] focus:border-[#C62828] focus:outline-none"
+                      className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 focus:outline-none ${getFieldError('unit') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    {getFieldError('unit') && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {getFieldError('unit')}
+                      </p>
+                    )}
                     <p className="mt-1 text-[10px] text-gray-500">Example: MOQ 1, unit "set (12 pieces)"</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-4">
+                <div>
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Tax Details (GST)</h3>
+                  <p className="mt-1 text-[10px] text-gray-500">Optional. Select an IGST slab to auto-fill equal CGST and SGST.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <input value={hsnCode} onChange={(event) => setHsnCode(event.target.value)} placeholder="HSN Code" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
+                  <input type="number" min={0} value={cgst} onChange={(event) => handleSplitTaxChange('cgst', event.target.value === '' ? '' : Number(event.target.value))} placeholder="CGST %" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
+                  <input type="number" min={0} value={sgst} onChange={(event) => handleSplitTaxChange('sgst', event.target.value === '' ? '' : Number(event.target.value))} placeholder="SGST %" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
+                  <select value={igst} onChange={(event) => handleIgstChange(event.target.value === '' ? '' : Number(event.target.value))} className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2">
+                    <option value="">IGST %</option>{[0, 5, 12, 18, 28].map((rate) => <option key={rate} value={rate}>{rate}%</option>)}
+                  </select>
+                  <label className="flex items-center gap-2 rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2 font-bold text-gray-700"><input type="checkbox" checked={priceIncludesTax} onChange={(event) => setPriceIncludesTax(event.target.checked)} /> Prices include tax</label>
                 </div>
               </div>
 
@@ -1135,16 +1376,16 @@ export default function ProductsPage() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Provide product specifications or packaging details..."
-                  className="w-full px-3.5 py-2 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] focus:border-[#C62828] focus:outline-none"
+                  className="w-full px-3.5 py-2 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 focus:border-tradeflow-green focus:outline-none"
                 />
               </div>
 
               {/* Universal Section 5: Repeatable Bulk Pricing Tiers */}
-              <div className="p-4 bg-[#FFF8E1] rounded-2xl border border-[#FFE082] space-y-3">
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-extrabold text-[#F9A825] text-xs uppercase tracking-wider flex items-center gap-1.5">
-                      <Tag className="w-4 h-4 text-[#F9A825]" />
+                    <h4 className="font-extrabold text-amber-500 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Tag className="w-4 h-4 text-amber-500" />
                       <span>Bulk Wholesale Pricing Tiers</span>
                     </h4>
                     <p className="text-[10px] text-gray-600">
@@ -1154,7 +1395,7 @@ export default function ProductsPage() {
                   <button
                     type="button"
                     onClick={handleAddPricingTier}
-                    className="px-3 py-1.5 bg-[#F9A825] text-white text-[11px] font-bold rounded-xl hover:bg-[#F57F17] transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5 bg-amber-500 text-white text-[11px] font-bold rounded-xl hover:bg-amber-600 transition-colors flex items-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Tier</span>
@@ -1173,7 +1414,7 @@ export default function ProductsPage() {
                           min={1}
                           value={tier.minQty}
                           onChange={(e) => handleUpdatePricingTier(tier.id, 'minQty', Number(e.target.value))}
-                          className="w-24 px-3 py-1.5 bg-white border border-[#FFE082] rounded-xl text-xs font-mono font-bold"
+                          className="w-24 px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold"
                         />
                         <span className="text-gray-500 font-bold shrink-0">Price/Unit (₹):</span>
                         <input
@@ -1181,7 +1422,7 @@ export default function ProductsPage() {
                           min={0}
                           value={tier.pricePerUnit}
                           onChange={(e) => handleUpdatePricingTier(tier.id, 'pricePerUnit', Number(e.target.value))}
-                          className="w-32 px-3 py-1.5 bg-white border border-[#FFE082] rounded-xl text-xs font-mono font-bold text-[#C62828]"
+                          className="w-32 px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold text-tradeflow-navy"
                         />
                         <button
                           type="button"
@@ -1198,23 +1439,24 @@ export default function ProductsPage() {
               </div>
 
               {/* Submit Buttons */}
-              <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-end gap-3">
+              <div className="pt-3 border-t border-tradeflow-gray-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
                     setEditingProduct(null);
                     setFormError(null);
+                    setFormFieldErrors([]);
                   }}
                   disabled={isUploading}
-                  className="px-4 py-2.5 bg-[#FAF9F7] text-gray-600 font-bold rounded-xl hover:bg-[#E5E5E5] transition-colors"
+                  className="px-4 py-2.5 bg-tradeflow-gray-50 text-gray-600 font-bold rounded-xl hover:bg-tradeflow-gray-200 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isUploading}
-                  className="px-5 py-2.5 bg-[#C62828] text-white font-bold rounded-xl hover:bg-[#B71C1C] shadow-md transition-all flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" />
                   <span>{isUploading ? 'Uploading...' : editingProduct ? 'Save Changes' : 'Add Wholesale Product'}</span>

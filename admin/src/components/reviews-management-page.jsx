@@ -151,8 +151,8 @@ export function ReviewsManagementPage() {
       <span
         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
           isWholesaler
-            ? "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
-            : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+            ? "bg-tradeflow-navy text-white dark:bg-tradeflow-navy-hover"
+            : "bg-tradeflow-sky-50 text-tradeflow-navy dark:bg-tradeflow-navy-hover dark:text-tradeflow-sky"
         }`}
       >
         {isWholesaler ? <Building2 className="size-3" /> : <Store className="size-3" />}

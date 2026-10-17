@@ -2129,7 +2129,7 @@ class AdminService {
       user: log.actorId?.name || 'System Admin',
       action: log.action,
       entity: log.entityType,
-      ip: log.ipAddress || '127.0.0.1',
+      ip: log.ipAddress || '',
       timestamp: log.createdAt,
     }));
   }

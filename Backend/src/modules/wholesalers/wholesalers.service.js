@@ -48,6 +48,7 @@ class WholesalerService {
       phone: user.phone || profile.registrationDetails?.phone || '',
       status: user.status || '',
       kycStatus: profile.kycStatus || '',
+      registrationSource: profile.registrationSource || 'DIRECT',
       gstStatus: profile.gstStatus || '',
       gstin: profile.gstin || '',
       businessType: profile.businessType || '',

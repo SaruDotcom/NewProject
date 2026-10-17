@@ -53,6 +53,7 @@ const auditLogSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: { createdAt: true, updatedAt: false }, // Immutable append-only

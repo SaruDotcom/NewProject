@@ -1,23 +1,195 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import "./theme/tradeflow.css";
+
 @custom-variant dark (&:is(.dark *));
+
 @theme inline {
- --font-sans: "Manrope", sans-serif;
- --radius-sm: calc(var(--radius) - 3px); --radius-md: calc(var(--radius) - 1px); --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 3px);
- --color-background:var(--background);--color-foreground:var(--foreground);--color-card:var(--card);--color-card-foreground:var(--card-foreground);--color-popover:var(--popover);--color-popover-foreground:var(--popover-foreground);--color-primary:var(--primary);--color-primary-foreground:var(--primary-foreground);--color-secondary:var(--secondary);--color-secondary-foreground:var(--secondary-foreground);--color-muted:var(--muted);--color-muted-foreground:var(--muted-foreground);--color-accent:var(--accent);--color-accent-foreground:var(--accent-foreground);--color-destructive:var(--destructive);--color-destructive-foreground:var(--destructive-foreground);--color-border:var(--border);--color-input:var(--input);--color-ring:var(--ring);--color-success:var(--success);--color-success-foreground:var(--success-foreground);--color-warning:var(--warning);--color-warning-foreground:var(--warning-foreground);--color-ink:var(--ink);--color-canvas:var(--canvas);--color-brand-soft:var(--brand-soft);
+  --font-sans: "Inter", sans-serif;
+  --font-heading: "Poppins", "Inter", sans-serif;
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 3px);
+  --color-background: var(--color-tradeflow-gray-50);
+  --color-foreground: var(--color-tradeflow-navy);
+  --color-card: var(--color-tradeflow-white);
+  --color-card-foreground: var(--color-tradeflow-navy);
+  --color-popover: var(--color-tradeflow-white);
+  --color-popover-foreground: var(--color-tradeflow-navy);
+  --color-primary: var(--color-tradeflow-green);
+  --color-primary-foreground: var(--color-tradeflow-white);
+  --color-secondary: var(--color-tradeflow-gray-100);
+  --color-secondary-foreground: var(--color-tradeflow-navy);
+  --color-muted: var(--color-tradeflow-gray-100);
+  --color-muted-foreground: var(--color-tradeflow-gray-500);
+  --color-accent: var(--color-tradeflow-green-50);
+  --color-accent-foreground: var(--color-tradeflow-navy);
+  --color-destructive: var(--color-status-danger);
+  --color-destructive-foreground: var(--color-status-danger-foreground);
+  --color-border: var(--color-tradeflow-gray-200);
+  --color-input: var(--color-tradeflow-gray-200);
+  --color-ring: var(--color-tradeflow-green);
+  --color-success: var(--color-status-success);
+  --color-success-foreground: var(--color-status-success-foreground);
+  --color-warning: var(--color-status-warning);
+  --color-warning-foreground: var(--color-status-warning-foreground);
+  --color-ink: var(--color-tradeflow-navy);
+  --color-canvas: var(--color-tradeflow-gray-50);
+  --color-brand-soft: var(--color-tradeflow-green-50);
 }
-:root{--radius:.45rem;--background:oklch(.992 .004 70);--foreground:oklch(.19 .018 30);--card:oklch(1 0 0);--card-foreground:oklch(.19 .018 30);--popover:oklch(1 0 0);--popover-foreground:oklch(.19 .018 30);--primary:oklch(.48 .19 27);--primary-foreground:oklch(.99 .003 70);--secondary:oklch(.955 .009 70);--secondary-foreground:oklch(.25 .016 35);--muted:oklch(.96 .006 65);--muted-foreground:oklch(.5 .018 35);--accent:oklch(.945 .028 25);--accent-foreground:oklch(.42 .18 27);--destructive:oklch(.56 .22 26);--destructive-foreground:oklch(.99 0 0);--border:oklch(.895 .012 60);--input:oklch(.895 .012 60);--ring:oklch(.48 .19 27);--success:oklch(.48 .105 150);--success-foreground:oklch(.99 0 0);--warning:oklch(.72 .15 72);--warning-foreground:oklch(.25 .05 65);--ink:oklch(.15 .018 30);--canvas:oklch(.975 .008 70);--brand-soft:oklch(.95 .035 25)}
-@layer base{*{border-color:var(--color-border)}html{scroll-behavior:smooth}body{margin:0;background:var(--color-background);color:var(--color-foreground);font-family:var(--font-sans);font-feature-settings:"ss01";letter-spacing:0}button,a,input,select{letter-spacing:0}::selection{background:var(--color-brand-soft);color:var(--color-primary)} }
-@utility shell{width:min(100% - 2rem,76rem);margin-inline:auto}
-@utility section-title{font-size:clamp(1.4rem,2vw,2rem);line-height:1.15;font-weight:750;color:var(--color-ink)}
-@utility elevated{box-shadow:0 14px 35px color-mix(in oklab,var(--color-ink) 8%,transparent)}
-@utility interactive{transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;&:hover{transform:translateY(-2px);box-shadow:0 12px 28px color-mix(in oklab,var(--color-ink) 9%,transparent);border-color:color-mix(in oklab,var(--color-primary) 24%,var(--color-border))}}
-.trusted-wholesalers article{border-radius:.75rem;border-color:color-mix(in oklab,var(--color-border) 85%,transparent);box-shadow:0 4px 14px color-mix(in oklab,var(--color-ink) 5%,transparent);}
-.trusted-wholesalers article:hover{box-shadow:0 12px 28px color-mix(in oklab,var(--color-ink) 9%,transparent);}
-.popular-categories .category-card{border-color:color-mix(in oklab,var(--color-border) 85%,transparent);box-shadow:0 4px 14px color-mix(in oklab,var(--color-ink) 5%,transparent);}
-.popular-categories .category-card:hover{box-shadow:0 12px 28px color-mix(in oklab,var(--color-ink) 9%,transparent);}
-.premium-header{box-shadow:0 4px 18px color-mix(in oklab,var(--color-ink) 4%,transparent);}
-.home-search form{box-shadow:0 10px 26px color-mix(in oklab,var(--color-ink) 8%,transparent);}
-.home-search form:hover{border-color:color-mix(in oklab,var(--color-primary) 32%,var(--color-border));}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+:root {
+  --radius: var(--radius-tradeflow-md);
+  --background: var(--color-tradeflow-gray-50);
+  --foreground: var(--color-tradeflow-navy);
+  --card: var(--color-tradeflow-white);
+  --card-foreground: var(--color-tradeflow-navy);
+  --popover: var(--color-tradeflow-white);
+  --popover-foreground: var(--color-tradeflow-navy);
+  --primary: var(--color-tradeflow-green);
+  --primary-foreground: var(--color-tradeflow-white);
+  --secondary: var(--color-tradeflow-gray-100);
+  --secondary-foreground: var(--color-tradeflow-navy);
+  --muted: var(--color-tradeflow-gray-100);
+  --muted-foreground: var(--color-tradeflow-gray-500);
+  --accent: var(--color-tradeflow-green-50);
+  --accent-foreground: var(--color-tradeflow-navy);
+  --destructive: var(--color-status-danger);
+  --destructive-foreground: var(--color-status-danger-foreground);
+  --border: var(--color-tradeflow-gray-200);
+  --input: var(--color-tradeflow-gray-200);
+  --ring: var(--color-tradeflow-green);
+  --success: var(--color-status-success);
+  --success-foreground: var(--color-status-success-foreground);
+  --warning: var(--color-status-warning);
+  --warning-foreground: var(--color-status-warning-foreground);
+  --ink: var(--color-tradeflow-navy);
+  --canvas: var(--color-tradeflow-gray-50);
+  --brand-soft: var(--color-tradeflow-green-50);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  .text-primary {
+    color: var(--color-green-700);
+  }
+
+  [class*="text-primary/"] {
+    color: var(--color-green-700);
+  }
+
+  [class~="bg-primary"][class*="text-primary-foreground"],
+  [class~="bg-primary"] [class*="text-primary-foreground"] {
+    color: var(--color-tradeflow-navy);
+  }
+
+  .MuiButton-outlinedPrimary:not([class*="border-destructive"]) {
+    border-color: var(--color-tradeflow-navy) !important;
+    color: var(--color-tradeflow-navy) !important;
+  }
+
+  .MuiButton-outlinedPrimary:not([class*="border-destructive"]):hover {
+    border-color: var(--color-tradeflow-navy-hover) !important;
+    background: var(--color-tradeflow-navy) !important;
+    color: var(--color-tradeflow-white) !important;
+  }
+
+  .MuiButton-outlinedPrimary[class*="border-destructive"] {
+    border-color: var(--color-status-danger) !important;
+    color: var(--color-status-danger) !important;
+  }
+
+  .MuiButton-outlinedPrimary[class*="border-destructive"]:hover {
+    background: var(--color-status-danger) !important;
+    color: var(--color-status-danger-foreground) !important;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01";
+    letter-spacing: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+
+  button, a, input, select {
+    letter-spacing: 0;
+  }
+
+  ::selection {
+    background: var(--color-brand-soft);
+    color: var(--color-primary);
+  }
+}
+
+@utility shell {
+  width: min(100% - 2rem, 76rem);
+  margin-inline: auto;
+}
+
+@utility section-title {
+  font-size: clamp(1.4rem, 2vw, 2rem);
+  line-height: 1.15;
+  font-weight: 750;
+  color: var(--color-ink);
+}
+
+@utility elevated {
+  box-shadow: 0 14px 35px color-mix(in oklab, var(--color-ink) 8%, transparent);
+}
+
+@utility interactive {
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px color-mix(in oklab, var(--color-ink) 9%, transparent);
+    border-color: color-mix(in oklab, var(--color-primary) 24%, var(--color-border));
+  }
+}
+
+.trusted-wholesalers article,
+.popular-categories .category-card {
+  border-color: color-mix(in oklab, var(--color-border) 85%, transparent);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--color-ink) 5%, transparent);
+}
+
+.trusted-wholesalers article:hover,
+.popular-categories .category-card:hover {
+  box-shadow: 0 12px 28px color-mix(in oklab, var(--color-ink) 9%, transparent);
+}
+
+.premium-header {
+  box-shadow: 0 4px 18px color-mix(in oklab, var(--color-ink) 4%, transparent);
+}
+
+.home-search form {
+  box-shadow: 0 10px 26px color-mix(in oklab, var(--color-ink) 8%, transparent);
+}
+
+.home-search form:hover {
+  border-color: color-mix(in oklab, var(--color-primary) 32%, var(--color-border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

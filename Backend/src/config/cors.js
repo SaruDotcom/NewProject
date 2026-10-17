@@ -21,17 +21,20 @@ const corsOptions = {
     // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
 
-    const normalizedOrigin = parseOrigin(origin);
+    const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    const isVercel = /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin);
 
     if (
       env.NODE_ENV === 'development' ||
+      isLocalhost ||
+      isVercel ||
       allowedOrigins.includes('*') ||
       allowedOrigins.includes(normalizedOrigin) ||
       allowedOrigins.includes(origin)
     ) {
       return callback(null, true);
     }
-    return callback(new Error(`CORS origin not allowed: ${origin}`));
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -53,6 +53,7 @@ describe('Products & Inventory Test Suite', () => {
       moq: 10,
       categoryId: category._id,
       categoryAttributes: {
+        modelNumber: 'USBC-100W',
         warrantyPeriod: '1 Year Manufacturer Warranty',
       },
       pricingTiers: [
@@ -85,6 +86,7 @@ describe('Products & Inventory Test Suite', () => {
       stock: 10,
       categoryId: category._id,
       categoryAttributes: {
+        modelNumber: 'UNIQUE-1',
         warrantyPeriod: '6 Months Manufacturer Warranty',
       },
     };
@@ -105,6 +107,7 @@ describe('Products & Inventory Test Suite', () => {
         stock: 5,
         categoryId: category._id,
         categoryAttributes: {
+          modelNumber: 'UNIQUE-2',
           warrantyPeriod: '6 Months Manufacturer Warranty',
         },
       });
@@ -128,6 +131,7 @@ describe('Products & Inventory Test Suite', () => {
         wholesalePrice: 50,
         categoryId: category._id,
         categoryAttributes: {
+          modelNumber: 'TEST-ITEM',
           warrantyPeriod: 'No Warranty',
         },
       });

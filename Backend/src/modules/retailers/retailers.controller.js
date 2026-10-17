@@ -17,11 +17,6 @@ class RetailerController {
     return ApiResponse.success(res, data, 'Retailer retrieved successfully');
   });
 
-  createRetailer = asyncHandler(async (req, res) => {
-    const data = await RetailerService.createRetailer(req.body, req.user, req);
-    return ApiResponse.created(res, data, 'Retailer created successfully');
-  });
-
   updateRetailer = asyncHandler(async (req, res) => {
     const data = await RetailerService.updateRetailer(req.params.id, req.body, req.user, req);
     return ApiResponse.success(res, data, 'Retailer updated successfully');
@@ -44,4 +39,3 @@ class RetailerController {
 }
 
 module.exports = new RetailerController();
-

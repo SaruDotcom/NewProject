@@ -6,8 +6,10 @@ const {
   WholesalerProfile,
   RetailerProfile,
   WholesalerRetailerRelationship,
+  Invitation,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
+const { hashToken } = require('../src/utils/crypto');
 
 setupTestDB();
 
@@ -84,16 +86,13 @@ describe('Invitation & One-Retailer-One-Wholesaler Rule Test Suite', () => {
     retailerToken = retLogin.body.data.token;
   });
 
-  test('1. Wholesaler generates invitation token link', async () => {
+  test('legacy invitation creation is disabled for new retailer registrations', async () => {
     const res = await request(app)
       .post('/api/v1/wholesaler/invite-links')
       .set('Authorization', `Bearer ${wholesalerAToken}`)
-      .send({ maxUses: 50, expiresInDays: 14 });
+      .send({});
 
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.token).toBeDefined();
-    expect(res.body.data.inviteUrl).toContain('/join/');
+    expect(res.status).toBe(404);
   });
 
   test('Wholesaler cannot create retailer accounts through the removed manual endpoint', async () => {
@@ -110,19 +109,23 @@ describe('Invitation & One-Retailer-One-Wholesaler Rule Test Suite', () => {
   });
 
   test('2. CRITICAL BUSINESS RULE: Connect Retailer R -> Wholesaler A, then attempt R -> Wholesaler B must return HTTP 409 RETAILER_ALREADY_LINKED', async () => {
-    // Generate Invite for Wholesaler A
-    const inviteARes = await request(app)
-      .post('/api/v1/wholesaler/invite-links')
-      .set('Authorization', `Bearer ${wholesalerAToken}`)
-      .send({});
-    const tokenA = inviteARes.body.data.token;
-
-    // Generate Invite for Wholesaler B
-    const inviteBRes = await request(app)
-      .post('/api/v1/wholesaler/invite-links')
-      .set('Authorization', `Bearer ${wholesalerBToken}`)
-      .send({});
-    const tokenB = inviteBRes.body.data.token;
+    const tokenA = 'legacy-invitation-token-a';
+    const tokenB = 'legacy-invitation-token-b';
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await Invitation.create([
+      {
+        wholesalerId: wholesalerAUser._id,
+        tokenHash: hashToken(tokenA),
+        expiresAt,
+        createdBy: wholesalerAUser._id,
+      },
+      {
+        wholesalerId: wholesalerBUser._id,
+        tokenHash: hashToken(tokenB),
+        expiresAt,
+        createdBy: wholesalerBUser._id,
+      },
+    ]);
 
     // Step 1: Retailer R accepts Wholesaler A's invitation -> Success
     const acceptARes = await request(app)
@@ -155,29 +158,23 @@ describe('Invitation & One-Retailer-One-Wholesaler Rule Test Suite', () => {
     expect(String(activeRelationships[0].wholesalerId)).toBe(String(wholesalerAUser._id));
   });
 
-  test('3. Unapproved wholesaler cannot generate invitation links', async () => {
-    // Set Wholesaler A to DRAFT
-    await WholesalerProfile.findOneAndUpdate(
-      { userId: wholesalerAUser._id },
-      { kycStatus: KYC_STATUS.DRAFT, isVerified: false }
-    );
-
+  test('legacy invitation links cannot be generated', async () => {
     const res = await request(app)
       .post('/api/v1/wholesaler/invite-links')
       .set('Authorization', `Bearer ${wholesalerAToken}`)
       .send({});
 
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe('KYC_APPROVAL_REQUIRED');
+    expect(res.status).toBe(404);
   });
 
   test('4. Expired or revoked invitation link cannot be accepted', async () => {
-    const inviteRes = await request(app)
-      .post('/api/v1/wholesaler/invite-links')
-      .set('Authorization', `Bearer ${wholesalerAToken}`)
-      .send({ expiresInDays: -1 }); // already expired
-
-    const token = inviteRes.body.data.token;
+    const token = 'expired-existing-retailer-invitation';
+    await Invitation.create({
+      wholesalerId: wholesalerAUser._id,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      createdBy: wholesalerAUser._id,
+    });
 
     const acceptRes = await request(app)
       .post(`/api/v1/invitations/${token}/accept`)

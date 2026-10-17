@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, CreditCard, Download, FileSpreadsheet, MoreHorizontal, Search } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ export function PaymentsManagementPage() {
     const [summaryLoading, setSummaryLoading] = useState(true);
     const [error, setError] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
-    const [viewing, setViewing] = useState(null);
+    const navigate = useNavigate();
     const [refundPayment, setRefundPayment] = useState(null);
     const [refundAmount, setRefundAmount] = useState("");
     const [confirmation, setConfirmation] = useState(null);
@@ -133,12 +134,7 @@ export function PaymentsManagementPage() {
             toast.success(`${rows.length} payment${rows.length === 1 ? "" : "s"} exported`);
         } catch (err) { toast.error(err.message || "Unable to export payments"); }
     };
-    const openView = async (row) => {
-        try {
-            const payload = await apiGet(`/admin/payments/${row.id}`);
-            setViewing(payload);
-        } catch (err) { toast.error(err.message || "Unable to load payment details"); }
-    };
+    const openView = (row) => navigate({ to: "/payments/$id", params: { id: String(row.id) } });
     const openRefund = (row) => {
         setRefundPayment(row);
         setRefundAmount(String(row.amount || ""));
@@ -196,111 +192,6 @@ export function PaymentsManagementPage() {
             <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground"><span>Showing {result.items.length ? (page - 1) * 10 + 1 : 0}–{Math.min(page * 10, result.pagination.total)} of {result.pagination.total}</span><div className="flex items-center gap-2"><Button variant="outline" size="icon" disabled={page === 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} aria-label="Previous page"><ChevronLeft /></Button><span>Page {page} of {pages}</span><Button variant="outline" size="icon" disabled={page >= pages || loading} onClick={() => setPage((current) => Math.min(pages, current + 1))} aria-label="Next page"><ChevronRight /></Button></div></div>
             <ConfirmationModal open={Boolean(confirmation)} title={confirmation?.kind === "verify" ? "Verify payment?" : "Refund payment?"} description={confirmation?.kind === "verify" ? "This will mark the payment as paid and update the related order." : `Refund ${money(confirmation?.amount)} for this payment? The related order payment status will be recalculated.`} confirmLabel={confirmation?.kind === "verify" ? "Verify payment" : "Refund payment"} variant={confirmation?.kind === "refund" ? "destructive" : "default"} onCancel={() => !actionLoading && setConfirmation(null)} onConfirm={runAction} />
             <Dialog open={Boolean(refundPayment)} onOpenChange={(open) => !open && setRefundPayment(null)}><DialogContent><DialogHeader><DialogTitle>Refund payment</DialogTitle><DialogDescription>Enter an amount up to the remaining paid amount of {money(refundPayment?.amount)}.</DialogDescription></DialogHeader><Input type="number" min="0.01" max={refundPayment?.amount || undefined} value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setRefundPayment(null)}>Cancel</Button><Button variant="destructive" onClick={requestRefund}>Continue</Button></DialogFooter></DialogContent></Dialog>
-            <Dialog open={Boolean(viewing)} onOpenChange={(open) => !open && setViewing(null)}>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="text-lg font-extrabold text-foreground">Payment Details</DialogTitle>
-                  <DialogDescription className="text-xs font-mono">
-                    Ref: {viewing?.payment?.transactionRef || viewing?.payment?.id || "—"}
-                  </DialogDescription>
-                </DialogHeader>
-
-                {viewing && (
-                  <div className="space-y-5 py-2">
-                    {/* Key Metrics Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/30 p-4 rounded-xl border text-xs">
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-bold">Total Amount</span>
-                        <strong className="text-base font-black text-primary">{money(viewing.payment?.amount)}</strong>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-bold">Payment Method</span>
-                        <span className="font-extrabold text-foreground">{methodLabels[viewing.payment?.method] || viewing.payment?.method || "—"}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-bold">Status</span>
-                        <StatusBadge status={statusLabels[viewing.payment?.status] || viewing.payment?.status} />
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block text-[10px] uppercase font-bold">Payment Timing</span>
-                        <span className="font-bold text-foreground">{date(viewing.payment?.createdAt)}</span>
-                      </div>
-                    </div>
-
-                    {/* Parties Info Grid */}
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <div className="border rounded-xl p-3.5 space-y-1.5 text-xs bg-card">
-                        <div className="font-extrabold text-muted-foreground uppercase text-[10px] tracking-wider border-b pb-1">Retailer Store</div>
-                        <p className="font-bold text-sm text-foreground">{viewing.payment?.order?.retailer?.businessName || viewing.order?.retailer?.businessName || "—"}</p>
-                        <p className="text-muted-foreground">{viewing.payment?.order?.retailer?.name || viewing.order?.retailer?.name || "—"}</p>
-                        <p className="text-muted-foreground">{viewing.payment?.order?.retailer?.email || viewing.order?.retailer?.email || "—"}</p>
-                        {viewing.payment?.order?.retailer?.phone && <p className="text-muted-foreground">Phone: {viewing.payment?.order?.retailer?.phone}</p>}
-                      </div>
-
-                      <div className="border rounded-xl p-3.5 space-y-1.5 text-xs bg-card">
-                        <div className="font-extrabold text-muted-foreground uppercase text-[10px] tracking-wider border-b pb-1">Wholesaler Store</div>
-                        <p className="font-bold text-sm text-foreground">{viewing.payment?.order?.wholesaler?.businessName || viewing.order?.wholesaler?.businessName || "—"}</p>
-                        <p className="text-muted-foreground">{viewing.payment?.order?.wholesaler?.name || viewing.order?.wholesaler?.name || "—"}</p>
-                        <p className="text-muted-foreground">{viewing.payment?.order?.wholesaler?.email || viewing.order?.wholesaler?.email || "—"}</p>
-                        {viewing.payment?.order?.wholesaler?.phone && <p className="text-muted-foreground">Phone: {viewing.payment?.order?.wholesaler?.phone}</p>}
-                      </div>
-                    </div>
-
-                    {/* Order & Items Breakdown */}
-                    <div className="space-y-2 border-t pt-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-extrabold text-xs text-foreground uppercase tracking-wider">
-                          Order Breakdown (Order #{viewing.order?.orderNo || viewing.payment?.order?.orderNo || "—"})
-                        </h4>
-                        <span className="text-xs text-muted-foreground font-semibold">
-                          {(viewing.order?.items || []).length} Product Line(s)
-                        </span>
-                      </div>
-
-                      {viewing.order?.items?.length > 0 ? (
-                        <div className="border rounded-xl overflow-hidden text-xs">
-                          <table className="w-full text-left">
-                            <thead className="bg-muted/50 border-b font-bold text-muted-foreground uppercase text-[10px]">
-                              <tr>
-                                <th className="p-2.5">Product</th>
-                                <th className="p-2.5">SKU</th>
-                                <th className="p-2.5 text-center">Quantity</th>
-                                <th className="p-2.5 text-right">Price / Unit</th>
-                                <th className="p-2.5 text-right">Line Total</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                              {viewing.order.items.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-muted/20">
-                                  <td className="p-2.5 font-bold text-foreground">{item.productName || item.product?.name || "Product"}</td>
-                                  <td className="p-2.5 font-mono text-[11px] text-muted-foreground">{item.sku || item.product?.sku || "—"}</td>
-                                  <td className="p-2.5 text-center font-bold">{item.quantity} {item.unit || "Pcs"}</td>
-                                  <td className="p-2.5 text-right font-medium">{money(item.pricePerUnit)}</td>
-                                  <td className="p-2.5 text-right font-black text-foreground">{money(item.totalPrice)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded-xl">
-                          No order line items attached to this payment record.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <DialogFooter className="border-t pt-3">
-                  <Button variant="outline" onClick={() => setViewing(null)}>Close</Button>
-                  {viewing && (
-                    <Button onClick={() => downloadReceipt(viewing.payment || viewing)}>
-                      <Download className="mr-1.5 size-4" /> Download Receipt
-                    </Button>
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
         </section>
     </div>;
 }

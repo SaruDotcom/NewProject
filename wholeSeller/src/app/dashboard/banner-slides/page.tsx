@@ -61,11 +61,16 @@ const DEFAULT_PRESET_IMAGES = [
 ];
 
 const GRADIENT_OPTIONS = [
-  { label: 'Crimson Red', value: 'from-red-900 via-rose-900 to-slate-900' },
-  { label: 'Royal Emerald', value: 'from-emerald-950 via-teal-900 to-slate-900' },
-  { label: 'Deep Indigo', value: 'from-indigo-950 via-purple-900 to-slate-900' },
-  { label: 'Sunset Gold', value: 'from-amber-950 via-orange-900 to-slate-900' },
+  { label: 'Navy & Green', value: 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy' },
+  { label: 'Growth Green', value: 'from-tradeflow-navy via-green-700 to-tradeflow-green' },
+  { label: 'Sky & Navy', value: 'from-tradeflow-navy via-tradeflow-sky to-tradeflow-navy' },
+  { label: 'Amber & Navy', value: 'from-tradeflow-navy via-amber-700 to-tradeflow-navy' },
 ];
+
+const getTradeflowGradient = (gradient: string) =>
+  gradient.includes('tradeflow-')
+    ? gradient
+    : 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy';
 
 export const INITIAL_SLIDES: BannerSlide[] = [
   {
@@ -77,7 +82,7 @@ export const INITIAL_SLIDES: BannerSlide[] = [
     imageUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=1200&q=80',
     targetCategory: 'Clothing',
     discountBadge: '35% EXTRA MARGIN',
-    gradient: 'from-red-900 via-rose-900 to-slate-900',
+    gradient: 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy',
     isActive: true,
     targetRetailers: 'ALL',
     createdAt: new Date().toISOString(),
@@ -91,7 +96,7 @@ export const INITIAL_SLIDES: BannerSlide[] = [
     imageUrl: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=1200&q=80',
     targetCategory: 'Electronics',
     discountBadge: 'FLAT ₹500 OFF',
-    gradient: 'from-indigo-950 via-purple-900 to-slate-900',
+    gradient: 'from-tradeflow-navy via-tradeflow-sky to-tradeflow-navy',
     isActive: true,
     targetRetailers: 'ALL',
     createdAt: new Date().toISOString(),
@@ -105,7 +110,7 @@ export const INITIAL_SLIDES: BannerSlide[] = [
     imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80',
     targetCategory: 'Grocery & Staples',
     discountBadge: 'FREE DELIVERY',
-    gradient: 'from-emerald-950 via-teal-900 to-slate-900',
+    gradient: 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy',
     isActive: true,
     targetRetailers: 'ALL',
     createdAt: new Date().toISOString(),
@@ -252,8 +257,8 @@ export default function BannerSlidesPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-[#1F1F1F]">Retailer Banner Slides & Marketing</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-purple-100 text-purple-800 border border-purple-200">
+            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Retailer Banner Slides & Marketing</h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-tradeflow-sky-50 text-tradeflow-navy border border-tradeflow-sky/30">
               Live Storefront Preview
             </span>
           </div>
@@ -264,18 +269,18 @@ export default function BannerSlidesPage() {
 
         <button
           onClick={handleOpenCreateModal}
-          className="px-4 py-2.5 bg-[#C62828] text-white font-bold text-xs rounded-xl hover:bg-[#B71C1C] transition-all shadow-md flex items-center gap-2"
+          className="px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> Create New Banner Slide
         </button>
       </div>
 
       {/* Live Storefront Interactive Preview Slider */}
-      <div className="bg-white rounded-2xl p-5 border border-[#E5E5E5] shadow-xs space-y-3">
+      <div className="bg-white rounded-2xl p-5 border border-tradeflow-gray-200 shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Eye className="w-5 h-5 text-purple-600" />
-            <h2 className="text-sm font-bold text-[#1F1F1F]">Retailer Storefront Live Banner Preview</h2>
+            <Eye className="w-5 h-5 text-tradeflow-sky" />
+            <h2 className="text-sm font-bold text-tradeflow-navy">Retailer Storefront Live Banner Preview</h2>
           </div>
           <span className="text-xs text-gray-500 font-semibold">
             {activeSlides.length} Active Slide{activeSlides.length === 1 ? '' : 's'} Displaying to Retailers
@@ -290,7 +295,7 @@ export default function BannerSlidesPage() {
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className={`absolute inset-0 bg-gradient-to-r ${currentPreview.gradient} opacity-90`} />
+            <div className={`absolute inset-0 bg-gradient-to-r ${getTradeflowGradient(currentPreview.gradient)} opacity-90`} />
 
             {/* Slide Header Badges */}
             <div className="relative z-10 flex items-center justify-between">
@@ -300,7 +305,7 @@ export default function BannerSlidesPage() {
               </span>
 
               {currentPreview.discountBadge && (
-                <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-400 text-purple-950 shadow-md">
+                <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-400 text-tradeflow-navy shadow-md">
                   {currentPreview.discountBadge}
                 </span>
               )}
@@ -316,7 +321,7 @@ export default function BannerSlidesPage() {
               </p>
 
               <div className="pt-4 flex items-center gap-3">
-                <div className="px-5 py-2.5 bg-white text-purple-950 font-extrabold text-xs rounded-xl shadow-lg flex items-center gap-2 hover:bg-gray-100 transition-all">
+                <div className="px-5 py-2.5 bg-white text-tradeflow-navy font-extrabold text-xs rounded-xl shadow-lg flex items-center gap-2 hover:bg-tradeflow-gray-50 transition-all">
                   <span>{currentPreview.buttonText || 'Shop Trade Deals'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </div>
@@ -367,8 +372,8 @@ export default function BannerSlidesPage() {
 
       {/* Managed Banner Slides Grid */}
       <div className="space-y-4">
-        <h2 className="text-base font-extrabold text-[#1F1F1F] flex items-center gap-2">
-          <Layers className="w-5 h-5 text-[#C62828]" />
+        <h2 className="text-base font-extrabold text-tradeflow-navy flex items-center gap-2">
+          <Layers className="w-5 h-5 text-green-700" />
           <span>All Published Wholesaler Banner Slides ({slides.length})</span>
         </h2>
 
@@ -377,13 +382,13 @@ export default function BannerSlidesPage() {
             <div
               key={slide.id}
               className={`bg-white rounded-2xl border transition-all flex flex-col justify-between overflow-hidden ${
-                slide.isActive ? 'border-[#E5E5E5] shadow-xs' : 'border-gray-200 opacity-60 bg-gray-50'
+                slide.isActive ? 'border-tradeflow-gray-200 shadow-xs' : 'border-gray-200 opacity-60 bg-gray-50'
               }`}
             >
               {/* Image Preview Header */}
               <div className="relative h-40 overflow-hidden bg-gray-100">
                 <img src={slide.imageUrl} alt="" className="w-full h-full object-cover" />
-                <div className={`absolute inset-0 bg-gradient-to-t ${slide.gradient} opacity-80`} />
+                <div className={`absolute inset-0 bg-gradient-to-t ${getTradeflowGradient(slide.gradient)} opacity-80`} />
                 <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-white/20 backdrop-blur-xs text-white border border-white/20">
                     {slide.badgeText || 'SLIDE'}
@@ -417,11 +422,11 @@ export default function BannerSlidesPage() {
                   </div>
                   <div className="flex justify-between">
                     <span>Target Category:</span>
-                    <strong className="text-[#1F1F1F] font-semibold">{slide.targetCategory}</strong>
+                    <strong className="text-tradeflow-navy font-semibold">{slide.targetCategory}</strong>
                   </div>
                   <div className="flex justify-between">
                     <span>Target Retailers:</span>
-                    <strong className="text-purple-700 font-semibold">
+                    <strong className="text-tradeflow-navy font-semibold">
                       {slide.targetRetailers === 'ALL' ? 'All Connected Retailers' : slide.targetRetailers}
                     </strong>
                   </div>
@@ -437,7 +442,7 @@ export default function BannerSlidesPage() {
                   </button>
                   <button
                     onClick={() => handleDeleteSlide(slide.id)}
-                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all"
+                    className="p-1.5 text-status-danger hover:text-red-700 hover:bg-red-50 rounded-lg transition-all"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -451,10 +456,10 @@ export default function BannerSlidesPage() {
       {/* CREATE / EDIT SLIDE MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 border border-[#E5E5E5] shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
-              <h3 className="text-base font-bold text-[#1F1F1F] flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-[#C62828]" />
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 border border-tradeflow-gray-200 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
+              <h3 className="text-base font-bold text-tradeflow-navy flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-green-700" />
                 <span>{editingSlide ? 'Edit Banner Slide' : 'Create Wholesaler Banner Slide'}</span>
               </h3>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 font-bold">
@@ -471,7 +476,7 @@ export default function BannerSlidesPage() {
                   placeholder="e.g. Festive B2B Stock-Up Fair"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] font-semibold text-xs"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 font-semibold text-xs"
                 />
               </div>
 
@@ -482,7 +487,7 @@ export default function BannerSlidesPage() {
                   placeholder="e.g. Get up to 35% extra margin on bulk Saree & Kurti cases!"
                   value={form.subtitle}
                   onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] text-xs"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 text-xs"
                 />
               </div>
 
@@ -494,7 +499,7 @@ export default function BannerSlidesPage() {
                     placeholder="e.g. FESTIVE SPECIAL"
                     value={form.badgeText}
                     onChange={(e) => setForm({ ...form, badgeText: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] text-xs uppercase"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 text-xs uppercase"
                   />
                 </div>
 
@@ -505,7 +510,7 @@ export default function BannerSlidesPage() {
                     placeholder="e.g. UP TO 35% OFF"
                     value={form.discountBadge}
                     onChange={(e) => setForm({ ...form, discountBadge: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] text-xs font-bold text-emerald-700 uppercase"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 text-xs font-bold text-emerald-700 uppercase"
                   />
                 </div>
               </div>
@@ -516,7 +521,7 @@ export default function BannerSlidesPage() {
                   <select
                     value={form.targetCategory}
                     onChange={(e) => setForm({ ...form, targetCategory: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] text-xs font-semibold"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 text-xs font-semibold"
                   >
                     <option value="All">All Products</option>
                     {categories.map((c) => (
@@ -534,7 +539,7 @@ export default function BannerSlidesPage() {
                     placeholder="e.g. Shop Wholesale Deals"
                     value={form.buttonText}
                     onChange={(e) => setForm({ ...form, buttonText: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] text-xs font-bold"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 text-xs font-bold"
                   />
                 </div>
               </div>
@@ -550,7 +555,7 @@ export default function BannerSlidesPage() {
                       onClick={() => setForm({ ...form, imageUrl: preset.url })}
                       className={`p-1.5 rounded-lg border text-left text-[10px] transition-all overflow-hidden ${
                         form.imageUrl === preset.url
-                          ? 'border-[#C62828] bg-red-50 font-bold'
+                          ? 'border-tradeflow-green bg-tradeflow-green-50 font-bold'
                           : 'border-gray-200 bg-gray-50'
                       }`}
                     >
@@ -564,7 +569,7 @@ export default function BannerSlidesPage() {
                   placeholder="https://..."
                   value={form.imageUrl}
                   onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-[#FAF9F7] text-xs font-mono"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-tradeflow-gray-50 text-xs font-mono"
                 />
               </div>
 
@@ -577,8 +582,8 @@ export default function BannerSlidesPage() {
                       key={g.label}
                       type="button"
                       onClick={() => setForm({ ...form, gradient: g.value })}
-                      className={`p-2.5 rounded-xl border text-center text-xs font-bold text-white transition-all bg-gradient-to-r ${g.value} ${
-                        form.gradient === g.value ? 'ring-2 ring-purple-600 border-white' : 'opacity-80'
+                      className={`p-2.5 rounded-xl border text-center text-xs font-bold text-white transition-all bg-gradient-to-r ${getTradeflowGradient(g.value)} ${
+                        form.gradient === g.value ? 'ring-2 ring-tradeflow-green border-white' : 'opacity-80'
                       }`}
                     >
                       {g.label}
@@ -597,7 +602,7 @@ export default function BannerSlidesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#C62828] text-white font-bold rounded-xl hover:bg-[#B71C1C] shadow-md"
+                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md"
                 >
                   {editingSlide ? 'Save Changes' : 'Publish Banner Slide'}
                 </button>

@@ -20,11 +20,14 @@ import { Route as RelationshipsRouteImport } from "./routes/relationships";
 import { Route as ReportsRouteImport } from "./routes/reports";
 import { Route as RetailersRouteImport } from "./routes/retailers";
 import { Route as ReviewsRouteImport } from "./routes/reviews";
+import { Route as SupportRouteImport } from "./routes/support";
 import { Route as TransactionsRouteImport } from "./routes/transactions";
 import { Route as WholesalersRouteImport } from "./routes/wholesalers";
+import { Route as WholesalerInvitesRouteImport } from "./routes/wholesaler-invites";
 import { Route as ActivityRouteImport } from "./routes/activity";
 import { Route as SettingsRouteImport } from "./routes/settings";
 import { Route as OrdersIdRouteImport } from "./routes/orders.$id";
+import { Route as PaymentsIdRouteImport } from "./routes/payments.$id";
 import { Route as ProductsIdRouteImport } from "./routes/products.$id";
 import { Route as RetailersIdRouteImport } from "./routes/retailers.$id";
 import { Route as WholesalersIdRouteImport } from "./routes/wholesalers.$id";
@@ -109,6 +112,11 @@ const ReviewsRoute = ReviewsRouteImport.update({
   path: "/reviews",
   getParentRoute: () => rootRouteImport,
 });
+const SupportRoute = SupportRouteImport.update({
+  id: "/support",
+  path: "/support",
+  getParentRoute: () => rootRouteImport,
+});
 const TransactionsRoute = TransactionsRouteImport.update({
   id: "/transactions",
   path: "/transactions",
@@ -117,6 +125,11 @@ const TransactionsRoute = TransactionsRouteImport.update({
 const WholesalersRoute = WholesalersRouteImport.update({
   id: "/wholesalers",
   path: "/wholesalers",
+  getParentRoute: () => rootRouteImport,
+});
+const WholesalerInvitesRoute = WholesalerInvitesRouteImport.update({
+  id: "/wholesaler-invites",
+  path: "/wholesaler-invites",
   getParentRoute: () => rootRouteImport,
 });
 const ActivityRoute = ActivityRouteImport.update({
@@ -133,6 +146,11 @@ const OrdersIdRoute = OrdersIdRouteImport.update({
   id: "/$id",
   path: "/$id",
   getParentRoute: () => OrdersRoute,
+});
+const PaymentsIdRoute = PaymentsIdRouteImport.update({
+  id: "/payments/$id",
+  path: "/payments/$id",
+  getParentRoute: () => rootRouteImport,
 });
 const ProductsIdRoute = ProductsIdRouteImport.update({
   id: "/$id",
@@ -189,13 +207,16 @@ const rootRouteChildren = {
   NotificationsRoute: NotificationsRoute,
   OrdersRoute: OrdersRouteWithChildren,
   PaymentsRoute: PaymentsRoute,
+  PaymentsIdRoute: PaymentsIdRoute,
   ProductsRoute: ProductsRouteWithChildren,
   RelationshipsRoute: RelationshipsRouteWithChildren,
   ReportsRoute: ReportsRoute,
   RetailersRoute: RetailersRouteWithChildren,
   ReviewsRoute: ReviewsRoute,
+  SupportRoute: SupportRoute,
   TransactionsRoute: TransactionsRoute,
   WholesalersRoute: WholesalersRoute,
+  WholesalerInvitesRoute: WholesalerInvitesRoute,
   WholesalersIdRoute: WholesalersIdRoute,
   ActivityRoute: ActivityRoute,
   SettingsRoute: SettingsRoute,

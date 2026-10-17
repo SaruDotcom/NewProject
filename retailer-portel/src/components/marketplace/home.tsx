@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useStore } from "@/state/store";
 import { ProductGrid, SectionHeading, WholesalerCard } from "./primitives";
 import { categoryImages } from "./storefront";
+import { CategoryCard } from "./CategoryCard";
 import { WholesalerBannerCarousel } from "./WholesalerBannerCarousel";
 
 const trustSignals: Array<[typeof VerifiedUser, string, string]> = [
@@ -121,47 +122,21 @@ export function HomePage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:gap-8">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:gap-8">
             {connectedCategories.slice(0, 6).map((c, i) => {
               const catProductsCount = connectedProducts.filter((p) => p.category === c.name).length;
-              const lead = i === 0;
               return (
-                <Link
+                <CategoryCard
                   key={c.id}
-                  to="/products"
-                  search={{ category: c.name }}
-                  aria-label={`Find ${c.name} trade products`}
-                  className="group relative flex h-full min-h-72 sm:min-h-76 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg focus-visible:border-primary focus-visible:outline-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
-                  style={{ animationDelay: `${i * 70}ms` }}
-                >
-                  <div className="relative h-40 sm:h-44 shrink-0 overflow-hidden bg-[#f4f3f0]">
-                    <img
-                      src={c.imageUrl || categoryImages[c.name] || categoryImages["Grocery & Staples"]}
-                      alt=""
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/5 to-transparent" />
-                    {lead && (
-                      <span className="absolute left-4 top-4 rounded-sm bg-primary px-2.5 py-1 text-[10px] font-bold uppercase text-primary-foreground">
-                        Popular
-                      </span>
-                    )}
-                    <h3 className="absolute inset-x-5 bottom-4 text-xl font-extrabold leading-tight text-primary-foreground">
-                      {c.name}
-                    </h3>
-                  </div>
-                  <div className="flex flex-1 flex-col p-4 sm:p-5">
-                    <p className="text-xs leading-relaxed text-muted-foreground line-clamp-2">
-                      {c.description}
-                    </p>
-                    <span className="mt-auto inline-flex w-fit items-center gap-1.5 pt-4 text-xs sm:text-sm font-bold text-primary">
-                      <span className="border-b border-primary/35 pb-0.5 transition-colors group-hover:border-primary">
-                        Browse {catProductsCount} trade products
-                      </span>
-                      <ChevronRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
-                    </span>
-                  </div>
-                </Link>
+                  name={c.name}
+                  imageUrl={c.imageUrl || categoryImages[c.name] || categoryImages["Grocery & Staples"]}
+                  description={c.description}
+                  subcategories={categories.filter((child) => child.parentId === c.id).map((child) => child.name)}
+                  itemCount={catProductsCount}
+                  badge={i === 0 ? "Popular" : undefined}
+                  actionLabel={`Browse ${catProductsCount} trade products`}
+                  animationDelay={i * 70}
+                />
               );
             })}
             {connectedCategories.length === 0 && (

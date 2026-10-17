@@ -56,6 +56,7 @@ const addressSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

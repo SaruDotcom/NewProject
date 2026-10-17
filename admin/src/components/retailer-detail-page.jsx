@@ -178,7 +178,7 @@ export function RetailerDetailPage() {
                         <Button
                             variant="outline"
                             onClick={openChangeWholesaler}
-                            className="border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                            className="border-status-info/30 bg-status-info-50 text-status-info-foreground hover:bg-tradeflow-sky-100"
                         >
                             <Building2 className="size-4 mr-1.5" /> Change Wholesaler
                         </Button>

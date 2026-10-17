@@ -13,7 +13,6 @@ import {
   Sliders,
   AlertTriangle,
   CheckCircle2,
-  Package,
   Layers,
   X,
   Search,
@@ -30,7 +29,8 @@ import {
   FileText
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
-import { Product, Order, ReturnRequest, InventoryLog, WholesaleTier, CustomAttribute } from '@/lib/mock-data';
+import { ProductImage } from '@/components/products/ProductImage';
+import { Product, Order, ReturnRequest, InventoryLog, WholesaleTier, CustomAttribute } from '@/lib/types';
 import api from '@/lib/api';
 
 export default function ProductDetailPage() {
@@ -73,6 +73,7 @@ export default function ProductDetailPage() {
   const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
   const [description, setDescription] = useState(product?.description || '');
   const [formError, setFormError] = useState<string | null>(null);
+  const [formFieldErrors, setFormFieldErrors] = useState<Array<{ field: string; message: string }>>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   // Synchronize edit form when product loads/changes
@@ -382,6 +383,7 @@ export default function ProductDetailPage() {
     e.preventDefault();
     if (!product) return;
     setFormError(null);
+    setFormFieldErrors([]);
     setIsSaving(true);
 
     try {
@@ -400,6 +402,7 @@ export default function ProductDetailPage() {
       setShowEditModal(false);
     } catch (err: any) {
       setFormError(err?.message || 'Failed to update product details');
+      setFormFieldErrors(Array.isArray(err?.errors) ? err.errors : []);
     } finally {
       setIsSaving(false);
     }
@@ -419,14 +422,14 @@ export default function ProductDetailPage() {
   if (!product) {
     return (
       <div className="p-8 text-center space-y-4">
-        <div className="w-16 h-16 bg-red-50 text-[#C62828] rounded-2xl flex items-center justify-center mx-auto">
+        <div className="w-16 h-16 bg-status-danger-50 text-status-danger rounded-2xl flex items-center justify-center mx-auto">
           <AlertCircle className="w-8 h-8" />
         </div>
-        <h2 className="text-xl font-bold text-[#1F1F1F]">Product Not Found</h2>
+        <h2 className="text-xl font-bold text-tradeflow-navy">Product Not Found</h2>
         <p className="text-xs text-gray-500">The product you are attempting to view does not exist or has been removed.</p>
         <Link
           to="/dashboard/inventory"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#C62828] text-white text-xs font-bold rounded-xl hover:bg-[#B71C1C]"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Inventory Table</span>
@@ -444,16 +447,16 @@ export default function ProductDetailPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-            <Link to="/dashboard/inventory" className="hover:text-[#C62828] transition-colors flex items-center gap-1 font-bold">
+            <Link to="/dashboard/inventory" className="hover:text-green-700 transition-colors flex items-center gap-1 font-bold">
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Inventory Stock Table</span>
             </Link>
             <span>/</span>
             <span className="text-gray-700 font-bold truncate max-w-[200px]">{product.title}</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-[#1F1F1F] flex items-center gap-2">
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy flex items-center gap-2">
             <span>{product.title}</span>
-            <span className="text-xs font-mono px-2.5 py-0.5 rounded-md bg-[#FAF9F7] text-gray-600 border border-[#E5E5E5]">
+            <span className="text-xs font-mono px-2.5 py-0.5 rounded-md bg-tradeflow-gray-50 text-gray-600 border border-tradeflow-gray-200">
               SKU: {product.sku}
             </span>
           </h1>
@@ -463,15 +466,15 @@ export default function ProductDetailPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowAdjustModal(true)}
-            className="px-3.5 py-2 bg-white border border-[#E5E5E5] hover:border-[#C62828] hover:text-[#C62828] text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-white border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
           >
-            <Sliders className="w-4 h-4 text-[#C62828]" />
+            <Sliders className="w-4 h-4 text-green-700" />
             <span>Adjust Stock</span>
           </button>
 
           <button
             onClick={() => setShowEditModal(true)}
-            className="px-4 py-2 bg-[#C62828] text-white text-xs font-bold rounded-xl hover:bg-[#B71C1C] shadow-xs transition-all flex items-center gap-1.5"
+            className="px-4 py-2 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all flex items-center gap-1.5"
           >
             <Edit className="w-4 h-4" />
             <span>Edit Product</span>
@@ -482,25 +485,21 @@ export default function ProductDetailPage() {
       {/* SECTION 1: PRODUCT SUMMARY TOP CARDS & BADGES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Image, Stock Badge & Basic Info */}
-        <div className="bg-white rounded-2xl border border-[#E5E5E5] p-5 shadow-xs flex flex-col sm:flex-row lg:flex-col items-center gap-5">
-          <div className="w-full sm:w-48 lg:w-full h-52 bg-[#FAF9F7] rounded-xl border border-[#E5E5E5] overflow-hidden relative flex items-center justify-center p-3 shrink-0">
-            {product.imageUrl ? (
-              <img src={product.imageUrl} alt={product.title} className="w-full h-full object-contain" />
-            ) : (
-              <Package className="w-16 h-16 text-gray-300" />
-            )}
+        <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-5 shadow-xs flex flex-col sm:flex-row lg:flex-col items-center gap-5">
+          <div className="w-full sm:w-48 lg:w-full h-52 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 overflow-hidden relative flex items-center justify-center p-3 shrink-0">
+            <ProductImage src={product.imageUrl} alt={product.title} className="w-full h-full object-contain" />
             <div className="absolute top-2 right-2">
               {isOutOfStock ? (
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-red-50 text-red-600 border border-red-200">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-amber-50 text-amber-800 border border-amber-200">
                   Out of Stock (0)
                 </span>
               ) : isLowStock ? (
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-[#FFF8E1] text-[#F9A825] border border-[#FFE082] flex items-center gap-1">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-amber-50 text-amber-500 border border-amber-200 flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
                   <span>Low Stock ({product.stock})</span>
                 </span>
               ) : (
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green-50 text-status-success border border-status-success/20">
                   In Stock ({product.stock})
                 </span>
               )}
@@ -508,17 +507,17 @@ export default function ProductDetailPage() {
           </div>
 
           <div className="space-y-2 w-full text-xs">
-            <div className="flex items-center justify-between border-b border-[#E5E5E5] pb-2">
+            <div className="flex items-center justify-between border-b border-tradeflow-gray-200 pb-2">
               <span className="text-gray-400 font-bold uppercase text-[10px]">Category</span>
-              <span className="font-bold text-[#1F1F1F] bg-[#FAF9F7] px-2 py-0.5 rounded border border-[#E5E5E5]">
+              <span className="font-bold text-tradeflow-navy bg-tradeflow-gray-50 px-2 py-0.5 rounded border border-tradeflow-gray-200">
                 {product.category}
               </span>
             </div>
-            <div className="flex items-center justify-between border-b border-[#E5E5E5] pb-2">
+            <div className="flex items-center justify-between border-b border-tradeflow-gray-200 pb-2">
               <span className="text-gray-400 font-bold uppercase text-[10px]">Minimum Order Qty (MOQ)</span>
-              <span className="font-bold text-[#C62828] font-mono">{product.minOrderQty || 1} units</span>
+              <span className="font-bold text-tradeflow-navy font-mono">{product.minOrderQty || 1} units</span>
             </div>
-            <div className="flex items-center justify-between border-b border-[#E5E5E5] pb-2">
+            <div className="flex items-center justify-between border-b border-tradeflow-gray-200 pb-2">
               <span className="text-gray-400 font-bold uppercase text-[10px]">Active Wholesaler Buyers</span>
               <span className="font-bold text-gray-800">{metrics.uniqueRetailersCount} Retailers</span>
             </div>
@@ -528,48 +527,48 @@ export default function ProductDetailPage() {
 
         {/* Right 2 Columns: 6 Financial Performance Metric Cards */}
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs space-y-1">
+          <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Current Stock Inventory</span>
-            <div className="text-2xl font-extrabold text-[#1F1F1F]">{product.stock.toLocaleString()} units</div>
+            <div className="text-2xl font-extrabold text-tradeflow-navy">{product.stock.toLocaleString()} units</div>
             <div className="text-[11px] text-gray-500 font-medium">Valued at {formatCurrency(metrics.totalStockCost)} (Cost)</div>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs space-y-1">
+          <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cost Price vs Selling Price</span>
-            <div className="text-base font-extrabold text-[#1F1F1F] flex items-center gap-1 font-mono">
+            <div className="text-base font-extrabold text-tradeflow-navy flex items-center gap-1 font-mono">
               <span>{formatCurrency(metrics.costPrice)}</span>
               <span className="text-gray-400">→</span>
-              <span className="text-[#C62828]">{formatCurrency(metrics.sellingPrice)}</span>
+              <span className="text-tradeflow-navy">{formatCurrency(metrics.sellingPrice)}</span>
             </div>
-            <div className="text-[11px] font-bold text-[#2E7D32]">
+            <div className="text-[11px] font-bold text-status-success">
               Unit Profit: +{formatCurrency(metrics.unitMargin)} ({metrics.marginPercent.toFixed(1)}%)
             </div>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs space-y-1">
+          <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Lifetime Units Sold</span>
-            <div className="text-2xl font-extrabold text-[#1F1F1F]">{metrics.unitsSold.toLocaleString()} units</div>
+            <div className="text-2xl font-extrabold text-tradeflow-navy">{metrics.unitsSold.toLocaleString()} units</div>
             <div className="text-[11px] text-gray-500 font-medium">Across {metrics.fulfilledOrdersCount} fulfilled order(s)</div>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs space-y-1">
+          <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Revenue Generated</span>
-            <div className="text-2xl font-extrabold text-[#C62828]">{formatCurrency(metrics.totalRevenue)}</div>
+            <div className="text-2xl font-extrabold text-tradeflow-navy">{formatCurrency(metrics.totalRevenue)}</div>
             <div className="text-[11px] text-gray-500 font-medium">{metrics.unitsSold} units × {formatCurrency(metrics.sellingPrice)}</div>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs space-y-1">
+          <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Lifetime Profit</span>
-            <div className="text-2xl font-extrabold text-[#2E7D32]">{formatCurrency(metrics.totalProfit)}</div>
+            <div className="text-2xl font-extrabold text-status-success">{formatCurrency(metrics.totalProfit)}</div>
             <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
               <TrendingUp className="w-3.5 h-3.5" />
               <span>Net profit from completed orders</span>
             </div>
           </div>
 
-          <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs space-y-1">
+          <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Orders Fulfilled</span>
-            <div className="text-2xl font-extrabold text-[#1F1F1F]">{metrics.fulfilledOrdersCount} orders</div>
+            <div className="text-2xl font-extrabold text-tradeflow-navy">{metrics.fulfilledOrdersCount} orders</div>
             <div className="text-[11px] text-gray-500 font-medium">Confirmed / Shipped / Delivered</div>
           </div>
         </div>
@@ -578,13 +577,13 @@ export default function ProductDetailPage() {
       {/* SECTION 4 & 5: TOP RETAILERS + RETURNS & CANCELLATIONS (2 Column Grid) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* SECTION 4: TOP RETAILERS FOR THIS PRODUCT */}
-        <div className="bg-white rounded-2xl border border-[#E5E5E5] p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
+        <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
             <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-[#C62828]" />
-              <h3 className="font-bold text-sm text-[#1F1F1F]">Top Retailers for this Product</h3>
+              <Building2 className="w-4 h-4 text-green-700" />
+              <h3 className="font-bold text-sm text-tradeflow-navy">Top Retailers for this Product</h3>
             </div>
-            <span className="text-[10px] bg-[#FAF9F7] text-gray-500 font-mono px-2 py-0.5 rounded border border-[#E5E5E5]">
+            <span className="text-[10px] bg-tradeflow-gray-50 text-gray-500 font-mono px-2 py-0.5 rounded border border-tradeflow-gray-200">
               Ranked by Volume
             </span>
           </div>
@@ -594,13 +593,13 @@ export default function ProductDetailPage() {
           ) : (
             <div className="space-y-2.5">
               {topRetailers.map((ret, idx) => (
-                <div key={idx} className="p-3 bg-[#FAF9F7] rounded-xl border border-[#E5E5E5] flex items-center justify-between text-xs">
+                <div key={idx} className="p-3 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-full bg-[#C62828]/10 text-[#C62828] font-extrabold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-6 h-6 rounded-full bg-tradeflow-green/10 text-green-700 font-extrabold text-xs flex items-center justify-center shrink-0">
                       #{idx + 1}
                     </span>
                     <div>
-                      <div className="font-bold text-[#1F1F1F]">{ret.businessName}</div>
+                      <div className="font-bold text-tradeflow-navy">{ret.businessName}</div>
                       <div className="text-[10px] text-gray-500">
                         {ret.contactPerson} · {ret.city}
                       </div>
@@ -608,7 +607,7 @@ export default function ProductDetailPage() {
                   </div>
 
                   <div className="text-right">
-                    <div className="font-extrabold text-[#C62828]">{ret.totalUnits} units</div>
+                    <div className="font-extrabold text-tradeflow-navy">{ret.totalUnits} units</div>
                     <div className="text-[10px] font-mono text-gray-500">{formatCurrency(ret.totalRevenue)} total</div>
                   </div>
                 </div>
@@ -618,13 +617,13 @@ export default function ProductDetailPage() {
         </div>
 
         {/* SECTION 5: RETURNS & CANCELLATIONS */}
-        <div className="bg-white rounded-2xl border border-[#E5E5E5] p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
+        <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
             <div className="flex items-center gap-2">
               <RotateCcw className="w-4 h-4 text-amber-600" />
-              <h3 className="font-bold text-sm text-[#1F1F1F]">Returns & Cancelled Orders</h3>
+              <h3 className="font-bold text-sm text-tradeflow-navy">Returns & Cancelled Orders</h3>
             </div>
-            <span className="text-[10px] bg-[#FFF8E1] text-[#F9A825] font-extrabold px-2.5 py-0.5 rounded-full border border-[#FFE082]">
+            <span className="text-[10px] bg-amber-50 text-amber-500 font-extrabold px-2.5 py-0.5 rounded-full border border-amber-200">
               {returnsAndCancellations.length} Record(s)
             </span>
           </div>
@@ -638,11 +637,11 @@ export default function ProductDetailPage() {
           ) : (
             <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
               {returnsAndCancellations.map((item) => (
-                <div key={item.id} className="p-3 bg-[#FAF9F7] rounded-xl border border-[#E5E5E5] text-xs space-y-1">
+                <div key={item.id} className="p-3 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 text-xs space-y-1">
                   <div className="flex items-center justify-between font-bold">
-                    <span className="text-[#1F1F1F] font-mono flex items-center gap-1.5">
+                    <span className="text-tradeflow-navy font-mono flex items-center gap-1.5">
                       <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                        item.type === 'RETURN' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-red-50 text-red-700 border border-red-200'
+                        item.type === 'RETURN' ? 'bg-status-info-50 text-status-info-foreground border border-status-info/30' : 'bg-red-50 text-red-700 border border-red-200'
                       }`}>
                         {item.type}
                       </span>
@@ -653,9 +652,9 @@ export default function ProductDetailPage() {
 
                   <div className="flex items-center justify-between text-[11px] text-gray-700 font-medium pt-1">
                     <span>Retailer: <strong>{item.retailerName}</strong></span>
-                    <span className="font-bold text-red-600">Qty: {item.quantity}</span>
+                    <span className="font-bold text-gray-700">Qty: {item.quantity}</span>
                   </div>
-                  <p className="text-[10px] text-gray-500 italic bg-white p-1.5 rounded border border-[#E5E5E5]">
+                  <p className="text-[10px] text-gray-500 italic bg-white p-1.5 rounded border border-tradeflow-gray-200">
                     Reason: {item.reason}
                   </p>
                 </div>
@@ -666,10 +665,10 @@ export default function ProductDetailPage() {
       </div>
 
       {/* SECTION 3: ORDER-WISE BREAKDOWN TABLE */}
-      <div className="bg-white rounded-2xl border border-[#E5E5E5] p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#E5E5E5] pb-3">
+      <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-tradeflow-gray-200 pb-3">
           <div>
-            <h2 className="text-base font-bold text-[#1F1F1F]">Order-Wise Item Breakdown Table</h2>
+            <h2 className="text-base font-bold text-tradeflow-navy">Order-Wise Item Breakdown Table</h2>
             <p className="text-[11px] text-gray-500">
               Detailed list of every wholesale order containing {product.title}
             </p>
@@ -682,7 +681,7 @@ export default function ProductDetailPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs min-w-[950px]">
             <thead>
-              <tr className="border-b border-[#E5E5E5] text-gray-400 font-bold uppercase tracking-wider">
+              <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                 <th className="pb-3">Retailer Business Name</th>
                 <th className="pb-3">Order ID & Date</th>
                 <th className="pb-3 text-center">Qty Ordered</th>
@@ -693,7 +692,7 @@ export default function ProductDetailPage() {
                 <th className="pb-3">Delivery City</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5E5]">
+            <tbody className="divide-y divide-tradeflow-gray-200">
               {paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-6 text-center text-gray-400 text-xs">
@@ -702,24 +701,26 @@ export default function ProductDetailPage() {
                 </tr>
               ) : (
                 paginatedOrders.map((ord, idx) => (
-                  <tr key={idx} className="hover:bg-[#FAF9F7] transition-colors">
-                    <td className="py-3.5 font-bold text-[#1F1F1F]">{ord.retailerName}</td>
+                  <tr key={idx} className="hover:bg-tradeflow-gray-50 transition-colors">
+                    <td className="py-3.5 font-bold text-tradeflow-navy">{ord.retailerName}</td>
                     <td className="py-3.5">
                       <div className="font-mono font-bold text-gray-800">{ord.orderNumber}</div>
                       <div className="text-[10px] text-gray-400">{ord.orderDate}</div>
                     </td>
-                    <td className="py-3.5 text-center font-bold text-sm text-[#1F1F1F]">{ord.quantity}</td>
+                    <td className="py-3.5 text-center font-bold text-sm text-tradeflow-navy">{ord.quantity}</td>
                     <td className="py-3.5 text-right font-mono text-gray-700">{formatCurrency(ord.unitPrice)}</td>
-                    <td className="py-3.5 text-right font-mono font-bold text-[#C62828]">{formatCurrency(ord.subtotal)}</td>
-                    <td className="py-3.5 text-right font-mono font-bold text-[#2E7D32]">+{formatCurrency(ord.profit)}</td>
+                    <td className="py-3.5 text-right font-mono font-bold text-tradeflow-navy">{formatCurrency(ord.subtotal)}</td>
+                    <td className="py-3.5 text-right font-mono font-bold text-status-success">+{formatCurrency(ord.profit)}</td>
                     <td className="py-3.5">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                           ord.status === 'DELIVERED'
-                            ? 'bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20'
+                            ? 'bg-tradeflow-green-50 text-status-success border border-status-success/20'
                             : ord.status === 'CANCELLED'
                             ? 'bg-red-50 text-red-600 border border-red-200'
-                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : ord.status === 'PENDING'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-status-info-50 text-status-info-foreground border border-status-info/30'
                         }`}
                       >
                         {ord.status}
@@ -735,7 +736,7 @@ export default function ProductDetailPage() {
 
         {/* Orders Table Pagination */}
         {totalOrderPages > 1 && (
-          <div className="flex items-center justify-between border-t border-[#E5E5E5] pt-3 text-xs">
+          <div className="flex items-center justify-between border-t border-tradeflow-gray-200 pt-3 text-xs">
             <span className="text-gray-500 font-medium">
               Page {ordersPage} of {totalOrderPages} ({productOrders.length} Total Orders)
             </span>
@@ -743,7 +744,7 @@ export default function ProductDetailPage() {
               <button
                 onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
                 disabled={ordersPage === 1}
-                className="px-3 py-1.5 bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl text-gray-700 hover:bg-[#E5E5E5] disabled:opacity-50 flex items-center gap-1 font-bold"
+                className="px-3 py-1.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl text-gray-700 hover:bg-tradeflow-gray-200 disabled:opacity-50 flex items-center gap-1 font-bold"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Previous</span>
@@ -751,7 +752,7 @@ export default function ProductDetailPage() {
               <button
                 onClick={() => setOrdersPage((p) => Math.min(totalOrderPages, p + 1))}
                 disabled={ordersPage === totalOrderPages}
-                className="px-3 py-1.5 bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl text-gray-700 hover:bg-[#E5E5E5] disabled:opacity-50 flex items-center gap-1 font-bold"
+                className="px-3 py-1.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl text-gray-700 hover:bg-tradeflow-gray-200 disabled:opacity-50 flex items-center gap-1 font-bold"
               >
                 <span>Next</span>
                 <ChevronRight className="w-4 h-4" />
@@ -762,13 +763,13 @@ export default function ProductDetailPage() {
       </div>
 
       {/* SECTION 2: STOCK MOVEMENT HISTORY */}
-      <div className="bg-white rounded-2xl border border-[#E5E5E5] p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
+      <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
           <div className="flex items-center gap-2">
-            <History className="w-4.5 h-4.5 text-[#C62828]" />
-            <h2 className="text-base font-bold text-[#1F1F1F]">Stock Movement History Audit Log</h2>
+            <History className="w-4.5 h-4.5 text-green-700" />
+            <h2 className="text-base font-bold text-tradeflow-navy">Stock Movement History Audit Log</h2>
           </div>
-          <span className="text-[10px] bg-[#FAF9F7] text-gray-500 font-mono px-2 py-0.5 rounded border border-[#E5E5E5]">
+          <span className="text-[10px] bg-tradeflow-gray-50 text-gray-500 font-mono px-2 py-0.5 rounded border border-tradeflow-gray-200">
             Chronological Audit
           </span>
         </div>
@@ -776,7 +777,7 @@ export default function ProductDetailPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs min-w-[700px]">
             <thead>
-              <tr className="border-b border-[#E5E5E5] text-gray-400 font-bold uppercase tracking-wider">
+              <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                 <th className="pb-3">Date & Time</th>
                 <th className="pb-3">Change Type</th>
                 <th className="pb-3 text-center">Quantity Changed</th>
@@ -784,7 +785,7 @@ export default function ProductDetailPage() {
                 <th className="pb-3 text-right">Resulting Stock Level</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5E5]">
+            <tbody className="divide-y divide-tradeflow-gray-200">
               {stockLogs.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-6 text-center text-gray-400 text-xs">
@@ -793,7 +794,7 @@ export default function ProductDetailPage() {
                 </tr>
               ) : (
                 stockLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-[#FAF9F7] transition-colors">
+                  <tr key={log.id} className="hover:bg-tradeflow-gray-50 transition-colors">
                     <td className="py-3.5 font-mono text-gray-600">{log.date}</td>
                     <td className="py-3.5">
                       <span
@@ -801,7 +802,7 @@ export default function ProductDetailPage() {
                           log.changeType === 'Order Fulfillment'
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
                             : log.changeType === 'Return Restock'
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            ? 'bg-status-info-50 text-status-info-foreground border border-status-info/30'
                             : log.changeType === 'Manual Addition'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -811,12 +812,12 @@ export default function ProductDetailPage() {
                       </span>
                     </td>
                     <td className="py-3.5 text-center font-mono font-extrabold">
-                      <span className={log.changeAmount > 0 ? 'text-[#2E7D32]' : 'text-[#C62828]'}>
+                      <span className="text-tradeflow-navy">
                         {log.changeAmount > 0 ? `+${log.changeAmount}` : log.changeAmount} units
                       </span>
                     </td>
                     <td className="py-3.5 text-gray-700 font-medium">{log.reason}</td>
-                    <td className="py-3.5 text-right font-mono font-extrabold text-[#1F1F1F]">
+                    <td className="py-3.5 text-right font-mono font-extrabold text-tradeflow-navy">
                       {log.resultingStock !== undefined ? `${log.resultingStock} units` : `${product.stock} units`}
                     </td>
                   </tr>
@@ -830,17 +831,29 @@ export default function ProductDetailPage() {
       {/* SECTION 6: PRE-FILLED EDIT PRODUCT MODAL */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto border border-[#E5E5E5] shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
-              <h2 className="text-base font-extrabold text-[#1F1F1F]">Edit Product Details: {product.title}</h2>
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto border border-tradeflow-gray-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
+              <h2 className="text-base font-extrabold text-tradeflow-navy">Edit Product Details: {product.title}</h2>
               <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-bold">
-                {formError}
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
+                <div className="font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  <span>{formError}</span>
+                </div>
+                {formFieldErrors.length > 0 && (
+                  <ul className="mt-2 ml-6 list-disc space-y-1">
+                    {formFieldErrors.map((error, index) => (
+                      <li key={`${error.field}-${index}`}>
+                        <span className="font-bold">{error.field}:</span> {error.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
 
@@ -853,7 +866,7 @@ export default function ProductDetailPage() {
                     required
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-bold text-[#1F1F1F]"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-bold text-tradeflow-navy"
                   />
                 </div>
                 <div>
@@ -863,7 +876,7 @@ export default function ProductDetailPage() {
                     required
                     value={sku}
                     onChange={(e) => setSku(e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono font-bold text-[#1F1F1F]"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-mono font-bold text-tradeflow-navy"
                   />
                 </div>
               </div>
@@ -874,7 +887,7 @@ export default function ProductDetailPage() {
                   <select
                     value={categoryName}
                     onChange={(e) => setCategoryName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-bold text-gray-800"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-bold text-gray-800"
                   >
                     <option value="">-- Select Category --</option>
                     {categories.map((c) => (
@@ -892,7 +905,7 @@ export default function ProductDetailPage() {
                     min={1}
                     value={minOrderQty}
                     onChange={(e) => setMinOrderQty(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-bold text-[#1F1F1F]"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-bold text-tradeflow-navy"
                   />
                 </div>
               </div>
@@ -906,7 +919,7 @@ export default function ProductDetailPage() {
                     min={0}
                     value={costPrice}
                     onChange={(e) => setCostPrice(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono font-bold text-[#1F1F1F]"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-mono font-bold text-tradeflow-navy"
                   />
                 </div>
                 <div>
@@ -917,7 +930,7 @@ export default function ProductDetailPage() {
                     min={0}
                     value={sellingPrice}
                     onChange={(e) => setSellingPrice(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono font-bold text-[#C62828]"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-mono font-bold text-tradeflow-navy"
                   />
                 </div>
                 <div>
@@ -928,7 +941,7 @@ export default function ProductDetailPage() {
                     min={0}
                     value={stock}
                     onChange={(e) => setStock(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-mono font-bold text-[#1F1F1F]"
+                    className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-mono font-bold text-tradeflow-navy"
                   />
                 </div>
               </div>
@@ -940,7 +953,7 @@ export default function ProductDetailPage() {
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
                   placeholder="https://..."
-                  className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-medium text-xs"
+                  className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-medium text-xs"
                 />
               </div>
 
@@ -950,11 +963,11 @@ export default function ProductDetailPage() {
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full p-3 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-medium text-xs"
+                  className="w-full p-3 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-medium text-xs"
                 />
               </div>
 
-              <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-end gap-3">
+              <div className="pt-3 border-t border-tradeflow-gray-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
@@ -965,7 +978,7 @@ export default function ProductDetailPage() {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-5 py-2 bg-[#C62828] text-white font-bold rounded-xl hover:bg-[#B71C1C] disabled:opacity-50"
+                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover disabled:opacity-50"
                 >
                   {isSaving ? 'Saving...' : 'Save Product Updates'}
                 </button>
@@ -978,9 +991,9 @@ export default function ProductDetailPage() {
       {/* MANUAL STOCK ADJUSTMENT MODAL */}
       {showAdjustModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 border border-[#E5E5E5] shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
-              <h2 className="text-base font-bold text-[#1F1F1F]">Manual Stock Adjustment</h2>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 border border-tradeflow-gray-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
+              <h2 className="text-base font-bold text-tradeflow-navy">Manual Stock Adjustment</h2>
               <button onClick={() => setShowAdjustModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
@@ -989,7 +1002,7 @@ export default function ProductDetailPage() {
             <form onSubmit={handleApplyStockAdjust} className="space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-gray-700 mb-1">Target Product</label>
-                <div className="p-2.5 bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl font-bold text-[#1F1F1F]">
+                <div className="p-2.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl font-bold text-tradeflow-navy">
                   {product.title}
                   <span className="block text-[10px] font-mono text-gray-400 mt-0.5">
                     Current Stock: {product.stock} units
@@ -1005,7 +1018,7 @@ export default function ProductDetailPage() {
                   value={adjustAmount}
                   onChange={(e) => setAdjustAmount(Number(e.target.value))}
                   placeholder="e.g. +50 for Restock, -10 for Damaged"
-                  className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-bold text-sm text-[#1F1F1F]"
+                  className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-bold text-sm text-tradeflow-navy"
                 />
               </div>
 
@@ -1014,7 +1027,7 @@ export default function ProductDetailPage() {
                 <select
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-[#E5E5E5] rounded-xl bg-[#FAF9F7] font-medium text-xs"
+                  className="w-full px-3.5 py-2.5 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 font-medium text-xs"
                 >
                   <option value="Restocked / Factory Arrival">Restocked / Factory Arrival</option>
                   <option value="Damaged Stock Audit Write-off">Damaged Stock Audit Write-off</option>
@@ -1023,7 +1036,7 @@ export default function ProductDetailPage() {
                 </select>
               </div>
 
-              <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-end gap-3">
+              <div className="pt-3 border-t border-tradeflow-gray-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowAdjustModal(false)}
@@ -1033,7 +1046,7 @@ export default function ProductDetailPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#C62828] text-white font-bold rounded-xl hover:bg-[#B71C1C]"
+                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover"
                 >
                   Apply Stock Update
                 </button>

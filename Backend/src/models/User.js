@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
+      unique: true,
       sparse: true,
       index: true,
     },
@@ -89,6 +90,7 @@ const userSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

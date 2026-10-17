@@ -62,6 +62,12 @@ const retailerProfileSchema = new mongoose.Schema(
       ref: 'User',
       index: true,
     },
+    referralCodeUsed: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      default: '',
+    },
     activeRelationshipId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'WholesalerRetailerRelationship',
@@ -93,6 +99,14 @@ const retailerProfileSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isDemo: { type: Boolean, default: false, index: true },
+    registrationSource: {
+      type: String,
+      default: 'DIRECT',
+    },
+    utmSource: { type: String, default: '', trim: true, maxlength: 100 },
+    utmMedium: { type: String, default: '', trim: true, maxlength: 100 },
+    utmCampaign: { type: String, default: '', trim: true, maxlength: 100 },
   },
   {
     timestamps: true,

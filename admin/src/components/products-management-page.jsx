@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, MoreHorizontal, PackageSearch, Plus, RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader, StatusBadge } from "@/components/admin-ui";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiDelete, apiGet, apiPost, apiPatch } from "@/lib/api";
+import { adminQueryKeys } from "@/lib/query-client";
 import { toast } from "sonner";
 
 const blank = { wholesaler: "", category: "", name: "", description: "", sku: "", unit: "", mrp: "", wholesalePrice: "", minOrderQty: "1", quantity: "0", lowStockThreshold: "10", imageUrl: "", status: "active" };
@@ -38,13 +40,29 @@ function ProductThumbnail({ product }) {
 
 export function ProductsManagementPage() {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [search, setSearch] = useState(""); const debouncedSearch = useDebounce(search, 350);
     const [status, setStatus] = useState("all"); const [wholesaler, setWholesaler] = useState("all"); const [category, setCategory] = useState("all"); const [dateFrom, setDateFrom] = useState(""); const [dateTo, setDateTo] = useState(""); const [sortBy, setSortBy] = useState("createdAt"); const [sortOrder, setSortOrder] = useState("desc"); const [page, setPage] = useState(1);
-    const [result, setResult] = useState(initial); const [loading, setLoading] = useState(true); const [error, setError] = useState(null); const [refreshKey, setRefreshKey] = useState(0);
+    const params = new URLSearchParams({ page: String(page), limit: "10", sortBy, sortOrder }); if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim()); if (status !== "all") params.set("status", status); if (wholesaler !== "all") params.set("wholesaler", wholesaler); if (category !== "all") params.set("category", category); if (dateFrom) params.set("dateFrom", dateFrom); if (dateTo) params.set("dateTo", dateTo);
+    const listPath = `/admin/products?${params.toString()}`;
+    const productsQuery = useQuery({
+      queryKey: adminQueryKeys.collection("products", listPath),
+      queryFn: async () => {
+        const payload = await apiGet(listPath);
+        const items = Array.isArray(payload) ? payload : (payload?.items || payload?.data || []);
+        const pagination = payload?.pagination || payload?.meta || { page: 1, limit: 10, total: items.length, totalPages: Math.ceil(items.length / 10) || 1 };
+        return { items, pagination, filters: payload?.filters || initial.filters };
+      },
+    });
+    const result = productsQuery.data || initial;
+    const loading = productsQuery.isLoading;
+    const error = productsQuery.error?.message || null;
     const [editing, setEditing] = useState(null); const [form, setForm] = useState(blank); const [confirmation, setConfirmation] = useState(null); const [saving, setSaving] = useState(false);
     useEffect(() => setPage(1), [debouncedSearch, status, wholesaler, category, dateFrom, dateTo]);
-    useEffect(() => { let mounted = true; const params = new URLSearchParams({ page: String(page), limit: "10", sortBy, sortOrder }); if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim()); if (status !== "all") params.set("status", status); if (wholesaler !== "all") params.set("wholesaler", wholesaler); if (category !== "all") params.set("category", category); if (dateFrom) params.set("dateFrom", dateFrom); if (dateTo) params.set("dateTo", dateTo); setLoading(true); setError(null); apiGet(`/admin/products?${params.toString()}`).then((payload) => { if (!mounted) return; const items = Array.isArray(payload) ? payload : (payload?.items || payload?.data || []); const pagination = payload?.pagination || payload?.meta || { page: 1, limit: 10, total: items.length, totalPages: Math.ceil(items.length / 10) || 1 }; const filters = payload?.filters || initial.filters; setResult({ items, pagination, filters }); }).catch((err) => mounted && setError(err.message || "Failed to load products")).finally(() => mounted && setLoading(false)); return () => { mounted = false; }; }, [debouncedSearch, status, wholesaler, category, dateFrom, dateTo, sortBy, sortOrder, page, refreshKey]);
-    const refresh = () => setRefreshKey((value) => value + 1);
+    const refresh = async () => {
+      await queryClient.invalidateQueries({ queryKey: adminQueryKeys.requestResource("products") });
+      await productsQuery.refetch();
+    };
     const openCreate = () => { setForm(blank); setEditing({ create: true }); };
     const openEdit = async (row) => { try { const payload = await apiGet(`/admin/products/${row._id || row.id}`); setForm({ ...blank, ...payload }); setEditing({ id: row._id || row.id }); } catch (err) { toast.error(err.message || "Unable to load product"); } };
     const save = async () => { const required = ["wholesaler", "name", "sku", "unit", "mrp", "wholesalePrice"]; if (required.some((key) => !String(form[key] ?? "").trim())) { toast.error("Wholesaler, name, SKU, unit, MRP, and wholesale price are required"); return; } setSaving(true); try { if (editing.create) await apiPost("/admin/products", form); else await apiPatch(`/admin/products/${editing.id}`, form); toast.success(editing.create ? "Product created successfully" : "Product updated successfully"); setEditing(null); refresh(); } catch (err) { toast.error(err.message || "Unable to save product"); } finally { setSaving(false); } };

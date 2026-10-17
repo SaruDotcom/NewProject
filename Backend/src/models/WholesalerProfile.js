@@ -20,6 +20,18 @@ const wholesalerProfileSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    retailerReferralCode: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    retailerSignupsEnabled: {
+      type: Boolean,
+      default: true,
+    },
     description: {
       type: String,
       default: '',
@@ -69,6 +81,16 @@ const wholesalerProfileSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    registrationSource: {
+      type: String,
+      enum: ['DIRECT', 'ADMIN_INVITE', 'CAMPAIGN', 'ADMIN_LINK'],
+      default: 'DIRECT',
+      index: true,
+    },
+    adminReferralCode: { type: String, default: '', trim: true, index: true },
+    utmSource: { type: String, default: '', maxlength: 100 },
+    utmMedium: { type: String, default: '', maxlength: 100 },
+    utmCampaign: { type: String, default: '', maxlength: 100 },
     bankDetails: {
       accountHolderName: { type: String, default: '' },
       accountNumber: { type: String, default: '' },
@@ -118,6 +140,7 @@ const wholesalerProfileSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

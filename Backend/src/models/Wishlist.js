@@ -15,6 +15,7 @@ const wishlistSchema = new mongoose.Schema(
         ref: 'Product',
       },
     ],
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

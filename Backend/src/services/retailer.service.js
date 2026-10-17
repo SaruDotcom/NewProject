@@ -17,6 +17,7 @@ const OrderRepository = require('../repositories/order.repository');
 const OrderService = require('../modules/orders/orders.service');
 const InvitationService = require('../modules/invitations/invitations.service');
 const WalletService = require('./wallet.service');
+const SupportService = require('../modules/support/support.service');
 const {
   BadRequestError,
   NotFoundError,
@@ -66,6 +67,7 @@ const allowedProductFields = [
   'dimensions',
   'sizes',
   'colors',
+  'colorVariants',
   'additionalOptions',
   'categoryAttributes',
   'status',
@@ -461,7 +463,7 @@ class RetailerService {
     return cart;
   }
 
-  static async addToCart(retailerId, { productId, quantity }) {
+  static async addToCart(retailerId, { productId, quantity, color = '' }) {
     assertObjectId(productId, 'Product ID');
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
     const qty = parseInt(quantity, 10);
@@ -515,7 +517,18 @@ class RetailerService {
     const cart = await RetailerRepository.getOrCreateCart(retailerId, wholesalerUser._id);
     cart.wholesalerId = wholesalerUser._id;
 
-    const existingIndex = cart.items.findIndex((item) => String(item.productId) === String(productId));
+    const selectedVariant = Array.isArray(product.colorVariants)
+      ? product.colorVariants.find((v) => v.color?.toLowerCase() === String(color).toLowerCase())
+      : null;
+    const itemSku = selectedVariant?.sku || product.sku;
+    const itemImageUrl = (selectedVariant?.images && (typeof selectedVariant.images[0] === 'string' ? selectedVariant.images[0] : selectedVariant.images[0]?.url))
+      || product.imageUrl
+      || (product.images && (typeof product.images[0] === 'string' ? product.images[0] : product.images[0]?.url))
+      || '';
+
+    const existingIndex = cart.items.findIndex(
+      (item) => String(item.productId) === String(productId) && String(item.color || '') === String(color || '')
+    );
 
     if (existingIndex > -1) {
       const newQty = cart.items[existingIndex].quantity + qty;
@@ -534,8 +547,9 @@ class RetailerService {
       cart.items.push({
         productId: product._id,
         name: product.name || product.title,
-        sku: product.sku,
-        imageUrl: product.imageUrl || (product.images && product.images[0]) || '',
+        sku: itemSku,
+        color: color || '',
+        imageUrl: itemImageUrl,
         quantity: qty,
         pricePerUnit,
         subtotal,
@@ -907,31 +921,29 @@ class RetailerService {
   }
 
   static async createSupportTicket(retailerUser, ticketData) {
-    const ticketNumber = generateReference('TKT');
-    const relationship = await RetailerRepository.findActiveRelationship(retailerUser._id);
-
-    const ticket = await RetailerRepository.createSupportTicket({
-      ticketNumber,
-      creatorId: retailerUser._id,
-      creatorRole: 'RETAILER',
-      recipientId: relationship?.wholesalerId?._id || null,
-      orderId: ticketData.orderId || null,
+    const typeByCategory = {
+      ORDER_ISSUE: 'Order',
+      ORDER: 'Order',
+      PAYMENT_ISSUE: 'Payment',
+      PAYMENT: 'Payment',
+      PRODUCT_DEFECT: 'Product',
+      PRODUCT: 'Product',
+      DELIVERY_DELAY: 'Order',
+      DELIVERY: 'Order',
+      RETURN: 'Order',
+      ACCOUNT_HELP: 'Account',
+      GENERAL: 'Other',
+      OTHER: 'Other',
+    };
+    const priority = ({ LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', URGENT: 'High' })[ticketData.priority] || 'Medium';
+    return SupportService.createTicket(retailerUser, {
+      type: typeByCategory[ticketData.category] || 'Other',
       subject: ticketData.subject,
-      category: ticketData.category || 'GENERAL',
-      priority: ticketData.priority || 'MEDIUM',
-      status: 'OPEN',
-      messages: [
-        {
-          senderId: retailerUser._id,
-          senderRole: 'RETAILER',
-          senderName: retailerUser.name,
-          message: ticketData.message,
-          attachments: ticketData.attachments || [],
-        },
-      ],
+      message: ticketData.message,
+      priority,
+      relatedOrderId: ticketData.orderId || null,
+      attachments: (ticketData.attachments || []).map((url) => ({ url, publicId: '' })),
     });
-
-    return ticket;
   }
 
   static async getSupportTicketById(retailerId, ticketId) {
@@ -942,18 +954,7 @@ class RetailerService {
   }
 
   static async sendSupportMessage(retailerUser, ticketId, messageData) {
-    assertObjectId(ticketId, 'Ticket ID');
-    const updated = await RetailerRepository.addSupportMessage(ticketId, retailerUser._id, {
-      senderId: retailerUser._id,
-      senderRole: 'RETAILER',
-      senderName: retailerUser.name,
-      message: messageData.message,
-      attachments: messageData.attachments || [],
-      createdAt: new Date(),
-    });
-
-    if (!updated) throw new NotFoundError('Support ticket not found');
-    return updated;
+    return SupportService.replyAsOwner(retailerUser, ticketId, messageData.message, messageData.attachments || []);
   }
 
   /**

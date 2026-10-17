@@ -24,6 +24,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
+import { clearAuthToken } from '@/lib/api';
 import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { name: 'Wallet & Earnings', path: '/dashboard/wallet', icon: CreditCard, badge: 'New' },
   { name: 'Subscription', path: '/dashboard/subscription', icon: CreditCard, badge: '₹300/mo' },
   { name: 'Security', path: '/dashboard/security', icon: ShieldCheck },
+  { name: 'Help & Support', path: '/dashboard/support', icon: Headphones },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -55,22 +57,23 @@ export const Sidebar: React.FC = () => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
   const handleLogout = () => {
-    navigate('/login');
+    clearAuthToken();
+    navigate('/', { replace: true });
   };
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-64 bg-white border-r border-[#E5E5E5] flex flex-col z-30 select-none shadow-sm">
+    <aside className="fixed top-0 left-0 h-screen w-64 bg-tradeflow-navy text-white border-r border-tradeflow-navy-pressed flex flex-col z-30 select-none shadow-[2px_0_12px_rgba(18,48,74,0.18)]">
       {/* Brand Logo Header */}
-      <div className="h-16 px-6 border-b border-[#E5E5E5] flex items-center justify-between bg-white">
+      <div className="h-16 px-6 border-b border-tradeflow-navy-hover flex items-center justify-between bg-tradeflow-navy">
         <Link to="/dashboard" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-[#C62828] text-white flex items-center justify-center font-bold text-xl shadow-md group-hover:scale-105 transition-transform">
-            <Building2 className="w-6 h-6" />
+          <div className="w-10 h-10 rounded-xl bg-tradeflow-green text-white flex items-center justify-center font-bold text-xl shadow-xs group-hover:scale-105 transition-transform">
+            <Building2 className="w-5 h-5 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="font-extrabold text-lg tracking-tight text-[#1F1F1F]">
-              Apex<span className="text-[#C62828]">Wholesale</span>
+            <span className="font-bold text-base tracking-tight text-white">
+              Apex<span className="text-tradeflow-green">Wholesale</span>
             </span>
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-[#2E7D32]">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-tradeflow-green flex items-center gap-1">
               Verified Partner
             </span>
           </div>
@@ -78,29 +81,29 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Subscription Plan Badge */}
-      <div className="mx-4 mt-4 p-3 rounded-xl bg-[#FAF9F7] border border-[#E5E5E5] flex items-center justify-between">
+      <div className="mx-3.5 mt-3.5 p-3 rounded-xl bg-tradeflow-navy-hover border border-tradeflow-navy-hover flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-[#C62828]" />
+          <Sparkles className="w-4 h-4 text-tradeflow-green" />
           <div>
-            <div className="text-xs font-bold text-[#1F1F1F]">
+            <div className="text-xs font-semibold text-white">
               {profile.subscriptionPlan === 'ANNUAL' ? 'Annual Pro Plan' : 'Monthly Plan'}
             </div>
-            <div className="text-[11px] text-gray-5-00 text-[#2E7D32] font-semibold">
+            <div className="text-[11px] text-tradeflow-gray-200 font-medium">
               Status: {profile.subscriptionStatus}
             </div>
           </div>
         </div>
         <Link
           to="/dashboard/subscription"
-          className="text-[10px] bg-[#C62828] text-white font-bold px-2 py-1 rounded hover:bg-[#B71C1C] transition-colors"
+          className="text-[10px] bg-tradeflow-green text-white font-semibold px-2.5 py-1 rounded-lg hover:bg-tradeflow-green-hover transition-colors"
         >
           Manage
         </Link>
       </div>
 
       {/* Sidebar Nav Links */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-1">
-        <div className="px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+      <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-0.5">
+        <div className="px-3 text-[10px] font-bold text-tradeflow-gray-200 uppercase tracking-wider mb-2">
           Main Menu
         </div>
         {NAV_ITEMS.map((item) => {
@@ -111,22 +114,22 @@ export const Sidebar: React.FC = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
+              className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group relative ${
                 isActive
-                  ? 'bg-[#FFEBEE] text-[#C62828] font-semibold border-l-4 border-[#C62828]'
-                  : 'text-[#1F1F1F] hover:bg-[#FAF9F7] hover:text-[#C62828]'
+                  ? 'bg-tradeflow-green text-tradeflow-navy font-bold border-l-4 border-tradeflow-green-100'
+                  : 'text-tradeflow-gray-100 hover:bg-tradeflow-navy-hover hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Icon className={`w-5 h-5 transition-colors ${isActive ? 'text-[#C62828]' : 'text-gray-500 group-hover:text-[#C62828]'}`} />
+                <Icon className={`w-4 h-4 transition-colors ${isActive ? 'text-tradeflow-navy' : 'text-tradeflow-gray-200 group-hover:text-white'}`} />
                 <span>{item.name}</span>
               </div>
               
               {item.badge && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                   item.badge.includes('Pending')
-                    ? 'bg-[#FFF8E1] text-[#F9A825]'
-                    : isActive ? 'bg-[#C62828] text-white' : 'bg-[#E5E5E5] text-gray-700'
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                    : isActive ? 'bg-tradeflow-green text-white' : 'bg-[#F5F5F4] text-[#78716C]'
                 }`}>
                   {item.badge}
                 </span>
@@ -137,21 +140,21 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* User Profile & Super Admin Call Helpline Box */}
-      <div className="p-3 border-t border-[#E5E5E5] bg-white space-y-2">
+      <div className="p-3 border-t border-tradeflow-navy-hover bg-tradeflow-navy space-y-2">
         <button
           type="button"
           onClick={() => setShowHelpModal(true)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-xl text-xs font-extrabold hover:from-emerald-700 hover:to-teal-800 transition-all shadow-xs"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-tradeflow-green text-white rounded-xl text-xs font-semibold hover:bg-tradeflow-green-hover transition-all shadow-xs"
         >
-          <PhoneCall className="w-4 h-4 text-amber-300 animate-pulse" />
+          <PhoneCall className="w-3.5 h-3.5 text-white animate-pulse" />
           <span>Call Super Admin Support</span>
         </button>
         <button
           type="button"
           onClick={() => setShowFeedbackModal(true)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#FFF3E0] text-[#E65100] border border-[#FFE0B2] rounded-xl text-xs font-bold hover:bg-[#FFE0B2] transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#FAF9F6] text-[#44403C] border border-[#E7E5E4] rounded-xl text-xs font-medium hover:bg-white hover:border-tradeflow-green/30 transition-colors"
         >
-          <MessageSquare className="w-4 h-4 text-[#E65100]" />
+          <MessageSquare className="w-3.5 h-3.5 text-[#78716C]" />
           <span>Give Feedback & Review</span>
         </button>
 
@@ -160,7 +163,7 @@ export const Sidebar: React.FC = () => {
           onMouseEnter={() => setShowProfile(true)}
           onMouseLeave={() => setShowProfile(false)}
         >
-          <div className="p-2.5 rounded-xl bg-[#FAF9F7] border border-[#E5E5E5] flex items-center justify-between">
+          <div className="p-2 rounded-xl bg-[#FAF9F6] border border-[#E7E5E4] flex items-center justify-between">
             <button
               type="button"
               onClick={() => setShowProfile((open) => !open)}
@@ -169,17 +172,17 @@ export const Sidebar: React.FC = () => {
               className="flex min-w-0 items-center gap-2.5 overflow-hidden text-left"
             >
               {profile.businessLogoUrl ? (
-                <img src={profile.businessLogoUrl} alt="" className="h-9 w-9 shrink-0 rounded-full border border-[#E5E5E5] bg-white object-contain" />
+                <img src={profile.businessLogoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full border border-[#E7E5E4] bg-white object-contain" />
               ) : (
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#C62828] text-sm font-bold text-white">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-tradeflow-green text-xs font-bold text-white">
                   {profile.businessName?.charAt(0) || profile.ownerName?.charAt(0) || 'W'}
                 </span>
               )}
               <span className="flex min-w-0 flex-col truncate">
-                <span className="truncate text-xs font-bold text-[#1F1F1F]">
+                <span className="truncate text-xs font-bold text-[#1C1917]">
                   {profile.businessName || profile.ownerName || 'Wholesaler'}
                 </span>
-                <span className="truncate text-[11px] text-gray-500">
+                <span className="truncate text-[10px] text-[#78716C]">
                   {profile.businessName ? profile.ownerName : profile.email}
                 </span>
               </span>
@@ -188,33 +191,33 @@ export const Sidebar: React.FC = () => {
               onClick={handleLogout}
               title="Log Out"
               aria-label="Log out"
-              className="shrink-0 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-[#FFEBEE] hover:text-[#C62828]"
+              className="shrink-0 rounded-lg p-1.5 text-[#A8A29E] transition-colors hover:bg-gray-100 hover:text-tradeflow-green"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
 
           {showProfile && (
-            <div className="absolute bottom-full left-0 z-50 mb-2 w-full rounded-xl border border-[#E5E5E5] bg-white p-4 shadow-xl">
-              <p className="truncate text-sm font-extrabold text-[#1F1F1F]">{profile.businessName || 'Business details'}</p>
+            <div className="absolute bottom-full left-0 z-50 mb-2 w-full rounded-xl border border-[#E7E5E4] bg-white p-4 text-[#1C1917] shadow-xl">
+              <p className="truncate text-sm font-bold text-[#1C1917]">{profile.businessName || 'Business details'}</p>
               <dl className="mt-3 space-y-2 text-xs">
                 <div>
-                  <dt className="text-gray-400">Contact name</dt>
-                  <dd className="font-semibold text-gray-700">{profile.ownerName || 'Not provided'}</dd>
+                  <dt className="text-[#78716C]">Contact name</dt>
+                  <dd className="font-semibold text-[#1C1917]">{profile.ownerName || 'Not provided'}</dd>
                 </div>
                 <div>
-                  <dt className="text-gray-400">Email</dt>
-                  <dd className="break-all font-semibold text-gray-700">{profile.email || 'Not provided'}</dd>
+                  <dt className="text-[#78716C]">Email</dt>
+                  <dd className="break-all font-semibold text-[#1C1917]">{profile.email || 'Not provided'}</dd>
                 </div>
                 <div>
-                  <dt className="text-gray-400">Phone</dt>
-                  <dd className="font-semibold text-gray-700">{profile.phone || 'Not provided'}</dd>
+                  <dt className="text-[#78716C]">Phone</dt>
+                  <dd className="font-semibold text-[#1C1917]">{profile.phone || 'Not provided'}</dd>
                 </div>
               </dl>
               <Link
                 to="/dashboard/profile"
                 onClick={() => setShowProfile(false)}
-                className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#C62828] hover:underline"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-tradeflow-green hover:underline"
               >
                 View details <ArrowRight className="h-3.5 w-3.5" />
               </Link>

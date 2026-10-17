@@ -39,6 +39,7 @@ const walletSchema = new mongoose.Schema(
       default: 'ACTIVE',
       index: true,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

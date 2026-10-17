@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Check,
@@ -19,6 +20,8 @@ import {
   X,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useWholesaler } from '@/context/WholesalerContext';
+import { wholesalerQueryKeys } from '@/lib/query-client';
 
 type CreditPolicy = {
   creditEnabled: boolean;
@@ -55,6 +58,8 @@ type CreditRetailerItem = {
 };
 
 export default function CreditPolicyPage() {
+  const { profile } = useWholesaler();
+  const queryClient = useQueryClient();
   const [policy, setPolicy] = useState<CreditPolicy>({
     creditEnabled: false,
     allowCOD: true,
@@ -69,7 +74,6 @@ export default function CreditPolicyPage() {
     totalOverdueAmount: 0,
   });
   const [retailers, setRetailers] = useState<CreditRetailerItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OUTSTANDING' | 'OVERDUE'>('ALL');
@@ -83,38 +87,37 @@ export default function CreditPolicyPage() {
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const creditQuery = useQuery({
+    queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'credit-overview'),
+    queryFn: () => api.getCreditOverview(),
+    enabled: Boolean(profile.id),
+  });
+  const loading = creditQuery.isLoading;
   const loadCreditData = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getCreditOverview();
-      if (res?.data) {
-        if (res.data.policy) {
-          setPolicy({
-            creditEnabled: Boolean(res.data.policy.creditEnabled),
-            allowCOD: res.data.policy.allowCOD !== undefined ? Boolean(res.data.policy.allowCOD) : true,
-            defaultCreditLimit: res.data.policy.defaultCreditLimit || 0,
-            creditPeriodDays: res.data.policy.creditPeriodDays || 15,
-            lateFeePercent: res.data.policy.lateFeePercent || 0,
-            minOrderForCredit: res.data.policy.minOrderForCredit || 0,
-          });
-        }
-        if (res.data.summary) {
-          setSummary(res.data.summary);
-        }
-        if (Array.isArray(res.data.retailers)) {
-          setRetailers(res.data.retailers);
-        }
-      }
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err?.message || 'Unable to load credit overview data.' });
-    } finally {
-      setLoading(false);
-    }
+    await queryClient.invalidateQueries({
+      queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'credit-overview'),
+    });
+    await creditQuery.refetch();
   };
 
   useEffect(() => {
-    loadCreditData();
-  }, []);
+    const data = creditQuery.data?.data;
+    if (data?.policy) {
+      setPolicy({
+        creditEnabled: Boolean(data.policy.creditEnabled),
+        allowCOD: data.policy.allowCOD !== undefined ? Boolean(data.policy.allowCOD) : true,
+        defaultCreditLimit: data.policy.defaultCreditLimit || 0,
+        creditPeriodDays: data.policy.creditPeriodDays || 15,
+        lateFeePercent: data.policy.lateFeePercent || 0,
+        minOrderForCredit: data.policy.minOrderForCredit || 0,
+      });
+    }
+    if (data?.summary) setSummary(data.summary);
+    if (Array.isArray(data?.retailers)) setRetailers(data.retailers);
+    if (creditQuery.error) {
+      setMessage({ type: 'error', text: creditQuery.error.message || 'Unable to load credit overview data.' });
+    }
+  }, [creditQuery.data, creditQuery.error]);
 
   const handleSavePolicy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,13 +209,13 @@ export default function CreditPolicyPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#E5E5E5] pb-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-tradeflow-gray-200 pb-5">
         <div>
-          <div className="mb-1.5 flex items-center gap-2 text-xs font-extrabold uppercase text-[#C62828]">
+          <div className="mb-1.5 flex items-center gap-2 text-xs font-extrabold uppercase text-green-700">
             <HandCoins className="h-4 w-4" />
             <span>Credit Management</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-[#1F1F1F]">Wholesaler Credit Policy</h1>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy"> Credit Policy</h1>
           <p className="text-xs text-gray-500 mt-1">
             Set default credit terms, customize per-retailer limits, and track outstanding & overdue payments.
           </p>
@@ -220,7 +223,7 @@ export default function CreditPolicyPage() {
         <button
           onClick={loadCreditData}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E5E5] bg-white px-3.5 py-2 text-xs font-bold text-[#1F1F1F] shadow-xs hover:bg-[#FAF9F7]"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-tradeflow-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-tradeflow-navy shadow-xs hover:bg-tradeflow-gray-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh Data
@@ -243,14 +246,14 @@ export default function CreditPolicyPage() {
       )}
 
       {/* Credit Policy Settings Card */}
-      <form onSubmit={handleSavePolicy} className="rounded-2xl border border-[#E5E5E5] bg-white p-6 shadow-xs">
-        <div className="flex items-center justify-between border-b border-[#E5E5E5] pb-4 mb-5">
+      <form onSubmit={handleSavePolicy} className="rounded-2xl border border-tradeflow-gray-200 bg-white p-6 shadow-xs">
+        <div className="flex items-center justify-between border-b border-tradeflow-gray-200 pb-4 mb-5">
           <div className="flex items-center gap-3">
             <div className={`p-2.5 rounded-xl ${policy.creditEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-400'}`}>
               <HandCoins className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-[#1F1F1F]">Wholesaler Credit Terms Config</h2>
+              <h2 className="text-base font-extrabold text-tradeflow-navy">Wholesaler Credit Terms Config</h2>
               <p className="text-xs text-gray-500">Allow retailers to purchase goods on credit</p>
             </div>
           </div>
@@ -261,9 +264,9 @@ export default function CreditPolicyPage() {
                 type="checkbox"
                 checked={policy.allowCOD}
                 onChange={(e) => setPolicy({ ...policy, allowCOD: e.target.checked })}
-                className="h-4 w-4 cursor-pointer accent-[#C62828]"
+                className="h-4 w-4 cursor-pointer accent-tradeflow-green"
               />
-              <span className="text-xs font-extrabold text-[#1F1F1F]">
+              <span className="text-xs font-extrabold text-tradeflow-navy">
                 {policy.allowCOD ? 'COD Allowed' : 'COD Disabled'}
               </span>
             </label>
@@ -273,9 +276,9 @@ export default function CreditPolicyPage() {
                 type="checkbox"
                 checked={policy.creditEnabled}
                 onChange={(e) => setPolicy({ ...policy, creditEnabled: e.target.checked })}
-                className="h-4 w-4 cursor-pointer accent-[#C62828]"
+                className="h-4 w-4 cursor-pointer accent-tradeflow-green"
               />
-              <span className="text-xs font-extrabold text-[#1F1F1F]">
+              <span className="text-xs font-extrabold text-tradeflow-navy">
                 {policy.creditEnabled ? 'Credit Enabled' : 'Credit Disabled'}
               </span>
             </label>
@@ -284,10 +287,10 @@ export default function CreditPolicyPage() {
 
         <div className={`grid gap-5 sm:grid-cols-2 lg:grid-cols-4 ${!policy.creditEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
           <div>
-            <label className="block text-xs font-bold text-[#1F1F1F] mb-1.5">
+            <label className="block text-xs font-bold text-tradeflow-navy mb-1.5">
               Default Credit Limit (₹) *
             </label>
-            <div className="flex items-center rounded-xl border border-[#D8D8D8] bg-white px-2 py-1 focus-within:border-[#C62828]">
+            <div className="flex items-center rounded-xl border border-tradeflow-gray-300 bg-white px-2 py-1 focus-within:border-tradeflow-green">
               <button
                 type="button"
                 onClick={() => setPolicy((p) => ({ ...p, defaultCreditLimit: Math.max(0, p.defaultCreditLimit - 1000) }))}
@@ -321,10 +324,10 @@ export default function CreditPolicyPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#1F1F1F] mb-1.5">
+            <label className="block text-xs font-bold text-tradeflow-navy mb-1.5">
               Credit Period (Days) *
             </label>
-            <div className="flex items-center rounded-xl border border-[#D8D8D8] bg-white px-2 py-1 focus-within:border-[#C62828]">
+            <div className="flex items-center rounded-xl border border-tradeflow-gray-300 bg-white px-2 py-1 focus-within:border-tradeflow-green">
               <button
                 type="button"
                 onClick={() => setPolicy((p) => ({ ...p, creditPeriodDays: Math.max(1, p.creditPeriodDays - 1) }))}
@@ -359,10 +362,10 @@ export default function CreditPolicyPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#1F1F1F] mb-1.5">
+            <label className="block text-xs font-bold text-tradeflow-navy mb-1.5">
               Min Order Value for Credit (₹)
             </label>
-            <div className="flex items-center rounded-xl border border-[#D8D8D8] bg-white px-2 py-1 focus-within:border-[#C62828]">
+            <div className="flex items-center rounded-xl border border-tradeflow-gray-300 bg-white px-2 py-1 focus-within:border-tradeflow-green">
               <button
                 type="button"
                 onClick={() => setPolicy((p) => ({ ...p, minOrderForCredit: Math.max(0, p.minOrderForCredit - 500) }))}
@@ -395,10 +398,10 @@ export default function CreditPolicyPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#1F1F1F] mb-1.5">
+            <label className="block text-xs font-bold text-tradeflow-navy mb-1.5">
               Late Fee / Interest % (Optional)
             </label>
-            <div className="flex items-center rounded-xl border border-[#D8D8D8] bg-white px-2 py-1 focus-within:border-[#C62828]">
+            <div className="flex items-center rounded-xl border border-tradeflow-gray-300 bg-white px-2 py-1 focus-within:border-tradeflow-green">
               <button
                 type="button"
                 onClick={() => setPolicy((p) => ({ ...p, lateFeePercent: Math.max(0, Number((p.lateFeePercent - 0.5).toFixed(1))) }))}
@@ -440,7 +443,7 @@ export default function CreditPolicyPage() {
           <button
             type="submit"
             disabled={savingPolicy}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#C62828] px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-[#B71C1C] disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-5 py-2.5 text-xs font-bold text-tradeflow-navy shadow-xs transition-colors hover:bg-tradeflow-green-hover disabled:opacity-60"
           >
             {savingPolicy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             <span>Save Credit Policy Settings</span>
@@ -450,16 +453,16 @@ export default function CreditPolicyPage() {
 
       {/* Credit Summary Analytics Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-xs">
+        <div className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase text-gray-400">Active Retailers on Credit</span>
             <Users className="h-4 w-4 text-blue-600" />
           </div>
-          <div className="mt-3 text-2xl font-black text-[#1F1F1F]">{summary.totalRetailersOnCredit}</div>
+          <div className="mt-3 text-2xl font-black text-tradeflow-navy">{summary.totalRetailersOnCredit}</div>
           <p className="mt-1 text-[11px] text-gray-500">Retailers with active outstanding balances</p>
         </div>
 
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-xs">
+        <div className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase text-gray-400">Total Outstanding Balance</span>
             <DollarSign className="h-4 w-4 text-amber-600" />
@@ -468,21 +471,21 @@ export default function CreditPolicyPage() {
           <p className="mt-1 text-[11px] text-gray-500">Total credit owed across all retailers</p>
         </div>
 
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-xs">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase text-red-600">Total Overdue Amount</span>
-            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <span className="text-xs font-bold uppercase text-amber-800">Total Overdue Amount</span>
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
           </div>
-          <div className="mt-3 text-2xl font-black text-red-700">₹{summary.totalOverdueAmount.toLocaleString('en-IN')}</div>
-          <p className="mt-1 text-[11px] text-red-600">Payments past due date requiring follow-up</p>
+          <div className="mt-3 text-2xl font-black text-amber-800">₹{summary.totalOverdueAmount.toLocaleString('en-IN')}</div>
+          <p className="mt-1 text-[11px] text-amber-800">Payments past due date requiring follow-up</p>
         </div>
       </div>
 
       {/* Retailers Credit Limit & Outstanding Table */}
-      <div className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-xs space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#E5E5E5] pb-4">
+      <div className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-xs space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-tradeflow-gray-200 pb-4">
           <div>
-            <h3 className="text-base font-extrabold text-[#1F1F1F]">Connected Retailer Credit Accounts</h3>
+            <h3 className="text-base font-extrabold text-tradeflow-navy">Connected Retailer Credit Accounts</h3>
             <p className="text-xs text-gray-500">Set custom limits per retailer or view active credit balances</p>
           </div>
 
@@ -494,14 +497,14 @@ export default function CreditPolicyPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search retailer name, owner, phone..."
-                className="w-64 rounded-xl border border-[#D8D8D8] pl-9 pr-3 py-1.5 text-xs outline-none focus:border-[#C62828]"
+                className="w-64 rounded-xl border border-tradeflow-gray-300 pl-9 pr-3 py-1.5 text-xs outline-none focus:border-tradeflow-green"
               />
             </div>
 
-            <div className="flex rounded-xl border border-[#E5E5E5] bg-[#FAF9F7] p-1 text-xs font-bold">
+            <div className="flex rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-1 text-xs font-bold">
               <button
                 onClick={() => setStatusFilter('ALL')}
-                className={`rounded-lg px-3 py-1 ${statusFilter === 'ALL' ? 'bg-white shadow-xs text-[#C62828]' : 'text-gray-500'}`}
+                className={`rounded-lg px-3 py-1 ${statusFilter === 'ALL' ? 'bg-white shadow-xs text-green-700' : 'text-gray-500'}`}
               >
                 All ({retailers.length})
               </button>
@@ -513,7 +516,7 @@ export default function CreditPolicyPage() {
               </button>
               <button
                 onClick={() => setStatusFilter('OVERDUE')}
-                className={`rounded-lg px-3 py-1 ${statusFilter === 'OVERDUE' ? 'bg-white shadow-xs text-red-700' : 'text-gray-500'}`}
+                className={`rounded-lg px-3 py-1 ${statusFilter === 'OVERDUE' ? 'bg-white shadow-xs text-amber-800' : 'text-gray-500'}`}
               >
                 Overdue ({retailers.filter((r) => r.overdueCount > 0).length})
               </button>
@@ -529,7 +532,7 @@ export default function CreditPolicyPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs min-w-[900px]">
               <thead>
-                <tr className="border-b border-[#E5E5E5] font-bold text-gray-400 uppercase tracking-wider">
+                <tr className="border-b border-tradeflow-gray-200 font-bold text-gray-400 uppercase tracking-wider">
                   <th className="pb-3">Retailer Store</th>
                   <th className="pb-3">Effective Credit Limit</th>
                   <th className="pb-3">Outstanding Amount</th>
@@ -538,16 +541,16 @@ export default function CreditPolicyPage() {
                   <th className="pb-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E5E5E5]">
+              <tbody className="divide-y divide-tradeflow-gray-200">
                 {filteredRetailers.map((item) => (
-                  <tr key={item.relationshipId} className="hover:bg-[#FAF9F7] transition-colors">
+                  <tr key={item.relationshipId} className="hover:bg-tradeflow-gray-50 transition-colors">
                     <td className="py-3.5 pr-3">
-                      <div className="font-extrabold text-[#1F1F1F] text-sm">{item.businessName}</div>
+                      <div className="font-extrabold text-tradeflow-navy text-sm">{item.businessName}</div>
                       <div className="text-gray-400 text-[11px]">{item.ownerName} • {item.phone}</div>
                     </td>
 
                     <td className="py-3.5 pr-3">
-                      <div className="font-extrabold text-[#1F1F1F]">
+                      <div className="font-extrabold text-tradeflow-navy">
                         ₹{item.effectiveLimit.toLocaleString('en-IN')}
                       </div>
                       <div className="text-[10px]">
@@ -580,7 +583,7 @@ export default function CreditPolicyPage() {
 
                     <td className="py-3.5 pr-3">
                       {item.overdueCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-extrabold text-red-700 border border-red-300">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-800 border border-amber-300">
                           <AlertTriangle className="h-3 w-3" />
                           {item.overdueCount} Overdue (₹{item.overdueAmount.toLocaleString('en-IN')})
                         </span>
@@ -604,7 +607,7 @@ export default function CreditPolicyPage() {
                             setEditingRetailer(item);
                             setCustomLimitInput(item.customCreditLimit !== null ? String(item.customCreditLimit) : '');
                           }}
-                          className="inline-flex items-center gap-1 rounded-xl border border-[#E5E5E5] bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-[#FAF9F7]"
+                          className="inline-flex items-center gap-1 rounded-xl border border-tradeflow-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-tradeflow-gray-50"
                         >
                           <Edit2 className="h-3 w-3 text-gray-500" />
                           <span>Custom Limit</span>
@@ -635,7 +638,7 @@ export default function CreditPolicyPage() {
           <form onSubmit={handleSaveCustomLimit} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
-                <h3 className="text-base font-extrabold text-[#1F1F1F]">Custom Credit Limit</h3>
+                <h3 className="text-base font-extrabold text-tradeflow-navy">Custom Credit Limit</h3>
                 <p className="text-xs text-gray-500">{editingRetailer.businessName} ({editingRetailer.ownerName})</p>
               </div>
               <button type="button" onClick={() => setEditingRetailer(null)} className="text-gray-400 hover:text-gray-600">
@@ -644,10 +647,10 @@ export default function CreditPolicyPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#1F1F1F] mb-1.5">
+              <label className="block text-xs font-bold text-tradeflow-navy mb-1.5">
                 Custom Credit Limit Amount (₹)
               </label>
-              <div className="flex items-center rounded-xl border border-[#D8D8D8] bg-white px-2 py-1 focus-within:border-[#C62828]">
+              <div className="flex items-center rounded-xl border border-tradeflow-gray-300 bg-white px-2 py-1 focus-within:border-tradeflow-green">
                 <button
                   type="button"
                   onClick={() => {
@@ -697,14 +700,14 @@ export default function CreditPolicyPage() {
                 <button
                   type="button"
                   onClick={() => setEditingRetailer(null)}
-                  className="rounded-xl border border-[#E5E5E5] px-4 py-2 text-xs font-bold text-gray-600 hover:bg-[#FAF9F7]"
+                  className="rounded-xl border border-tradeflow-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-tradeflow-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingLimit}
-                  className="rounded-xl bg-[#C62828] px-4 py-2 text-xs font-bold text-white hover:bg-[#B71C1C] disabled:opacity-60"
+                  className="rounded-xl bg-tradeflow-green px-4 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-green-hover disabled:opacity-60"
                 >
                   {savingLimit ? 'Saving...' : 'Save Limit'}
                 </button>
@@ -720,7 +723,7 @@ export default function CreditPolicyPage() {
           <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
-                <h3 className="text-base font-extrabold text-[#1F1F1F]">Settle Credit Orders</h3>
+                <h3 className="text-base font-extrabold text-tradeflow-navy">Settle Credit Orders</h3>
                 <p className="text-xs text-gray-500">
                   {settleModalRetailer.businessName} • Outstanding: <strong className="text-amber-700">₹{settleModalRetailer.currentOutstandingAmount.toLocaleString('en-IN')}</strong>
                 </p>
@@ -738,9 +741,9 @@ export default function CreditPolicyPage() {
                 </div>
               ) : (
                 settleModalRetailer.creditOrders.map((order) => (
-                  <div key={order.orderId} className="flex items-center justify-between border rounded-xl p-3 text-xs bg-[#FAF9F7]">
+                  <div key={order.orderId} className="flex items-center justify-between border rounded-xl p-3 text-xs bg-tradeflow-gray-50">
                     <div>
-                      <div className="font-extrabold text-[#1F1F1F]">Order #{order.orderNumber}</div>
+                      <div className="font-extrabold text-tradeflow-navy">Order #{order.orderNumber}</div>
                       <div className="text-[11px] text-gray-500">
                         Placed: {new Date(order.createdAt).toLocaleDateString('en-IN')} • Due: <strong className="text-gray-700">{order.creditDueDate ? new Date(order.creditDueDate).toLocaleDateString('en-IN') : 'N/A'}</strong>
                       </div>
@@ -749,7 +752,7 @@ export default function CreditPolicyPage() {
                     <div className="flex items-center gap-3">
                       <div className="text-right">
                         <div className="font-extrabold text-amber-700">₹{order.grandTotal.toLocaleString('en-IN')}</div>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${order.creditPaymentStatus === 'OVERDUE' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
                           {order.creditPaymentStatus}
                         </span>
                       </div>
@@ -770,7 +773,7 @@ export default function CreditPolicyPage() {
             <div className="flex justify-end pt-3">
               <button
                 onClick={() => setSettleModalRetailer(null)}
-                className="rounded-xl border border-[#E5E5E5] px-4 py-2 text-xs font-bold text-gray-600 hover:bg-[#FAF9F7]"
+                className="rounded-xl border border-tradeflow-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-tradeflow-gray-50"
               >
                 Close
               </button>

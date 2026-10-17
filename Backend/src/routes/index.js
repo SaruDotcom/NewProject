@@ -17,6 +17,7 @@ const notificationRoutes = require('../modules/notifications/notifications.route
 const auditRoutes = require('../modules/audit/audit.routes');
 const reportRoutes = require('../modules/reports/reports.routes');
 const couponRoutes = require('../modules/coupons/coupons.routes');
+const referralRoutes = require('../modules/referrals/referrals.routes');
 
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
@@ -24,6 +25,8 @@ const { ROLES } = require('../config/constants');
 const retailerPortalController = require('../modules/retailers/retailerPortal.controller');
 const wholesalerPortalController = require('../modules/wholesalers/wholesalerPortal.controller');
 const wholesalerPortalRoutes = require('../modules/wholesalers/wholesalerPortal.routes');
+const supportRoutes = require('../modules/support/support.routes');
+const wholesalerInviteRoutes = require('../modules/wholesaler-invites/wholesalerInvites.routes');
 
 // Health Check
 router.get('/health', (req, res) => {
@@ -37,8 +40,16 @@ router.get('/health', (req, res) => {
   });
 });
 
+router.use('/support', supportRoutes.router);
+
+// Mount this before the general /admin router to enforce SUPER_ADMIN-only access.
+router.use('/admin/support', supportRoutes.adminRouter);
+router.use('/admin/wholesaler-invites', wholesalerInviteRoutes.adminRouter);
+
 // Auth module
 router.use('/auth', authRoutes);
+router.use('/referral', referralRoutes.publicRoutes);
+router.use('/invites', wholesalerInviteRoutes.publicRouter);
 
 // Super Admin Core Modules
 router.use('/admin/wholesalers', wholesalerRoutes);
@@ -58,6 +69,7 @@ router.use('/wholesaler/categories', categoryRoutes);
 router.use('/wholesaler/products', productRoutes);
 router.use('/wholesaler/kyc', kycRoutes);
 router.use('/wholesaler/invite-links', invitationRoutes);
+router.use('/wholesaler/referral', referralRoutes.wholesalerRoutes);
 router.get(
   '/wholesaler/retailers',
   authenticate,

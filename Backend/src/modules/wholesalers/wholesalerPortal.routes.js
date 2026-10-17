@@ -7,8 +7,10 @@ const Controller = require('./wholesalerPortal.controller');
 const payoutController = require('../payouts/payouts.controller');
 const idempotency = require('../../middleware/idempotency');
 const wholesalerController = require('./wholesalers.controller');
+const { createTicketLimit } = require('../support/support.routes');
 
 router.use(authenticate, authorize(ROLES.WHOLESALER, ROLES.SUPER_ADMIN, ROLES.ADMIN));
+router.post('/help-center', authorize(ROLES.WHOLESALER), createTicketLimit, Controller.submitHelpRequest);
 router.get('/profile', Controller.getProfile);
 router.patch('/profile', Controller.updateProfile);
 router.get('/store', Controller.getProfile);
@@ -20,7 +22,6 @@ router.get('/credit-overview', wholesalerController.getCreditOverview);
 router.post('/credit/settle-order/:orderId', wholesalerController.settleOrderCredit);
 router.get('/retailers', Controller.getConnectedRetailers);
 router.get('/retailers/:id', Controller.getRetailerDetails);
-router.patch('/retailers/:id/password', Controller.resetRetailerPassword);
 router.patch('/retailers/:id/status', Controller.updateRetailerStatus);
 router.get('/inventory', Controller.listInventory);
 router.get('/inventory/:productId/history', Controller.inventoryHistory);

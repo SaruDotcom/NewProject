@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Plus, Search, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarDays, ChevronLeft, ChevronRight, MoreHorizontal, Search, Users } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
 
 const statusLabels = { pending: "Pending", active: "Active", blocked: "Blocked" };
 const columns = [
@@ -57,8 +57,6 @@ const initialResult = {
     pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
     filters: { cities: [], states: [] },
 };
-
-const blankRetailerForm = { name: "", businessName: "", company: "", email: "", phone: "", city: "", state: "", password: "", wholesalerId: "" };
 
 export function RetailerManagementPage() {
     const navigate = useNavigate();
@@ -80,7 +78,6 @@ export function RetailerManagementPage() {
     const [refreshKey, setRefreshKey] = useState(0);
     const [confirmation, setConfirmation] = useState(null);
     const [editing, setEditing] = useState(null);
-    const [creating, setCreating] = useState(false);
     const [viewing, setViewing] = useState(null);
     const [changingWholesaler, setChangingWholesaler] = useState(null);
     const [selectedWholesalerId, setSelectedWholesalerId] = useState("");
@@ -234,34 +231,6 @@ export function RetailerManagementPage() {
         }
     };
 
-    const saveCreate = async () => {
-        const required = ["name", "email", "phone", "company", "city", "state", "password", "wholesalerId"];
-        const errors = Object.fromEntries(required.filter((field) => !String(editForm[field] || "").trim()).map((field) => [field, "This field is required"]));
-        if (editForm.password && editForm.password.length < 8) errors.password = "Password must be at least 8 characters";
-        if (editForm.email && !/^\S+@\S+\.\S+$/.test(editForm.email)) errors.email = "Enter a valid email address";
-        setFormErrors(errors);
-        if (Object.keys(errors).length) return;
-        setActionLoading(true);
-        try {
-            await apiPost("/admin/retailers", editForm);
-            toast.success("Retailer created successfully");
-            setCreating(false);
-            setEditForm(blankRetailerForm);
-            setRefreshKey((current) => current + 1);
-        } catch (err) {
-            if (err.details && typeof err.details === "object") setFormErrors((current) => ({ ...current, ...err.details }));
-            toast.error(err.message || "Unable to create retailer");
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const openCreate = () => {
-        setFormErrors({});
-        setEditForm(blankRetailerForm);
-        setCreating(true);
-    };
-
     const toggleSort = (key) => {
         if (sortBy === key) setSortOrder((current) => current === "asc" ? "desc" : "asc");
         else {
@@ -282,7 +251,7 @@ export function RetailerManagementPage() {
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
                     <Users className="size-3.5" /> Retailer network
                 </div>
-                <PageHeader title="Retailer Management" description="Manage retailer accounts, purchases, and wholesaler connections." action={<Button onClick={openCreate} className="shadow-sm"><Plus /> Add Retailer</Button>} />
+                <PageHeader title="Retailer Management" description="Manage retailer accounts, purchases, and wholesaler connections." />
             </div>
             <section className="admin-card overflow-hidden shadow-sm">
                 <div className="space-y-3 border-b bg-muted/15 p-4">
@@ -388,28 +357,6 @@ export function RetailerManagementPage() {
                             ))}
                         </div>
                         <DialogFooter><Button variant="outline" onClick={() => setEditing(null)} disabled={actionLoading}>Cancel</Button><Button onClick={saveEdit} disabled={actionLoading}>{actionLoading ? "Saving..." : "Save changes"}</Button></DialogFooter>
-                    </DialogContent>
-                </Dialog>
-                <Dialog open={creating} onOpenChange={(open) => !open && !actionLoading && setCreating(false)}>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>Add retailer</DialogTitle><DialogDescription>Create a retailer account and connect it to one active wholesaler.</DialogDescription></DialogHeader>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            {["name", "businessName", "company", "email", "phone", "city", "state", "password"].map((field) => (
-                                <label key={field} className="grid gap-1 text-xs font-medium capitalize">
-                                    {field === "businessName" ? "Business name" : field}
-                                    <Input type={field === "password" ? "password" : field === "email" ? "email" : "text"} value={editForm[field] || ""} onChange={(event) => { setEditForm((current) => ({ ...current, [field]: event.target.value })); setFormErrors((current) => ({ ...current, [field]: undefined })); }} aria-invalid={Boolean(formErrors[field])} />
-                                    {formErrors[field] && <span className="text-destructive">{formErrors[field]}</span>}
-                                </label>
-                            ))}
-                            <label className="grid gap-1 text-xs font-medium sm:col-span-2">Wholesaler
-                                <Select value={editForm.wholesalerId} onValueChange={(value) => { setEditForm((current) => ({ ...current, wholesalerId: value })); setFormErrors((current) => ({ ...current, wholesalerId: undefined })); }}>
-                                    <SelectTrigger><SelectValue placeholder="Select active wholesaler" /></SelectTrigger>
-                                    <SelectContent>{activeWholesalers.map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.businessName || row.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                                {formErrors.wholesalerId && <span className="text-destructive">{formErrors.wholesalerId}</span>}
-                            </label>
-                        </div>
-                        <DialogFooter><Button variant="outline" onClick={() => setCreating(false)} disabled={actionLoading}>Cancel</Button><Button onClick={saveCreate} disabled={actionLoading}>{actionLoading ? "Creating..." : "Create retailer"}</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
                 <Dialog open={Boolean(changingWholesaler)} onOpenChange={(open) => !open && setChangingWholesaler(null)}>

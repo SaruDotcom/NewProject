@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Ticket,
   Plus,
@@ -21,6 +22,8 @@ import {
   Users,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useWholesaler } from '@/context/WholesalerContext';
+import { wholesalerQueryKeys } from '@/lib/query-client';
 
 interface Coupon {
   _id: string;
@@ -41,8 +44,19 @@ interface Coupon {
 }
 
 export default function CouponsPage() {
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { profile } = useWholesaler();
+  const queryClient = useQueryClient();
+  const couponsQuery = useQuery({
+    queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'coupons'),
+    queryFn: async () => {
+      const response = await api.getWholesalerCoupons();
+      if (!response.success || !Array.isArray(response.data)) throw new Error('Failed to load coupons');
+      return response.data as Coupon[];
+    },
+    enabled: Boolean(profile.id),
+  });
+  const coupons = couponsQuery.data ?? [];
+  const isLoading = couponsQuery.isLoading;
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
@@ -69,24 +83,20 @@ export default function CouponsPage() {
   });
 
   const fetchCoupons = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await api.getWholesalerCoupons();
-      if (res.success && Array.isArray(res.data)) {
-        setCoupons(res.data);
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch coupons:', err);
-      setError(err.message || 'Failed to load coupons');
-    } finally {
-      setIsLoading(false);
-    }
+    await queryClient.invalidateQueries({
+      queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'coupons'),
+    });
+    await couponsQuery.refetch();
   };
 
   useEffect(() => {
-    fetchCoupons();
-  }, []);
+    if (couponsQuery.error) {
+      console.error('Failed to fetch coupons:', couponsQuery.error);
+      setError(couponsQuery.error.message || 'Failed to load coupons');
+    } else if (couponsQuery.data) {
+      setError(null);
+    }
+  }, [couponsQuery.data, couponsQuery.error]);
 
   const openCreateModal = () => {
     setEditingCoupon(null);
@@ -172,9 +182,7 @@ export default function CouponsPage() {
   const handleToggleStatus = async (couponId: string) => {
     try {
       await api.toggleWholesalerCoupon(couponId);
-      setCoupons((prev) =>
-        prev.map((c) => (c._id === couponId ? { ...c, isActive: !c.isActive } : c))
-      );
+      await fetchCoupons();
     } catch (err: any) {
       alert(err.message || 'Failed to toggle status');
     }
@@ -184,7 +192,7 @@ export default function CouponsPage() {
     if (!window.confirm('Are you sure you want to delete this coupon?')) return;
     try {
       await api.deleteWholesalerCoupon(couponId);
-      setCoupons((prev) => prev.filter((c) => c._id !== couponId));
+      await fetchCoupons();
     } catch (err: any) {
       alert(err.message || 'Failed to delete coupon');
     }
@@ -213,13 +221,13 @@ export default function CouponsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#E5E5E5] shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-tradeflow-gray-200 shadow-sm">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-2 bg-red-50 text-[#C62828] rounded-xl font-bold">
+            <span className="p-2 bg-tradeflow-green-50 text-green-700 rounded-xl font-bold">
               <Ticket className="w-6 h-6" />
             </span>
-            <h1 className="text-2xl font-extrabold text-[#1F1F1F]">Coupons & Offers</h1>
+            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Coupons & Offers</h1>
           </div>
           <p className="mt-1 text-sm text-gray-500">
             Create and manage promotional discount coupons for your connected retailers to boost sales.
@@ -228,7 +236,7 @@ export default function CouponsPage() {
 
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#C62828] hover:bg-[#B71C1C] text-white font-bold rounded-xl shadow-md transition-all transform hover:scale-[1.02]"
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-tradeflow-green hover:bg-tradeflow-green-hover text-tradeflow-navy font-bold rounded-xl shadow-md transition-all transform hover:scale-[1.02]"
         >
           <Plus className="w-5 h-5" />
           <span>Create New Coupon</span>
@@ -237,46 +245,46 @@ export default function CouponsPage() {
 
       {/* Analytics Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-5 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-100 text-[#C62828] flex items-center justify-center">
+        <div className="p-5 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-tradeflow-green-100 text-green-700 flex items-center justify-center">
             <Tag className="w-6 h-6" />
           </div>
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Active Coupons</div>
-            <div className="text-2xl font-black text-[#1F1F1F] mt-0.5">{totalActive} / {coupons.length}</div>
+            <div className="text-2xl font-black text-tradeflow-navy mt-0.5">{totalActive} / {coupons.length}</div>
           </div>
         </div>
 
-        <div className="p-5 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs flex items-center gap-4">
+        <div className="p-5 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
             <TrendingUp className="w-6 h-6" />
           </div>
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Redemptions</div>
-            <div className="text-2xl font-black text-[#1F1F1F] mt-0.5">{totalRedemptions} Times</div>
+            <div className="text-2xl font-black text-tradeflow-navy mt-0.5">{totalRedemptions} Times</div>
           </div>
         </div>
 
-        <div className="p-5 bg-white rounded-2xl border border-[#E5E5E5] shadow-xs flex items-center gap-4">
+        <div className="p-5 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-xs flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
             <Sparkles className="w-6 h-6" />
           </div>
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Retailer Engagement</div>
-            <div className="text-2xl font-black text-[#1F1F1F] mt-0.5">High Potential</div>
+            <div className="text-2xl font-black text-tradeflow-navy mt-0.5">High Potential</div>
           </div>
         </div>
       </div>
 
       {/* Tabs & Search Filter */}
-      <div className="bg-white p-4 rounded-2xl border border-[#E5E5E5] shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-1 bg-[#FAF9F7] p-1 rounded-xl border border-[#E5E5E5] w-full md:w-auto">
+      <div className="bg-white p-4 rounded-2xl border border-tradeflow-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-1 bg-tradeflow-gray-50 p-1 rounded-xl border border-tradeflow-gray-200 w-full md:w-auto">
           <button
             onClick={() => setActiveTab('ALL')}
             className={`px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
               activeTab === 'ALL'
-                ? 'bg-white text-[#C62828] shadow-xs'
-                : 'text-gray-600 hover:text-[#1F1F1F]'
+                ? 'bg-white text-green-700 shadow-xs'
+                : 'text-gray-600 hover:text-tradeflow-navy'
             }`}
           >
             All Coupons ({coupons.length})
@@ -285,8 +293,8 @@ export default function CouponsPage() {
             onClick={() => setActiveTab('ACTIVE')}
             className={`px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
               activeTab === 'ACTIVE'
-                ? 'bg-white text-[#C62828] shadow-xs'
-                : 'text-gray-600 hover:text-[#1F1F1F]'
+                ? 'bg-white text-green-700 shadow-xs'
+                : 'text-gray-600 hover:text-tradeflow-navy'
             }`}
           >
             Active ({totalActive})
@@ -295,8 +303,8 @@ export default function CouponsPage() {
             onClick={() => setActiveTab('INACTIVE')}
             className={`px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
               activeTab === 'INACTIVE'
-                ? 'bg-white text-[#C62828] shadow-xs'
-                : 'text-gray-600 hover:text-[#1F1F1F]'
+                ? 'bg-white text-green-700 shadow-xs'
+                : 'text-gray-600 hover:text-tradeflow-navy'
             }`}
           >
             Inactive ({coupons.length - totalActive})
@@ -310,23 +318,23 @@ export default function CouponsPage() {
             placeholder="Search coupon code or title..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+            className="w-full pl-9 pr-4 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
           />
         </div>
       </div>
 
       {/* Coupons List */}
       {isLoading ? (
-        <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E5E5]">
-          <div className="w-8 h-8 border-4 border-[#C62828] border-t-transparent rounded-full animate-spin mx-auto" />
+        <div className="p-12 text-center bg-white rounded-2xl border border-tradeflow-gray-200">
+          <div className="w-8 h-8 border-4 border-tradeflow-green border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="mt-3 text-xs font-semibold text-gray-500">Loading coupons...</p>
         </div>
       ) : filteredCoupons.length === 0 ? (
-        <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E5E5] space-y-3">
-          <div className="w-16 h-16 rounded-full bg-red-50 text-[#C62828] flex items-center justify-center mx-auto">
+        <div className="p-12 text-center bg-white rounded-2xl border border-tradeflow-gray-200 space-y-3">
+          <div className="w-16 h-16 rounded-full bg-tradeflow-green-50 text-green-700 flex items-center justify-center mx-auto">
             <Ticket className="w-8 h-8" />
           </div>
-          <h3 className="text-base font-bold text-[#1F1F1F]">No coupons found</h3>
+          <h3 className="text-base font-bold text-tradeflow-navy">No coupons found</h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
             {searchQuery
               ? `No coupons matching "${searchQuery}"`
@@ -335,7 +343,7 @@ export default function CouponsPage() {
           {!searchQuery && (
             <button
               onClick={openCreateModal}
-              className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-[#C62828] text-white font-bold rounded-xl text-xs"
+              className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl text-xs"
             >
               <Plus className="w-4 h-4" />
               Create First Coupon
@@ -351,7 +359,7 @@ export default function CouponsPage() {
                 key={coupon._id}
                 className={`bg-white rounded-2xl border transition-all duration-200 shadow-xs flex flex-col justify-between overflow-hidden relative ${
                   coupon.isActive && !isExpired
-                    ? 'border-[#E5E5E5] hover:border-[#C62828]/40 hover:shadow-md'
+                    ? 'border-tradeflow-gray-200 hover:border-tradeflow-green/40 hover:shadow-md'
                     : 'border-dashed border-gray-300 opacity-80 bg-gray-50/50'
                 }`}
               >
@@ -359,7 +367,7 @@ export default function CouponsPage() {
                 <div className="p-5 space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-black px-3 py-1 bg-red-50 text-[#C62828] border border-red-200 rounded-lg tracking-wider flex items-center gap-1.5">
+                      <span className="font-mono text-sm font-black px-3 py-1 bg-tradeflow-green-50 text-green-700 border border-tradeflow-green-100 rounded-lg tracking-wider flex items-center gap-1.5">
                         <Tag className="w-3.5 h-3.5" />
                         {coupon.code}
                       </span>
@@ -381,7 +389,7 @@ export default function CouponsPage() {
                         coupon.isActive && !isExpired
                           ? 'bg-emerald-100 text-emerald-800'
                           : isExpired
-                          ? 'bg-rose-100 text-rose-800'
+                          ? 'bg-amber-100 text-amber-800'
                           : 'bg-gray-200 text-gray-700'
                       }`}
                     >
@@ -390,7 +398,7 @@ export default function CouponsPage() {
                   </div>
 
                   <div>
-                    <h3 className="font-extrabold text-base text-[#1F1F1F] leading-tight">
+                    <h3 className="font-extrabold text-base text-tradeflow-navy leading-tight">
                       {coupon.title}
                     </h3>
                     {coupon.description && (
@@ -399,10 +407,10 @@ export default function CouponsPage() {
                   </div>
 
                   {/* Discount Banner Details */}
-                  <div className="p-3 bg-[#FAF9F7] rounded-xl border border-[#E5E5E5] space-y-1.5">
+                  <div className="p-3 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-gray-500 font-medium">Discount Value:</span>
-                      <span className="font-black text-[#C62828]">
+                      <span className="font-black text-green-700">
                         {coupon.discountType === 'PERCENTAGE'
                           ? `${coupon.discountValue}% OFF`
                           : `₹${coupon.discountValue} FLAT OFF`}
@@ -463,10 +471,10 @@ export default function CouponsPage() {
                 </div>
 
                 {/* Footer Controls */}
-                <div className="px-5 py-3 bg-[#FAF9F7] border-t border-[#E5E5E5] flex items-center justify-between">
+                <div className="px-5 py-3 bg-tradeflow-gray-50 border-t border-tradeflow-gray-200 flex items-center justify-between">
                   <button
                     onClick={() => handleToggleStatus(coupon._id)}
-                    className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-[#C62828] transition-colors"
+                    className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-green-700 transition-colors"
                   >
                     {coupon.isActive ? (
                       <ToggleRight className="w-5 h-5 text-emerald-600" />
@@ -479,14 +487,14 @@ export default function CouponsPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => openEditModal(coupon)}
-                      className="p-1.5 text-gray-600 hover:text-[#C62828] hover:bg-white rounded-lg border border-transparent hover:border-[#E5E5E5] transition-all"
+                      className="p-1.5 text-gray-600 hover:text-green-700 hover:bg-white rounded-lg border border-transparent hover:border-tradeflow-gray-200 transition-all"
                       title="Edit Coupon"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(coupon._id)}
-                      className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-white rounded-lg border border-transparent hover:border-[#E5E5E5] transition-all"
+                      className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-white rounded-lg border border-transparent hover:border-tradeflow-gray-200 transition-all"
                       title="Delete Coupon"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -502,11 +510,11 @@ export default function CouponsPage() {
       {/* Create / Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-[#E5E5E5] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 bg-[#FAF9F7] border-b border-[#E5E5E5] flex items-center justify-between">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-tradeflow-gray-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-tradeflow-gray-50 border-b border-tradeflow-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Ticket className="w-5 h-5 text-[#C62828]" />
-                <h2 className="font-extrabold text-lg text-[#1F1F1F]">
+                <Ticket className="w-5 h-5 text-green-700" />
+                <h2 className="font-extrabold text-lg text-tradeflow-navy">
                   {editingCoupon ? 'Edit Coupon' : 'Create New Coupon'}
                 </h2>
               </div>
@@ -537,7 +545,7 @@ export default function CouponsPage() {
                     placeholder="e.g. DIWALI50"
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 text-xs font-mono font-bold uppercase border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs font-mono font-bold uppercase border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
 
@@ -551,7 +559,7 @@ export default function CouponsPage() {
                     placeholder="e.g. Diwali Festive Offer"
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
               </div>
@@ -565,11 +573,11 @@ export default function CouponsPage() {
                   placeholder="Short description for retailer terms (e.g. Valid on all electronics orders)"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                  className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#FAF9F7] p-3 rounded-xl border border-[#E5E5E5]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-tradeflow-gray-50 p-3 rounded-xl border border-tradeflow-gray-200">
                 <div>
                   <label className="block text-xs font-extrabold text-gray-700 mb-1">
                     Discount Type *
@@ -582,7 +590,7 @@ export default function CouponsPage() {
                         discountType: e.target.value as 'PERCENTAGE' | 'FLAT',
                       })
                     }
-                    className="w-full px-3 py-2 text-xs font-semibold border border-[#E5E5E5] rounded-xl bg-white focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs font-semibold border border-tradeflow-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   >
                     <option value="PERCENTAGE">Percentage (%) OFF</option>
                     <option value="FLAT">Flat Amount (₹) OFF</option>
@@ -601,7 +609,7 @@ export default function CouponsPage() {
                     placeholder={formData.discountType === 'PERCENTAGE' ? 'e.g. 10' : 'e.g. 500'}
                     value={formData.discountValue}
                     onChange={(e) => setFormData({ ...formData, discountValue: e.target.value })}
-                    className="w-full px-3 py-2 text-xs font-bold border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs font-bold border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
               </div>
@@ -617,7 +625,7 @@ export default function CouponsPage() {
                     placeholder="0 = No minimum"
                     value={formData.minOrderValue}
                     onChange={(e) => setFormData({ ...formData, minOrderValue: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
 
@@ -631,7 +639,7 @@ export default function CouponsPage() {
                     placeholder="0 = No max cap"
                     value={formData.maxDiscountCap}
                     onChange={(e) => setFormData({ ...formData, maxDiscountCap: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                     disabled={formData.discountType === 'FLAT'}
                   />
                 </div>
@@ -646,7 +654,7 @@ export default function CouponsPage() {
                     type="date"
                     value={formData.validFrom}
                     onChange={(e) => setFormData({ ...formData, validFrom: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
 
@@ -658,7 +666,7 @@ export default function CouponsPage() {
                     type="date"
                     value={formData.validUntil}
                     onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
               </div>
@@ -674,7 +682,7 @@ export default function CouponsPage() {
                     placeholder="0 = Unlimited total usage"
                     value={formData.usageLimit}
                     onChange={(e) => setFormData({ ...formData, usageLimit: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
 
@@ -688,7 +696,7 @@ export default function CouponsPage() {
                     placeholder="0 = Unlimited per retailer"
                     value={formData.perRetailerLimit}
                     onChange={(e) => setFormData({ ...formData, perRetailerLimit: e.target.value })}
-                    className="w-full px-3 py-2 text-xs border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-[#C62828]/20 focus:border-[#C62828]"
+                    className="w-full px-3 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
                   />
                 </div>
               </div>
@@ -699,25 +707,25 @@ export default function CouponsPage() {
                   id="isActiveToggle"
                   checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                  className="w-4 h-4 text-[#C62828] rounded border-gray-300 focus:ring-[#C62828]"
+                  className="w-4 h-4 text-green-700 rounded border-gray-300 focus:ring-tradeflow-green"
                 />
                 <label htmlFor="isActiveToggle" className="text-xs font-bold text-gray-700 cursor-pointer">
                   Activate this coupon immediately
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#E5E5E5]">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-tradeflow-gray-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-[#E5E5E5] text-gray-700 font-bold rounded-xl text-xs hover:bg-gray-50"
+                  className="px-4 py-2 border border-tradeflow-gray-200 text-gray-700 font-bold rounded-xl text-xs hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 bg-[#C62828] hover:bg-[#B71C1C] text-white font-bold rounded-xl text-xs shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 bg-tradeflow-green hover:bg-tradeflow-green-hover text-tradeflow-navy font-bold rounded-xl text-xs shadow-xs disabled:opacity-50"
                 >
                   {isSubmitting ? 'Saving...' : editingCoupon ? 'Update Coupon' : 'Create Coupon'}
                 </button>

@@ -1,43 +1,34 @@
 import { Link, useNavigate } from "@/lib/router";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronRight, Favorite, FavoriteBorder, LocationOn, Inventory2, ShoppingCartOutlined, Verified, VerifiedUser, Lock, LocalShipping, Notifications } from "@mui/icons-material";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { type RetailerProfile } from "@/state/store";
-import { useStore, getCategoryHierarchy } from "@/state/store";
-import { api, setAuthToken } from "@/api/api";
+import { useStore, getCategoryHierarchy, mapOrder } from "@/state/store";
+import { ApiError, api, setAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
-import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, money } from "./primitives";
+import { retailerQueryKeys } from "@/lib/query-client";
+import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, money } from "./primitives";
 
 export function DashboardPage() {
-  const { wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
+  const { currentUser, wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
   const connectedProducts = products.filter((p) => p.wholesalerId === linkedWholesalerId);
   const safeOwnerName = retailerProfile.ownerName?.trim() || "Retailer";
   const firstName = safeOwnerName.split(/\s+/)[0] || "Retailer";
   const linkedSupplierName = linkedWholesaler?.name || "your supplier";
 
-  const [creditInfo, setCreditInfo] = useState<{
-    creditEnabled: boolean;
-    creditLimit: number;
-    outstandingAmount: number;
-    availableCredit: number;
-    creditPeriodDays: number;
-    lateFeePercent: number;
-  } | null>(null);
-
+  const creditQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
+    queryFn: async () => (await api.getCreditInfo())?.data ?? null,
+    enabled: Boolean(currentUser?.id),
+  });
+  const creditInfo = creditQuery.data;
   useEffect(() => {
-    let mounted = true;
-    api.getCreditInfo()
-      .then((res: any) => {
-        if (mounted && res && res.data) {
-          setCreditInfo(res.data);
-        }
-      })
-      .catch(() => {});
-    return () => { mounted = false; };
-  }, []);
+    if (creditQuery.error) console.error("Failed to load retailer credit data", creditQuery.error);
+  }, [creditQuery.error]);
 
   const overdueCount = useMemo(() => {
     return orders.filter(o => o.isCreditOrder && o.creditPaymentStatus === "OVERDUE").length;
@@ -55,34 +46,34 @@ export function DashboardPage() {
       </div>
 
       {creditInfo?.creditEnabled && (
-        <div className="mt-6 rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-purple-50 p-5 shadow-xs dark:border-purple-900/40 dark:from-purple-950/20 dark:via-background dark:to-purple-950/20">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 pb-3 dark:border-purple-900/30">
+        <div className="mt-6 rounded-2xl border border-tradeflow-green/20 bg-gradient-to-r from-tradeflow-green-50 via-white to-tradeflow-green-50 p-5 shadow-xs dark:border-tradeflow-green/30 dark:from-tradeflow-navy/70 dark:via-background dark:to-tradeflow-navy/70">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-tradeflow-green/20 pb-3 dark:border-tradeflow-green/30">
             <div className="flex items-center gap-2">
-              <Badge className="bg-purple-600 text-white font-bold">Credit Line Active</Badge>
+              <Badge className="bg-tradeflow-green text-tradeflow-navy font-bold">Credit Line Active</Badge>
               <span className="text-xs font-semibold text-muted-foreground">Provided by {linkedSupplierName}</span>
             </div>
             <span className="text-xs text-muted-foreground">Pay within <strong>{creditInfo.creditPeriodDays} days</strong> of order</span>
           </div>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-white p-3.5 border border-purple-100 dark:bg-card dark:border-purple-900/30">
+            <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
               <span className="text-xs font-medium text-muted-foreground">Total Credit Limit</span>
               <p className="text-lg font-black text-ink mt-0.5">{money(creditInfo.creditLimit)}</p>
             </div>
-            <div className="rounded-xl bg-white p-3.5 border border-purple-100 dark:bg-card dark:border-purple-900/30">
+            <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
               <span className="text-xs font-medium text-muted-foreground">Current Outstanding</span>
-              <p className={cn("text-lg font-black mt-0.5", creditInfo.outstandingAmount > 0 ? "text-purple-700 dark:text-purple-400" : "text-emerald-600")}>
+              <p className={cn("text-lg font-black mt-0.5", creditInfo.outstandingAmount > 0 ? "text-amber-700 dark:text-amber-300" : "text-green-700 dark:text-tradeflow-green")}>
                 {money(creditInfo.outstandingAmount)}
               </p>
             </div>
-            <div className="rounded-xl bg-white p-3.5 border border-purple-100 dark:bg-card dark:border-purple-900/30">
+            <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
               <span className="text-xs font-medium text-muted-foreground">Available Credit</span>
-              <p className="text-lg font-black text-emerald-600 mt-0.5">{money(creditInfo.availableCredit)}</p>
+              <p className="text-lg font-black text-green-700 dark:text-tradeflow-green mt-0.5">{money(creditInfo.availableCredit)}</p>
             </div>
           </div>
 
           {overdueCount > 0 && (
-            <div className="mt-4 flex items-center gap-2 rounded-xl bg-red-100 p-3 text-xs font-bold text-red-800 border border-red-200">
+            <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-100 p-3 text-xs font-bold text-amber-800 border border-amber-200">
               ⚠️ You have {overdueCount} overdue credit order{overdueCount > 1 ? "s" : ""}. Please settle your dues with {linkedSupplierName} to avoid late charges.
             </div>
           )}
@@ -145,23 +136,27 @@ export function DashboardPage() {
 }
 
 export function OrdersPage() {
-  const { orders, products, linkedWholesaler, refreshOrders } = useStore();
+  const { currentUser, orders, products, linkedWholesaler, refreshOrders } = useStore();
+  const ordersQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "orders"),
+    queryFn: () => api.getOrders({ limit: 200 }),
+    enabled: Boolean(currentUser?.id),
+    refetchInterval: 30000,
+    select: (response) => Array.isArray(response?.data) ? response.data.map(mapOrder) : [],
+  });
   const [activeTab, setActiveTab] = useState("All orders");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "highest" | "lowest">("newest");
 
   useEffect(() => {
     void refreshOrders();
-    const interval = setInterval(() => {
-      void refreshOrders();
-    }, 3000);
-    return () => clearInterval(interval);
   }, [refreshOrders]);
 
+  const visibleOrders = ordersQuery.data ?? orders;
   const supplierName = linkedWholesaler?.name || linkedWholesaler?.businessName || "Connected wholesaler";
 
   const filteredOrders = useMemo(() => {
-    return orders
+    return visibleOrders
       .filter((o) => {
         const matchesTab = activeTab === "All orders" || o.status.toLowerCase() === activeTab.toLowerCase();
 
@@ -184,7 +179,7 @@ export function OrdersPage() {
         if (sortBy === "oldest") return new Date(a.date).getTime() - new Date(b.date).getTime();
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
-  }, [orders, activeTab, search, sortBy, supplierName, products]);
+  }, [visibleOrders, activeTab, search, sortBy, supplierName, products]);
 
   const totalSpent = useMemo(() => filteredOrders.reduce((sum, o) => sum + o.total, 0), [filteredOrders]);
 
@@ -227,7 +222,7 @@ export function OrdersPage() {
 
       <div className="mt-6 flex flex-wrap gap-2">
         {["All orders", "Pending", "Confirmed", "Processing", "Shipped", "Delivered", "Cancelled"].map((tab) => {
-          const count = tab === "All orders" ? orders.length : orders.filter((o) => o.status.toLowerCase() === tab.toLowerCase()).length;
+          const count = tab === "All orders" ? visibleOrders.length : visibleOrders.filter((o) => o.status.toLowerCase() === tab.toLowerCase()).length;
           return (
             <Button
               key={tab}
@@ -242,7 +237,17 @@ export function OrdersPage() {
         })}
       </div>
 
-      {filteredOrders.length > 0 ? (
+      {ordersQuery.isLoading && orders.length === 0 ? (
+        <div className="mt-8 rounded-2xl border bg-card p-8 text-center text-sm text-muted-foreground" role="status">
+          Loading your orders…
+        </div>
+      ) : ordersQuery.error && orders.length === 0 ? (
+        <div className="mt-8 rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center" role="alert">
+          <p className="font-semibold text-destructive">We couldn’t load your orders.</p>
+          <p className="mt-2 text-sm text-muted-foreground">{ordersQuery.error instanceof Error ? ordersQuery.error.message : "Please try again."}</p>
+          <Button className="mt-4" variant="outline" onClick={() => void ordersQuery.refetch()}>Try again</Button>
+        </div>
+      ) : filteredOrders.length > 0 ? (
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>Showing {filteredOrders.length} order{filteredOrders.length === 1 ? "" : "s"}</span>
@@ -273,17 +278,19 @@ export function OrdersPage() {
 }
 
 export function OrderDetailsPage({ orderId }: { orderId: string }) {
-  const { orders, returns, retailerProfile, linkedWholesaler, products, categories, refreshOrders } = useStore();
-
-  useEffect(() => {
-    void refreshOrders();
-    const interval = setInterval(() => {
-      void refreshOrders();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [refreshOrders]);
-
-  const order = orders.find((o) => String(o.id) === String(orderId)) ?? orders.find((o) => o.id === orderId) ?? orders[0];
+  const { currentUser, orders, returns, retailerProfile, linkedWholesaler, products, categories, refreshOrders, refreshData } = useStore();
+  const queryClient = useQueryClient();
+  const orderQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "order-detail", orderId),
+    queryFn: async () => {
+      const response = await api.getOrderById(encodeURIComponent(orderId));
+      const rawOrder = response?.data?.order;
+      return rawOrder ? mapOrder(rawOrder) : null;
+    },
+    enabled: Boolean(currentUser?.id && orderId),
+    refetchInterval: 30000,
+  });
+  const order = orderQuery.data ?? orders.find((candidate) => String(candidate.id) === String(orderId));
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnReason, setReturnReason] = useState("");
   const [returnNote, setReturnNote] = useState("");
@@ -295,7 +302,19 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
   if (!order) {
     return (
       <main className="shell py-16 text-center">
-        <h1 className="text-2xl font-bold">Order not found</h1>
+        {orderQuery.isLoading ? (
+          <p className="text-muted-foreground" role="status">Loading order details…</p>
+        ) : orderQuery.error ? (
+          <>
+            <h1 className="text-2xl font-bold">We couldn’t load this order</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {orderQuery.error instanceof Error ? orderQuery.error.message : "Please try again."}
+            </p>
+            <Button className="mt-4" onClick={() => void orderQuery.refetch()}>Try again</Button>
+          </>
+        ) : (
+          <h1 className="text-2xl font-bold">Order not found</h1>
+        )}
         <Button asChild className="mt-4"><Link to="/orders">Back to orders</Link></Button>
       </main>
     );
@@ -318,12 +337,17 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
         reason: returnReason,
         note: returnNote,
       });
+      if (currentUser?.id) {
+        await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser.id, "returns") });
+        await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser.id, "orders") });
+        await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser.id, "order-detail", orderId) });
+        await refreshData(true);
+      }
       toast.success("Return request submitted successfully");
       setReturnDialogOpen(false);
       setReturnItems([]);
       setReturnReason("");
       setReturnNote("");
-      window.location.reload();
     } catch (err: any) {
       toast.error(err?.message || "Failed to submit return request");
     }
@@ -338,9 +362,14 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
 
     try {
       await api.cancelOrder(order.id, cancelReason, cancelNote);
+      if (currentUser?.id) {
+        await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser.id, "orders") });
+        await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser.id, "order-detail", orderId) });
+        await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser.id, "dashboard") });
+      }
+      await refreshOrders();
       toast.success("Order cancelled successfully");
       setCancelDialogOpen(false);
-      window.location.reload();
     } catch (err: any) {
       toast.error(err?.message || "Failed to cancel order");
     }
@@ -533,7 +562,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
                   <span className="text-muted-foreground">Credit Status:</span>
                   <Badge className={cn("font-bold text-[10px]", 
                     order.creditPaymentStatus === "PAID" ? "bg-emerald-100 text-emerald-800" :
-                    order.creditPaymentStatus === "OVERDUE" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                    "bg-amber-100 text-amber-800"
                   )}>
                     {order.creditPaymentStatus || "PENDING"}
                   </Badge>
@@ -587,6 +616,11 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
             const categoryHierarchy = getCategoryHierarchy(item, products, categories);
             const pricePerUnit = item.pricePerUnit || linkedProduct?.price || 0;
             const itemSubtotal = item.subtotal || pricePerUnit * item.quantity;
+            const taxRate = Number(item.cgst || 0) + Number(item.sgst || 0) + Number(item.igst || 0);
+            const taxAmount = Number(item.gstAmount || 0);
+            const taxLabel = Number(item.igst || 0) > 0
+              ? `IGST ${item.igst}%`
+              : `CGST ${item.cgst || 0}% + SGST ${item.sgst || 0}%`;
 
             return (
               <div key={item.productId || idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4">
@@ -617,11 +651,16 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
                     <p className="mt-1 text-xs text-muted-foreground">
                       Quantity: <strong className="text-ink">{item.quantity} units</strong> · {money(pricePerUnit)} per unit
                     </p>
+                    {(item.hsnCode || taxRate > 0) && <p className="mt-1 text-xs text-muted-foreground">
+                      {item.hsnCode && <>HSN: <strong className="text-ink">{item.hsnCode}</strong> · </>}
+                      {taxRate > 0 && <>Tax: <strong className="text-ink">{taxLabel} ({money(taxAmount)})</strong></>}
+                    </p>}
                   </div>
                 </div>
                 <div className="sm:text-right shrink-0">
                   <span className="text-xs text-muted-foreground block">Item Subtotal</span>
                   <strong className="text-lg font-black text-primary sm:text-ink">{money(itemSubtotal)}</strong>
+                  {taxAmount > 0 && <span className="mt-1 block text-xs text-muted-foreground">Grand total {money(item.total || (item.priceIncludesTax ? itemSubtotal : itemSubtotal + taxAmount))}</span>}
                 </div>
               </div>
             );
@@ -833,11 +872,16 @@ export function CartPage() {
 }
 
 export function CheckoutPage() {
-  const { cart, retailerProfile, placeOrder, products } = useStore();
+  const { currentUser, cart, retailerProfile, placeOrder, products } = useStore();
   const [placed, setPlaced] = useState(false);
   const [paymentMode, setPaymentMode] = useState<"ONLINE" | "CREDIT">("ONLINE");
-  const [creditInfo, setCreditInfo] = useState<any>(null);
-  const [loadingCredit, setLoadingCredit] = useState(true);
+  const creditQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
+    queryFn: async () => (await api.getCreditInfo())?.data ?? null,
+    enabled: Boolean(currentUser?.id),
+  });
+  const creditInfo = creditQuery.data;
+  const loadingCredit = creditQuery.isLoading;
 
   const total = cart.reduce((sum, line) => {
     const product = products.find((item) => item.id === line.productId);
@@ -845,18 +889,8 @@ export function CheckoutPage() {
   }, 0);
 
   useEffect(() => {
-    let active = true;
-    api.getCreditInfo()
-      .then((res) => {
-        if (!active) return;
-        if (res?.data) setCreditInfo(res.data);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setLoadingCredit(false);
-      });
-    return () => { active = false; };
-  }, []);
+    if (creditQuery.error) console.error("Failed to load retailer credit data", creditQuery.error);
+  }, [creditQuery.error]);
 
   const isCreditEnabled = Boolean(creditInfo?.creditEnabled);
   const availableCredit = Number(creditInfo?.availableCredit || 0);
@@ -1045,7 +1079,7 @@ export function CheckoutPage() {
                   )}
 
                   {!loadingCredit && isCreditEnabled && meetsMinOrder && availableCredit < finalTotal && (
-                    <div className="mt-2 text-[11px] font-semibold text-red-600">
+                    <div className="mt-2 text-[11px] font-semibold text-amber-700">
                       🚫 Order total ({money(finalTotal)}) exceeds your available credit limit ({money(availableCredit)}). Outstanding: {money(outstanding)} / Limit: {money(effectiveLimit)}.
                     </div>
                   )}
@@ -1064,7 +1098,7 @@ export function CheckoutPage() {
             {appliedCoupon ? (
               <div className="flex items-center justify-between bg-emerald-50 text-emerald-800 border border-emerald-200 p-2.5 rounded-lg text-xs">
                 <div>
-                  <div className="font-extrabold text-[#2E7D32]">✓ '{appliedCoupon.code}' Applied</div>
+                  <div className="font-extrabold text-status-success">✓ '{appliedCoupon.code}' Applied</div>
                   <div className="text-[11px] text-emerald-700">Saving {money(discountAmount)}</div>
                 </div>
                 <button
@@ -1557,34 +1591,69 @@ export function SettingsPage() {
 }
 
 export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "forgot" }) {
-  const navigate = useNavigate();
   const { login } = useStore();
 
   const [mode, setMode] = useState<"login" | "register" | "forgot">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
-  const [referralCode, setReferralCode] = useState("");
+  const referralFromLink =
+    new URLSearchParams(window.location.search).get("ref")?.trim() ||
+    (typeof window !== "undefined" ? localStorage.getItem("nexora_retailer_referral_code")?.trim() : "") ||
+    "";
+  const [referralCode, setReferralCode] = useState(referralFromLink.toUpperCase());
+  const [referralWholesaler, setReferralWholesaler] = useState<{
+    code: string;
+    businessName: string;
+    logo: string;
+    city: string;
+  } | null>(null);
+  const activeReferralWholesaler =
+    referralWholesaler?.code === referralFromLink.toUpperCase() ? referralWholesaler : null;
+  const [referralError, setReferralError] = useState("");
+  const [isLookingUpReferral, setIsLookingUpReferral] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    let refParam = params.get("ref") || params.get("referralCode") || params.get("inviteToken") || "";
-    if (!refParam) {
-      const parts = window.location.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2 && (parts[0] === "join" || parts[0] === "invite" || parts[0] === "register")) {
-        refParam = parts[1] || "";
-      }
-    }
-    if (refParam) {
-      setReferralCode(refParam.toUpperCase());
-      setMode("register");
-    } else {
-      setMode(initialMode);
-    }
+    setMode(initialMode);
   }, [initialMode]);
+
+  useEffect(() => {
+    const code = referralFromLink.toUpperCase();
+    setReferralCode(code);
+    setReferralWholesaler(null);
+    setReferralError("");
+    if (mode !== "register" || !code) {
+      setIsLookingUpReferral(false);
+      return;
+    }
+
+    let isCurrentLookup = true;
+    setIsLookingUpReferral(true);
+    void api.getReferral(code)
+      .then((response) => {
+        if (isCurrentLookup) setReferralWholesaler({ ...response.data.wholesaler, code });
+      })
+      .catch((error: unknown) => {
+        if (!isCurrentLookup) return;
+        const status = error instanceof ApiError ? error.status : undefined;
+        setReferralError(
+          status === 403 || status === 404
+            ? "This invite link is invalid or inactive. Ask your wholesaler for a new invite link."
+            : "Unable to verify this invite link. Please try again.",
+        );
+      })
+      .finally(() => {
+        if (isCurrentLookup) setIsLookingUpReferral(false);
+      });
+
+    return () => {
+      isCurrentLookup = false;
+    };
+  }, [mode, referralFromLink]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1595,6 +1664,10 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
         toast.success("Login successful!");
         window.location.href = "/dashboard";
       } else if (mode === "register") {
+        if (!activeReferralWholesaler) {
+          setReferralError("This invite link is invalid or inactive. Ask your wholesaler for a new invite link.");
+          return;
+        }
         if (!phone || !/^\d{10}$/.test(phone.trim())) {
           toast.error("Please enter a valid 10-digit mobile number.");
           setIsSubmitting(false);
@@ -1607,15 +1680,16 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
         }
 
         const res = await api.register({
-          name: name.trim() || businessName.trim(),
+          name: name.trim(),
+          loginId: loginId.trim().toUpperCase(),
           businessName: businessName.trim(),
           phone: phone.trim(),
-          email: email.trim() || `${phone.trim()}@retailer.nexora.com`,
+          email: email.trim(),
           password,
-          referralCode: referralCode.trim(),
+          referralCode: referralCode.trim().toUpperCase(),
         });
 
-        const token = (res?.data as any)?.token || (res?.data as any)?.accessToken;
+        const token = res.data.token || res.data.accessToken;
         if (token) {
           setAuthToken(token);
           toast.success("Account created successfully! Welcome to NEXORA.");
@@ -1625,8 +1699,12 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
           setMode("login");
         }
       }
-    } catch (err: any) {
-      const errorMsg = err?.message || (mode === "login" ? "Invalid retailer ID or password" : "Registration failed. Please check details.");
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error
+        ? err.message
+        : mode === "login"
+          ? "Invalid retailer ID or password"
+          : "Registration failed. Please check details.";
       toast.error(errorMsg);
     } finally {
       setIsSubmitting(false);
@@ -1639,40 +1717,54 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
     <main className="grid min-h-[calc(100vh-120px)] place-items-center bg-canvas px-4 py-12">
       <section className="w-full max-w-md border bg-card p-7 shadow-sm rounded-2xl">
         <div className="text-center">
-          <span className="mx-auto grid size-11 place-items-center bg-primary font-extrabold text-primary-foreground rounded-xl">
-            N
-          </span>
-          <h1 className="mt-5 text-2xl font-extrabold text-ink">{title}</h1>
+          <TradeFlowMark className="mx-auto size-12 rounded-xl shadow-sm" />
+          <h1 className="mt-4 text-2xl font-extrabold text-ink">{title}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {mode === "forgot"
               ? "We'll send a reset link to your account email."
               : mode === "register"
-              ? "Self-register your business to connect directly with your wholesaler."
-              : "Use your Retailer ID & password or self-register via referral code."}
+              ? "Create your account using your wholesaler's invite link."
+              : "Sign in with your retailer ID or email and password."}
           </p>
-
-          {mode !== "forgot" && (
-            <div className="mt-4 flex rounded-xl border bg-muted/40 p-1 text-xs font-bold">
-              <button
-                type="button"
-                className={`flex-1 py-1.5 rounded-lg transition-all ${mode === "login" ? "bg-background text-ink shadow-xs font-extrabold" : "text-muted-foreground"}`}
-                onClick={() => setMode("login")}
-              >
-                Wholesaler-Added ID
-              </button>
-              <button
-                type="button"
-                className={`flex-1 py-1.5 rounded-lg transition-all ${mode === "register" ? "bg-background text-ink shadow-xs font-extrabold" : "text-muted-foreground"}`}
-                onClick={() => setMode("register")}
-              >
-                Self-Registration
-              </button>
-            </div>
-          )}
         </div>
 
+        {(mode !== "register" || activeReferralWholesaler) ? (
         <form className="mt-6 grid gap-4" onSubmit={handleAuthSubmit}>
           {mode === "register" && (
+              <div className="grid gap-3">
+                <label className="text-xs font-bold text-ink">
+                  Wholesaler Invite Code
+                  <Input
+                    className="mt-1.5 uppercase font-mono tracking-wider font-bold"
+                    type="text"
+                    value={referralCode}
+                    readOnly
+                  />
+                </label>
+                {isLookingUpReferral && (
+                  <p className="text-xs text-muted-foreground">Checking referral link...</p>
+                )}
+              {referralError && (
+                <p role="alert" className="text-xs font-semibold text-red-600">{referralError}</p>
+              )}
+              {activeReferralWholesaler && (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  {activeReferralWholesaler.logo && (
+                    <img src={activeReferralWholesaler.logo} alt="" className="size-12 rounded-lg object-cover" />
+                  )}
+                  <div>
+                    <p className="text-xs text-muted-foreground">You are joining:</p>
+                    <p className="font-bold text-ink">{activeReferralWholesaler.businessName}</p>
+                    {activeReferralWholesaler.city && (
+                      <p className="text-xs text-muted-foreground">{activeReferralWholesaler.city}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(mode === "login" || mode === "forgot" || (mode === "register" && activeReferralWholesaler)) && mode === "register" && (
             <>
               <label className="text-xs font-bold text-ink">
                 Owner / Contact Name *
@@ -1684,6 +1776,24 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
                   onChange={(e) => setName(e.target.value)}
                   required
                 />
+              </label>
+              <label className="text-xs font-bold text-ink">
+                Retailer Login ID (Username) *
+                <Input
+                  className="mt-1.5 uppercase font-mono"
+                  type="text"
+                  autoComplete="username"
+                  minLength={4}
+                  maxLength={32}
+                  pattern="[A-Za-z0-9_-]{4,32}"
+                  placeholder="e.g. SARITA123 or FASHION_STORE"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32))}
+                  required
+                />
+                <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                  Letters, numbers, and dashes only (no @ or dots). This is your login username.
+                </span>
               </label>
               <label className="text-xs font-bold text-ink">
                 Business / Store Name *
@@ -1711,26 +1821,33 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
             </>
           )}
 
-          <label className="text-xs font-bold text-ink">
-            {mode === "register" ? "Email Address (Optional)" : "Retailer ID / Email"}
-            <Input
-              className="mt-1.5"
-              type={mode === "register" ? "email" : "text"}
-              autoComplete="off"
-              placeholder={mode === "register" ? "e.g. store@example.com" : "Enter retailer ID shared by wholesaler"}
-              value={email}
-              onChange={(e) => setEmail(mode === "login" ? e.target.value.toUpperCase().replace(/[^A-Z0-9@._-]/g, "") : e.target.value)}
-              required={mode !== "register"}
-            />
-          </label>
+          {(mode === "login" || mode === "forgot" || (mode === "register" && activeReferralWholesaler)) && (
+            <label className="text-xs font-bold text-ink">
+              {mode === "register" ? "Email Address (Gmail / Email ID) *" : "Retailer ID / Email"}
+              <Input
+                className="mt-1.5"
+                type={mode === "register" || mode === "forgot" ? "email" : "text"}
+                autoComplete="off"
+                placeholder={mode === "register" ? "e.g. sarita@gmail.com" : "Enter retailer ID or email"}
+                value={email}
+                onChange={(e) => setEmail(mode === "login" ? e.target.value.toUpperCase().replace(/[^A-Z0-9@._-]/g, "") : e.target.value)}
+                required
+              />
+              {mode === "register" && (
+                <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                  Enter your Gmail / Email address here (e.g. yourname@gmail.com).
+                </span>
+              )}
+            </label>
+          )}
 
-          {mode !== "forgot" && (
+          {(mode === "login" || (mode === "register" && activeReferralWholesaler)) && (
             <label className="text-xs font-bold text-ink">
               Password *
               <Input
                 className="mt-1.5"
                 type="password"
-                autoComplete="new-password"
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
                 placeholder={mode === "register" ? "Create a strong password (min 6 chars)" : "Enter your password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -1739,39 +1856,34 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
             </label>
           )}
 
-          {mode === "register" && (
-            <label className="text-xs font-bold text-ink">
-              Wholesaler Referral Code
-              <Input
-                className="mt-1.5 uppercase font-mono tracking-wider font-bold"
-                type="text"
-                placeholder="e.g. REF-APEX-E3ADA9"
-                value={referralCode}
-                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-              />
-              <span className="mt-1 block text-[10px] text-muted-foreground font-normal">
-                Auto-filled from referral link or enter code shared by wholesaler.
-              </span>
-            </label>
-          )}
-
-          <Button type="submit" size="lg" disabled={isSubmitting} className="mt-2 rounded-xl font-extrabold">
+          {(mode === "login" || mode === "forgot" || (mode === "register" && activeReferralWholesaler)) && (
+            <Button type="submit" size="lg" disabled={isSubmitting} className="mt-2 rounded-xl font-extrabold">
             {isSubmitting
               ? mode === "login" ? "Signing in..." : "Creating Account..."
               : mode === "login" ? "Sign In" : mode === "register" ? "Register & Connect" : "Send Reset Link"}
-          </Button>
+            </Button>
+          )}
         </form>
+        ) : (
+          <div className="mt-6 space-y-3 text-center" role="status">
+            {!referralFromLink
+              ? <p className="text-sm text-muted-foreground">Registration is by invitation only. Ask your wholesaler for an invite link.</p>
+              : isLookingUpReferral
+                ? <><p className="text-sm text-muted-foreground">Checking invite link...</p><Input className="text-center font-mono uppercase" value={referralCode} readOnly aria-label="Wholesaler invite code" /></>
+                : <><Input className="text-center font-mono uppercase" value={referralCode} readOnly aria-label="Wholesaler invite code" /><p role="alert" className="text-sm font-semibold text-red-600">{referralError || "This invite link is invalid or inactive. Ask your wholesaler for a new invite link."}</p></>}
+          </div>
+        )}
 
         <div className="mt-6 text-center text-xs text-muted-foreground">
           {mode === "login" ? (
             <>
               <Link className="text-primary hover:underline font-bold" to="/forgot-password">Forgot password?</Link>
-              <p className="mt-2">Don't have an ID? Ask your wholesaler for a referral link to self-register.</p>
+              <p className="mt-2">New here? Ask your wholesaler for an invite link to register.</p>
             </>
           ) : (
-            <button type="button" className="text-primary hover:underline font-bold" onClick={() => setMode("login")}>
-              Already have an account? Sign in
-            </button>
+            mode === "register" && (
+              <Link className="text-primary hover:underline font-bold" to="/login">Already have an account? Sign in</Link>
+            )
           )}
         </div>
       </section>
@@ -1780,26 +1892,24 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
 }
 
 export function CouponsPage() {
-  const [coupons, setCoupons] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { currentUser } = useStore();
+  const couponsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "coupons"),
+    queryFn: async () => {
+      const response = await api.getCoupons();
+      return Array.isArray(response?.data) ? response.data : [];
+    },
+    enabled: Boolean(currentUser?.id),
+  });
+  const coupons = couponsQuery.data ?? [];
+  const loading = couponsQuery.isLoading;
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"ALL" | "AVAILABLE" | "EXPIRED">("ALL");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-    api.getCoupons()
-      .then((res) => {
-        if (active && res && Array.isArray(res.data)) {
-          setCoupons(res.data);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, []);
+    if (couponsQuery.error) console.error("Failed to load retailer coupons", couponsQuery.error);
+  }, [couponsQuery.error]);
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -1902,7 +2012,7 @@ export function CouponsPage() {
                       )}
                     </button>
                   </div>
-                  <Badge className={cn("text-[10px] font-extrabold uppercase", coupon.isAvailable ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800")}>
+                  <Badge className={cn("text-[10px] font-extrabold uppercase", coupon.isAvailable ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800")}>
                     {coupon.isAvailable ? "Active" : coupon.unavailableReason || "Limit Reached"}
                   </Badge>
                 </div>
@@ -1965,4 +2075,3 @@ export function CouponsPage() {
     </main>
   );
 }
-

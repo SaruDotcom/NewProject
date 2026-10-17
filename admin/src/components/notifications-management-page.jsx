@@ -101,10 +101,10 @@ export function NotificationsManagementPage() {
   const getNotificationIcon = (mod, title) => {
     const t = (title || "").toLowerCase();
     if (mod === "Help Request" || t.includes("help") || t.includes("issue")) {
-      return <Headphones className="size-4 text-rose-600" />;
+      return <Headphones className="size-4 text-status-info" />;
     }
     if (mod === "Order" || t.includes("order")) {
-      return <ShoppingBag className="size-4 text-blue-600" />;
+      return <ShoppingBag className="size-4 text-status-info" />;
     }
     if (mod === "Payment" || t.includes("payment")) {
       return <CreditCard className="size-4 text-emerald-600" />;
@@ -113,7 +113,7 @@ export function NotificationsManagementPage() {
       return <ShieldCheck className="size-4 text-amber-600" />;
     }
     if (mod === "Payout" || t.includes("payout")) {
-      return <Wallet className="size-4 text-purple-600" />;
+      return <Wallet className="size-4 text-status-info" />;
     }
     return <Bell className="size-4 text-primary" />;
   };
@@ -121,7 +121,7 @@ export function NotificationsManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Super Admin Notifications & Support Updates"
+        title=" Notifications "
         description="Live updates on Wholesaler help requests, orders, payments, KYC submissions, and payout requests."
         action={
           <div className="flex gap-2">
@@ -217,7 +217,7 @@ export function NotificationsManagementPage() {
                     </div>
 
                     {wholesaler && (
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-900">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-bold bg-status-info-50 text-status-info-foreground border border-status-info/30">
                         <span>Wholesaler:</span>
                         <span className="underline">{wholesaler}</span>
                         {phone && <span className="font-mono font-normal">({phone})</span>}
@@ -229,7 +229,7 @@ export function NotificationsManagementPage() {
                     <div className="flex items-center gap-3 pt-1 text-[11px] text-muted-foreground">
                       <span>{item.createdAt ? new Date(item.createdAt).toLocaleString("en-IN") : "—"}</span>
                       {isHelp && (
-                        <span className="font-bold text-rose-600 bg-rose-100 dark:bg-rose-950 px-1.5 py-0.5 rounded">
+                        <span className="font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
                           Priority Support Desk Message
                         </span>
                       )}

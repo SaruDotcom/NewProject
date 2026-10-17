@@ -19,7 +19,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
-import { Order, OrderStatus } from '@/lib/mock-data';
+import { Order, OrderStatus } from '@/lib/types';
 
 export default function OrdersPage() {
   const { profile, orders, returns, updateOrderStatus, updateReturnStatus } = useWholesaler();
@@ -38,7 +38,7 @@ export default function OrdersPage() {
     switch (status) {
       case 'PENDING':
         return (
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-[#FFF8E1] text-[#F9A825] border border-[#FFE082]">
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-amber-50 text-amber-500 border border-amber-200">
             Pending
           </span>
         );
@@ -58,7 +58,7 @@ export default function OrdersPage() {
         );
       case 'DELIVERED':
         return (
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20">
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green-50 text-status-success border border-status-success/20">
             Delivered
           </span>
         );
@@ -111,13 +111,13 @@ export default function OrdersPage() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1F1F1F]">Retailer Orders Workflow</h1>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Retailer Orders Workflow</h1>
           <p className="text-xs text-gray-500">Track orders placed by connected B2B retailers, update status, and print tax invoices</p>
         </div>
       </div>
 
       {/* Filters Bar: Status Tabs, Date Range & Search */}
-      <div className="p-4 bg-white rounded-2xl border border-[#E5E5E5] flex flex-col lg:flex-row items-center justify-between gap-4 shadow-xs">
+      <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-xs">
         {/* Status Pill Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full lg:w-auto">
           {['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNS'].map((status) => (
@@ -126,8 +126,8 @@ export default function OrdersPage() {
               onClick={() => setActiveStatusTab(status)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 activeStatusTab === status
-                  ? 'bg-[#C62828] text-white shadow-xs'
-                  : 'bg-[#FAF9F7] text-gray-600 hover:bg-[#E5E5E5]'
+                  ? 'bg-tradeflow-green text-tradeflow-navy shadow-xs'
+                  : 'bg-tradeflow-gray-50 text-gray-600 hover:bg-tradeflow-gray-200'
               }`}
             >
               {status === 'ALL' ? `All Orders (${orders.length})` : status === 'RETURNS' ? `Returns` : status}
@@ -138,7 +138,7 @@ export default function OrdersPage() {
         {/* Date Range & Search */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           {/* Date Range Dropdown */}
-          <div className="flex items-center gap-1 bg-[#FAF9F7] px-3 py-1.5 rounded-xl border border-[#E5E5E5] text-xs font-bold">
+          <div className="flex items-center gap-1 bg-tradeflow-gray-50 px-3 py-1.5 rounded-xl border border-tradeflow-gray-200 text-xs font-bold">
             <Calendar className="w-3.5 h-3.5 text-gray-400" />
             <select
               value={dateFilter}
@@ -160,19 +160,19 @@ export default function OrdersPage() {
               placeholder="Search order #, retailer, product..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-1.5 text-xs bg-[#FAF9F7] border border-[#E5E5E5] rounded-xl focus:outline-none focus:border-[#C62828]"
+              className="w-full pl-10 pr-4 py-1.5 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green"
             />
           </div>
         </div>
       </div>
 
       {/* Orders Table */}
-      <div className="bg-white rounded-2xl border border-[#E5E5E5] p-6 shadow-xs">
+      <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs">
         <div className="overflow-x-auto">
           {activeStatusTab === 'RETURNS' ? (
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-[#E5E5E5] text-gray-400 font-bold uppercase tracking-wider">
+                <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Return ID</th>
                   <th className="pb-3">Order ID</th>
                   <th className="pb-3">Retailer</th>
@@ -182,27 +182,27 @@ export default function OrdersPage() {
                   <th className="pb-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E5E5E5]">
+              <tbody className="divide-y divide-tradeflow-gray-200">
                 {/*@ts-ignore*/}
                 {returns.map((ret: any) => (
-                  <tr key={ret.id} className="hover:bg-[#FAF9F7] transition-colors group">
-                    <td className="py-4 font-bold font-mono text-[#1F1F1F]">{ret.returnNumber}</td>
+                  <tr key={ret.id} className="hover:bg-tradeflow-gray-50 transition-colors group">
+                    <td className="py-4 font-bold font-mono text-tradeflow-navy">{ret.returnNumber}</td>
                     <td className="py-4 font-mono text-gray-600">{ret.orderId?.orderNumber || ret.orderId}</td>
-                    <td className="py-4 font-bold text-[#1F1F1F]">{ret.retailerId?.name || ret.retailerId?.businessName || 'Retailer'}</td>
+                    <td className="py-4 font-bold text-tradeflow-navy">{ret.retailerId?.name || ret.retailerId?.businessName || 'Retailer'}</td>
                     <td className="py-4 text-gray-700 font-medium max-w-xs">
                       <div className="truncate">{ret.reason}</div>
                       {ret.retailerNote && <div className="mt-1 line-clamp-2 text-[10px] font-normal text-gray-500">Note: {ret.retailerNote}</div>}
                     </td>
-                    <td className="py-4 font-extrabold text-sm text-[#1F1F1F]">₹{(ret.totalRefundAmount || 0).toLocaleString('en-IN')}</td>
+                    <td className="py-4 font-extrabold text-sm text-tradeflow-navy">₹{(ret.totalRefundAmount || 0).toLocaleString('en-IN')}</td>
                     <td className="py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${ret.status === 'APPROVED' ? 'bg-[#E8F5E9] text-[#2E7D32]' : ret.status === 'REJECTED' ? 'bg-red-50 text-red-600' : 'bg-[#FFF8E1] text-[#F9A825]'}`}>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${ret.status === 'APPROVED' ? 'bg-tradeflow-green-50 text-status-success' : ret.status === 'REJECTED' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-500'}`}>
                         {ret.status}
                       </span>
                     </td>
                     <td className="py-4 text-right">
                       {ret.status === 'REQUESTED' && (
                         <div className="flex justify-end gap-2">
-                          <button onClick={() => updateReturnStatus(ret.id, 'APPROVED')} className="px-3 py-1 bg-[#E8F5E9] text-[#2E7D32] border border-[#2E7D32]/20 rounded-lg text-xs font-bold hover:bg-[#C8E6C9] transition-colors">Approve</button>
+                          <button onClick={() => updateReturnStatus(ret.id, 'APPROVED')} className="px-3 py-1 bg-tradeflow-green-50 text-status-success border border-status-success/20 rounded-lg text-xs font-bold hover:bg-tradeflow-green-100 transition-colors">Approve</button>
                           <button onClick={() => updateReturnStatus(ret.id, 'REJECTED')} className="px-3 py-1 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">Reject</button>
                         </div>
                       )}
@@ -214,7 +214,7 @@ export default function OrdersPage() {
           ) : (
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-[#E5E5E5] text-gray-400 font-bold uppercase tracking-wider">
+                <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Order ID</th>
                   <th className="pb-3">Retailer Name</th>
                   <th className="pb-3">Products</th>
@@ -224,7 +224,7 @@ export default function OrdersPage() {
                   <th className="pb-3 text-right">Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E5E5E5]">
+              <tbody className="divide-y divide-tradeflow-gray-200">
                 {filteredOrders.map((order) => {
                   const totalUnitsCount = order.items.reduce((acc, i) => acc + i.quantity, 0);
                   const productsSummary = order.items.map(i => i.productTitle).join(', ');
@@ -233,13 +233,13 @@ export default function OrdersPage() {
                     <tr
                       key={order.id}
                       onClick={() => setSelectedOrder(order)}
-                      className="hover:bg-[#FAF9F7] transition-colors cursor-pointer group"
+                      className="hover:bg-tradeflow-gray-50 transition-colors cursor-pointer group"
                     >
-                      <td className="py-4 font-bold font-mono text-[#1F1F1F] group-hover:text-[#C62828] transition-colors">
+                      <td className="py-4 font-bold font-mono text-tradeflow-navy group-hover:text-green-700 transition-colors">
                         {order.orderNumber}
                       </td>
                       <td className="py-4">
-                        <div className="font-bold text-[#1F1F1F]">{order.retailerName}</div>
+                        <div className="font-bold text-tradeflow-navy">{order.retailerName}</div>
                         <div className="text-[10px] text-gray-400">{order.retailerCity}</div>
                       </td>
                       <td className="py-4 text-gray-700 font-medium max-w-xs truncate" title={productsSummary}>
@@ -248,7 +248,7 @@ export default function OrdersPage() {
                       <td className="py-4 font-bold text-gray-700">
                         {totalUnitsCount} units ({order.items.length} SKUs)
                       </td>
-                      <td className="py-4 font-extrabold text-sm text-[#1F1F1F]">
+                      <td className="py-4 font-extrabold text-sm text-tradeflow-navy">
                         ₹{(order.totalAmount || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="py-4">
@@ -269,11 +269,11 @@ export default function OrdersPage() {
       {/* ORDER DETAILS & STATUS UPDATE MODAL */}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto border border-[#E5E5E5] shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E5E5E5]">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto border border-tradeflow-gray-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
               <div>
-                <h2 className="text-lg font-bold text-[#1F1F1F]">Order Details & Fulfillment</h2>
-                <div className="text-xs font-mono text-[#C62828] font-bold">{selectedOrder.orderNumber} • Placed on {selectedOrder.createdAt}</div>
+                <h2 className="text-lg font-bold text-tradeflow-navy">Order Details & Fulfillment</h2>
+                <div className="text-xs font-mono text-green-700 font-bold">{selectedOrder.orderNumber} • Placed on {selectedOrder.createdAt}</div>
               </div>
               <button onClick={() => setSelectedOrder(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
@@ -282,14 +282,14 @@ export default function OrdersPage() {
 
             {/* Auto-Deduction Notification Message */}
             {statusUpdateMessage && (
-              <div className="p-3 bg-[#E8F5E9] border border-[#2E7D32]/20 rounded-xl text-xs text-[#2E7D32] font-bold flex items-center gap-2 animate-pulse">
+              <div className="p-3 bg-tradeflow-green-50 border border-status-success/20 rounded-xl text-xs text-status-success font-bold flex items-center gap-2 animate-pulse">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{statusUpdateMessage}</span>
               </div>
             )}
 
             {/* STATUS UPDATE DROPDOWN SELECTOR */}
-            <div className="p-4 bg-[#FAF9F7] rounded-xl border border-[#E5E5E5] flex items-center justify-between">
+            <div className="p-4 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase text-gray-400 block mb-0.5">Order Status Workflow</span>
                 <span className="text-xs text-gray-600 font-medium">Changing to &quot;Confirmed&quot; triggers auto-inventory stock deduction</span>
@@ -300,7 +300,7 @@ export default function OrdersPage() {
                 <select
                   value={selectedOrder.status}
                   onChange={(e) => handleStatusChangeInModal(e.target.value as OrderStatus)}
-                  className="px-3 py-1.5 bg-white border border-[#E5E5E5] rounded-xl font-bold text-xs focus:outline-none focus:border-[#C62828] cursor-pointer"
+                  className="px-3 py-1.5 bg-white border border-tradeflow-gray-200 rounded-xl font-bold text-xs focus:outline-none focus:border-tradeflow-green cursor-pointer"
                 >
                   <option value="PENDING">Pending</option>
                   <option value="CONFIRMED">Confirmed (Auto-Deduct Stock)</option>
@@ -320,15 +320,15 @@ export default function OrdersPage() {
             )}
 
             {/* Buyer & Seller Info Box */}
-            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-[#FAF9F7] border border-[#E5E5E5] text-xs">
+            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-tradeflow-gray-50 border border-tradeflow-gray-200 text-xs">
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-400 mb-1">Wholesaler (Seller)</div>
-                <div className="font-bold text-[#1F1F1F]">Apex Wholesale Pvt Ltd</div>
+                <div className="font-bold text-tradeflow-navy">Apex Wholesale Pvt Ltd</div>
                 <div className="text-gray-500">GSTIN: {profile.gstin}</div>
               </div>
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-400 mb-1">Retailer Client (Buyer)</div>
-                <div className="font-bold text-[#1F1F1F]">{selectedOrder.retailerName}</div>
+                <div className="font-bold text-tradeflow-navy">{selectedOrder.retailerName}</div>
                 <div className="text-gray-500">Location: {selectedOrder.retailerCity}</div>
               </div>
             </div>
@@ -336,9 +336,9 @@ export default function OrdersPage() {
             {/* Line Items Table */}
             <div className="space-y-2">
               <div className="text-xs font-bold text-gray-700">Line Items Breakdown</div>
-              <div className="border border-[#E5E5E5] rounded-xl overflow-hidden">
+              <div className="border border-tradeflow-gray-200 rounded-xl overflow-hidden">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#FAF9F7] text-gray-500 font-bold border-b border-[#E5E5E5]">
+                  <thead className="bg-tradeflow-gray-50 text-gray-500 font-bold border-b border-tradeflow-gray-200">
                     <tr>
                       <th className="p-2.5">Item & SKU</th>
                       <th className="p-2.5">Unit Price</th>
@@ -346,7 +346,7 @@ export default function OrdersPage() {
                       <th className="p-2.5 text-right">Subtotal</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E5E5E5]">
+                  <tbody className="divide-y divide-tradeflow-gray-200">
                     {selectedOrder.items.map(item => (
                       <tr key={item.id}>
                         <td className="p-2.5 font-medium">
@@ -364,12 +364,12 @@ export default function OrdersPage() {
             </div>
 
             {/* Financial Summary */}
-            <div className="p-4 rounded-xl bg-[#FAF9F7] border border-[#E5E5E5] space-y-1.5 text-xs">
+            <div className="p-4 rounded-xl bg-tradeflow-gray-50 border border-tradeflow-gray-200 space-y-1.5 text-xs">
               <div className="flex justify-between text-gray-600">
                 <span>Gross Subtotal:</span>
                 <span>₹{((selectedOrder.totalAmount || 0) - (selectedOrder.taxAmount || 0) + (selectedOrder.discountAmount || 0)).toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex justify-between text-[#2E7D32] font-medium">
+              <div className="flex justify-between text-status-success font-medium">
                 <span>Wholesale Discount Applied:</span>
                 <span>- ₹{(selectedOrder.discountAmount || 0).toLocaleString('en-IN')}</span>
               </div>
@@ -377,14 +377,14 @@ export default function OrdersPage() {
                 <span>GST Tax (12%):</span>
                 <span>+ ₹{(selectedOrder.taxAmount || 0).toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex justify-between font-extrabold text-sm text-[#1F1F1F] pt-2 border-t border-[#E5E5E5]">
+              <div className="flex justify-between font-extrabold text-sm text-tradeflow-navy pt-2 border-t border-tradeflow-gray-200">
                 <span>Total Amount Payable:</span>
-                <span className="text-[#C62828]">₹{(selectedOrder.totalAmount || 0).toLocaleString('en-IN')}</span>
+                <span className="text-green-700">₹{(selectedOrder.totalAmount || 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
 
             {/* Footer Buttons */}
-            <div className="pt-3 border-t border-[#E5E5E5] flex items-center justify-between">
+            <div className="pt-3 border-t border-tradeflow-gray-200 flex items-center justify-between">
               <button
                 onClick={() => window.print()}
                 className="px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs flex items-center gap-1.5"
@@ -395,7 +395,7 @@ export default function OrdersPage() {
 
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="px-5 py-2 bg-[#C62828] text-white font-bold text-xs rounded-xl hover:bg-[#B71C1C]"
+                className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover"
               >
                 Close Order Details
               </button>

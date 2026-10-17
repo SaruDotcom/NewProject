@@ -11,7 +11,6 @@ class WholesalerPortalController {
     return ApiResponse.paginated(res, retailers, meta, 'Connected retailers retrieved');
   });
   getRetailerDetails = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.getRetailerDetails(req.user._id, req.params.id), 'Retailer details retrieved'));
-  resetRetailerPassword = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.resetRetailerPassword(req.user._id, req.params.id, req.body.password, req.user, req), 'Retailer password reset'));
   updateRetailerStatus = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.updateRetailerStatus(req.user._id, req.params.id, req.body.status, req.user, req), 'Retailer relationship updated'));
   listInventory = asyncHandler(async (req, res) => { const result = await WholesalerPortalService.listInventory(req.user._id, req.query); return ApiResponse.paginated(res, result.inventory, result.meta, 'Inventory retrieved'); });
   inventoryHistory = asyncHandler(async (req, res) => { const result = await WholesalerPortalService.inventoryHistory(req.user._id, req.params.productId, req.query); return ApiResponse.paginated(res, result.transactions, result.meta, 'Inventory history retrieved'); });

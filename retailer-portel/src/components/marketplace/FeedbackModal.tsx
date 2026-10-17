@@ -17,6 +17,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
+  const [successTicketNo, setSuccessTicketNo] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,14 +29,16 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
     try {
       setLoading(true);
       setError(null);
-      await api.submitFeedback({
+      const response = await api.submitFeedback({
         rating,
         title: title.trim() || 'Retailer Platform Feedback',
         comment: comment.trim(),
       });
+      setSuccessTicketNo(response.data?.ticketNo || response.data?.ticketNumber || '');
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
+        setSuccessTicketNo('');
         setTitle('');
         setComment('');
         setRating(5);
@@ -52,6 +55,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
     if (!loading) {
       setError(null);
       setSuccess(false);
+      setSuccessTicketNo('');
       onOpenChange(false);
     }
   };
@@ -78,7 +82,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
             <CheckCircle className="size-14 text-emerald-500 animate-bounce" />
             <h4 className="font-extrabold text-lg text-ink">Thank You!</h4>
             <p className="text-xs text-muted-foreground max-w-xs">
-              Your feedback has been submitted successfully and sent to the Admin team for review.
+              Your feedback ticket {successTicketNo ? <strong>{successTicketNo}</strong> : ''} has been sent to the Admin team.
             </p>
           </div>
         ) : (

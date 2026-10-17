@@ -70,6 +70,27 @@ class NotificationService {
       logger.error(`Admin broadcast notification failed: ${error.message}`);
     }
   }
+
+  static async notifySuperAdmins({ title, message, type = NOTIFICATION_TYPE.SYSTEM_ALERT, data = {} }) {
+    try {
+      const { User } = require('../models');
+      const { ROLES } = require('../config/constants');
+      const admins = await User.find({ role: ROLES.SUPER_ADMIN, isDeleted: { $ne: true } }).select('_id');
+      if (!admins.length) return [];
+
+      return await Notification.insertMany(admins.map((admin) => ({
+        recipientId: admin._id,
+        title,
+        message,
+        type,
+        channel: NOTIFICATION_CHANNEL.IN_APP,
+        data,
+      })));
+    } catch (error) {
+      logger.error(`Super Admin notification failed to send: ${error.message}`);
+      return null;
+    }
+  }
 }
 
 module.exports = NotificationService;

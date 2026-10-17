@@ -45,6 +45,7 @@ const inventorySchema = new mongoose.Schema(
       default: 10,
       min: 0,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

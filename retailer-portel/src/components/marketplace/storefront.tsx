@@ -9,6 +9,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet,SheetContent,SheetHeader,SheetTitle,SheetTrigger } from "@/components/ui/sheet";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/utils";
+import { CategoryCard } from "./CategoryCard";
+import { toast } from "sonner";
+import { ProductImage } from "./ProductImage";
+import { ColorSwatches } from "./ColorSwatches";
+import { ProductImageGallery } from "./ProductImageGallery";
 
 function Filters({
   categories,
@@ -433,6 +438,8 @@ export function ProductDetailPage({ productId }: { productId: string }) {
   }, [product?.id, addRecentlyViewed]);
   
   const [quantity, setQuantity] = useState(1);
+  const [selectedColor, setSelectedColor] = useState<string>('');
+  const [colorError, setColorError] = useState(false);
   useEffect(() => {
     if (product) setQuantity(product.moq);
   }, [product?.id, product?.moq]);
@@ -455,6 +462,8 @@ export function ProductDetailPage({ productId }: { productId: string }) {
     
   const saving = Math.max(0, Math.round((1 - product.price / product.mrp) * 100));
   const orderValue = product.price * quantity;
+  const sizeChartRows = product.sizeChart?.measurements || [];
+  const sizeChartColumns = [...new Set(sizeChartRows.flatMap((row) => Object.keys(row.measurements || {})))];
   
   if (relationships[product.wholesalerId] !== "Connected")
     return (
@@ -470,8 +479,37 @@ export function ProductDetailPage({ productId }: { productId: string }) {
       </main>
     );
     
-  const productImages = [...new Set([product.imageUrl, ...(product.images || [])].filter((image): image is string => Boolean(image)))];
-  const getProductImage = (idx: number) => productImages[idx % productImages.length];
+  const selectedVariant = product.colorVariants?.find(
+    (variant) => variant.color.toLowerCase() === selectedColor.toLowerCase()
+  );
+  const galleryImages = useMemo(() => {
+    if (selectedVariant && selectedVariant.images && selectedVariant.images.length > 0) {
+      return selectedVariant.images;
+    }
+    const list = product.images && product.images.length > 0 ? product.images : (product.imageUrl ? [product.imageUrl] : []);
+    return list;
+  }, [selectedVariant, product.images, product.imageUrl]);
+
+  const activeSku = selectedVariant?.sku || product.specs?.SKU || product.specs?.sku || '';
+
+  const handleAddToCart = () => {
+    if (product.colors && product.colors.length > 0 && !selectedColor) {
+      setColorError(true);
+      toast.error("Please choose a color before adding to cart");
+      return;
+    }
+    addToCart(product.id, quantity, selectedColor || undefined);
+  };
+
+  const handleBuyNow = () => {
+    if (product.colors && product.colors.length > 0 && !selectedColor) {
+      setColorError(true);
+      toast.error("Please choose a color before proceeding");
+      return;
+    }
+    addToCart(product.id, quantity, selectedColor || undefined);
+    navigate({ to: "/checkout" });
+  };
 
   return (
     <main className="shell py-8">
@@ -484,22 +522,10 @@ export function ProductDetailPage({ productId }: { productId: string }) {
       </nav>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,.95fr)]">
         <div>
-          {getProductImage(0) ? (
-            <img src={getProductImage(0)} alt={product.name} className="aspect-square w-full object-contain border bg-card rounded-xl" />
-          ) : (
-            <ProductVisual index={product.image} name={product.name} className="aspect-square w-full border bg-card rounded-xl" />
-          )}
-          <div className="mt-3 flex gap-3 overflow-x-auto">
-            {productImages.length > 0 ? (
-              productImages.map((img, i) => (
-                 <img key={i} src={img} alt={`${product.name} view ${i+1}`} className={cn("aspect-square h-20 w-20 object-contain border bg-card rounded-md", i === 0 && "border-primary ring-1 ring-primary")} />
-               ))
-            ) : (
-               [0, 1, 2, 3].map((i) => (
-                 <ProductVisual key={i} index={(product.image + i) % 6} name={`${product.name} view ${i + 1}`} className={cn("aspect-square border h-20 w-20 shrink-0 bg-card", i === 0 && "border-primary ring-1 ring-primary")} />
-               ))
-            )}
-          </div>
+          <ProductImageGallery
+            images={galleryImages}
+            productName={product.name}
+          />
         </div>
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -527,6 +553,41 @@ export function ProductDetailPage({ productId }: { productId: string }) {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Wholesale price inclusive of applicable taxes. Final invoice issued by {w.name}.</p>
           </div>
+          {product.colors && product.colors.length > 0 && (
+            <div className="mt-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-ink flex items-center gap-2">
+                  <span>Color:</span>
+                  {selectedColor ? (
+                    <span className="text-emerald-700 font-extrabold">{selectedColor}</span>
+                  ) : (
+                    <span className="text-xs font-normal text-muted-foreground">(Select a color option below)</span>
+                  )}
+                </p>
+                {activeSku && (
+                  <span className="text-xs text-muted-foreground font-medium">
+                    SKU: <strong className="text-ink">{activeSku}</strong>
+                  </span>
+                )}
+              </div>
+              <div className="mt-2.5">
+                <ColorSwatches
+                  colors={product.colors}
+                  colorVariants={product.colorVariants}
+                  selectedColor={selectedColor}
+                  onSelectColor={(color) => {
+                    setSelectedColor(color);
+                    setColorError(false);
+                  }}
+                />
+                {colorError && (
+                  <p className="mt-2 text-xs font-semibold text-destructive flex items-center gap-1.5 animate-in fade-in">
+                    <span>* Please select a color variant before adding to cart.</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           
           {product.pricingTiers && product.pricingTiers.length > 0 && (
             <div className="mt-5 border bg-canvas p-4 rounded-xl">
@@ -607,10 +668,10 @@ export function ProductDetailPage({ productId }: { productId: string }) {
             </div>
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3">
-            <Button size="lg" onClick={() => addToCart(product.id, quantity)} className="rounded-xl">
+            <Button size="lg" onClick={handleAddToCart} className="rounded-xl font-bold cursor-pointer">
               Add to cart
             </Button>
-            <Button size="lg" variant="outline" onClick={() => { addToCart(product.id, quantity); navigate({ to: "/checkout" }); }} className="rounded-xl">
+            <Button size="lg" variant="outline" onClick={handleBuyNow} className="rounded-xl font-bold cursor-pointer">
               Buy now
             </Button>
           </div>
@@ -676,6 +737,34 @@ export function ProductDetailPage({ productId }: { productId: string }) {
               </div>
             ))}
           </div>
+          {sizeChartRows.length > 0 && sizeChartColumns.length > 0 && (
+            <div className="mt-6 overflow-hidden rounded-xl border bg-card">
+              <div className="border-b bg-muted/40 px-4 py-3">
+                <h3 className="font-bold text-ink">Size chart</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Measurements in {product.sizeChart?.unit || 'cm'}</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-max text-left text-sm">
+                  <thead className="bg-muted/30 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Size</th>
+                      {sizeChartColumns.map((column) => <th key={column} className="px-4 py-3 font-semibold">{column}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {sizeChartRows.map((row) => (
+                      <tr key={row.size}>
+                        <th className="px-4 py-3 font-semibold text-ink">{row.size}</th>
+                        {sizeChartColumns.map((column) => (
+                          <td key={column} className="px-4 py-3 text-muted-foreground">{row.measurements[column] ?? '—'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
         <aside className="border bg-card p-6 rounded-2xl h-fit">
           <h2 className="text-xl font-bold text-ink">Trade assurance</h2>
@@ -724,21 +813,24 @@ export function CategoriesPage() {
       </section>
       <section className="shell py-12 sm:py-14">
         <div className="mb-10 border-b border-border/80 pb-6"><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Store catalogue</p><h2 className="mt-2 text-2xl font-extrabold text-ink">Category Directory</h2></div>
-        <div className="grid auto-rows-fr gap-4 md:grid-cols-2 lg:grid-cols-3 xl:gap-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:gap-5">
           {categories.map((c, i) => {
             const catProductsCount = connectedProducts.filter((p) => p.category === c.name).length;
             const lead = c.name === "Grocery & Staples";
             const featured = lead || c.name === "Home Care";
-            return <Link key={c.id} to="/products" search={{category:c.name}} aria-label={`Find ${c.name} trade products`} className={cn("group relative flex h-full min-h-80 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg focus-visible:border-primary focus-visible:outline-none", lead && "md:col-span-2") } style={{animationDelay:`${i * 50}ms`}}>
-              <div className={cn("relative h-48 shrink-0 overflow-hidden bg-[#f4f3f0]", lead && "sm:h-56")}>
-                <img src={c.imageUrl || categoryImages[c.name] || categoryImages["Grocery & Staples"]} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                <div className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/5 to-transparent" />
-                {featured && <span className="absolute left-4 top-4 rounded-sm bg-primary px-2.5 py-1 text-[10px] font-bold uppercase text-primary-foreground">{c.name === "Home Care" ? "Trending" : "Popular"}</span>}
-                <span className="absolute right-4 top-4 rounded-sm bg-card/95 px-2.5 py-1 text-[10px] font-bold text-ink">{catProductsCount} items</span>
-                <h3 className="absolute inset-x-5 bottom-4 text-xl font-extrabold leading-tight text-primary-foreground">{c.name}</h3>
-              </div>
-              <div className="flex flex-1 flex-col p-5"><p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{c.description}</p><span className="mt-auto inline-flex w-fit items-center gap-1.5 pt-5 text-sm font-bold text-primary"><span>Shop category</span><ChevronRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" /></span></div>
-            </Link>;
+            return (
+              <CategoryCard
+                key={c.id}
+                name={c.name}
+                imageUrl={c.imageUrl || categoryImages[c.name] || categoryImages["Grocery & Staples"]}
+                description={c.description}
+                subcategories={categories.filter((child) => child.parentId === c.id).map((child) => child.name)}
+                itemCount={catProductsCount}
+                badge={featured ? (c.name === "Home Care" ? "Trending" : "Popular") : undefined}
+                actionLabel="Shop category"
+                animationDelay={i * 50}
+              />
+            );
           })}
           {categories.length === 0 && (
             <div className="col-span-full rounded-2xl border border-dashed bg-card p-12 text-center">

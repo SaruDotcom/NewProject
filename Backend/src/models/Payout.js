@@ -70,6 +70,7 @@ const payoutSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

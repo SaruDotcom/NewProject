@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   AlertTriangle,
@@ -43,23 +44,24 @@ import {
 } from 'recharts';
 import api, { type WholesalerAnalyticsReport } from '@/lib/api';
 import { useWholesaler } from '@/context/WholesalerContext';
+import { wholesalerQueryKeys } from '@/lib/query-client';
 
 type DatePreset = 'Today' | 'This Week' | 'This Month' | 'This Year' | 'Custom';
 
 const PRESETS: Array<Exclude<DatePreset, 'Custom'>> = ['Today', 'This Week', 'This Month', 'This Year'];
 
 const STATUS_COLORS: Record<string, string> = {
-  PENDING: '#F59E0B',
-  CONFIRMED: '#2563EB',
-  PROCESSING: '#7C3AED',
-  PACKED: '#0D9488',
-  SHIPPED: '#0891B2',
-  OUT_FOR_DELIVERY: '#4F46E5',
-  DELIVERED: '#16A34A',
-  CANCELLED: '#DC2626',
-  RETURN_REQUESTED: '#EA580C',
-  RETURNED: '#9333EA',
-  REFUNDED: '#64748B',
+  PENDING: 'var(--color-status-warning)',
+  CONFIRMED: 'var(--color-tradeflow-sky)',
+  PROCESSING: 'var(--color-tradeflow-navy-hover)',
+  PACKED: 'var(--color-tradeflow-green)',
+  SHIPPED: 'var(--color-tradeflow-sky)',
+  OUT_FOR_DELIVERY: 'var(--color-tradeflow-navy)',
+  DELIVERED: 'var(--color-status-success)',
+  CANCELLED: 'var(--color-status-danger)',
+  RETURN_REQUESTED: 'var(--color-status-warning)',
+  RETURNED: 'var(--color-tradeflow-navy-hover)',
+  REFUNDED: 'var(--color-tradeflow-gray-500)',
 };
 
 function toDateInputValue(date: Date) {
@@ -115,7 +117,7 @@ function GrowthBadge({ value }: { value?: number }) {
   return (
     <span
       className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] font-extrabold ${
-        isPositive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+        isPositive ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
       }`}
     >
       {isPositive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
@@ -140,18 +142,18 @@ function MetricCard({
   tone?: 'red' | 'green' | 'blue' | 'amber';
 }) {
   const tones = {
-    red: 'bg-red-50 text-[#C62828]',
+    red: 'bg-amber-50 text-amber-800',
     green: 'bg-green-50 text-green-700',
     blue: 'bg-blue-50 text-blue-700',
     amber: 'bg-amber-50 text-amber-700',
   };
 
   return (
-    <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+    <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">{title}</p>
-          <p className="mt-2 text-2xl font-extrabold tracking-tight text-[#1F1F1F]">{value}</p>
+          <p className="mt-2 text-2xl font-extrabold tracking-tight text-tradeflow-navy">{value}</p>
         </div>
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>
           <Icon className="h-5 w-5" aria-hidden="true" />
@@ -179,45 +181,23 @@ export default function AnalyticsPage() {
   const [preset, setPreset] = useState<DatePreset>('This Month');
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
-  const [report, setReport] = useState<WholesalerAnalyticsReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let active = true;
-
-    if (!startDate || !endDate || startDate > endDate) {
-      setReport(null);
-      setLoading(false);
-      setError('Choose a valid date range. The start date must be on or before the end date.');
-      return () => {
-        active = false;
-      };
-    }
-
-    setLoading(true);
-    setError('');
-    api.getWholesalerAnalytics(startDate, endDate)
-      .then((response) => {
-        if (!response?.data?.report) {
-          throw new Error('The analytics service returned an invalid report.');
-        }
-        if (active) setReport(response.data.report);
-      })
-      .catch((loadError: Error) => {
-        if (active) {
-          setReport(null);
-          setError(loadError?.message || 'Unable to load business analytics.');
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [startDate, endDate]);
+  const validRange = Boolean(startDate && endDate && startDate <= endDate);
+  const reportQuery = useQuery({
+    queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'analytics', startDate, endDate),
+    queryFn: async () => {
+      const response = await api.getWholesalerAnalytics(startDate, endDate);
+      if (!response?.data?.report) {
+        throw new Error('The analytics service returned an invalid report.');
+      }
+      return response.data.report as WholesalerAnalyticsReport;
+    },
+    enabled: validRange && Boolean(profile.id),
+  });
+  const report = reportQuery.data ?? null;
+  const loading = reportQuery.isLoading;
+  const error = !validRange
+    ? 'Choose a valid date range. The start date must be on or before the end date.'
+    : reportQuery.error?.message || '';
 
   const selectPreset = (nextPreset: Exclude<DatePreset, 'Custom'>) => {
     const range = getPresetRange(nextPreset);
@@ -235,7 +215,7 @@ export default function AnalyticsPage() {
   const statusData = (report?.orders.statusBreakdown || []).map((item) => ({
     ...item,
     label: item.status.replace(/_/g, ' '),
-    color: STATUS_COLORS[item.status] || '#94A3B8',
+    color: STATUS_COLORS[item.status] || 'var(--color-tradeflow-gray-400)',
   }));
 
   const topProducts = report?.products.byRevenue || [];
@@ -259,20 +239,20 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-6 pb-12">
       {/* Top Header */}
-      <header className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end bg-white p-6 rounded-2xl border border-[#E5E5E5] shadow-xs">
+      <header className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end bg-white p-6 rounded-2xl border border-tradeflow-gray-200 shadow-xs">
         <div>
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[11px] font-extrabold uppercase text-[#C62828]">
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-tradeflow-green/20 bg-tradeflow-green-50 px-3 py-1 text-[11px] font-extrabold uppercase text-green-700">
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             Visual Performance Dashboard
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-[#1F1F1F]">Analytics</h1>
+          <h1 className="text-2xl font-black tracking-tight text-tradeflow-navy">Analytics</h1>
           <p className="mt-1 text-sm text-gray-500">
             Real-time visual insights, trends, and growth indicators for {profile.businessName || 'your business'}.
           </p>
         </div>
 
         {/* Date Filter Control */}
-        <div className="rounded-2xl border border-[#E5E5E5] bg-[#FAF9F7] p-3 shadow-xs">
+        <div className="rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3 shadow-xs">
           <div className="flex flex-wrap gap-1.5">
             {PRESETS.map((item) => (
               <button
@@ -281,8 +261,8 @@ export default function AnalyticsPage() {
                 onClick={() => selectPreset(item)}
                 className={`rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
                   preset === item
-                    ? 'bg-[#C62828] text-white shadow-xs'
-                    : 'bg-white text-gray-700 border border-[#E5E5E5] hover:bg-red-50 hover:text-[#C62828]'
+                    ? 'bg-tradeflow-green text-tradeflow-navy shadow-xs'
+                    : 'bg-white text-gray-700 border border-tradeflow-gray-200 hover:bg-tradeflow-green-50 hover:text-green-700'
                 }`}
               >
                 {item}
@@ -293,8 +273,8 @@ export default function AnalyticsPage() {
               onClick={() => setPreset('Custom')}
               className={`rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
                 preset === 'Custom'
-                  ? 'bg-[#C62828] text-white shadow-xs'
-                  : 'bg-white text-gray-700 border border-[#E5E5E5] hover:bg-red-50 hover:text-[#C62828]'
+                  ? 'bg-tradeflow-green text-tradeflow-navy shadow-xs'
+                  : 'bg-white text-gray-700 border border-tradeflow-gray-200 hover:bg-tradeflow-green-50 hover:text-green-700'
               }`}
             >
               Custom Range
@@ -308,7 +288,7 @@ export default function AnalyticsPage() {
                 value={startDate}
                 max={endDate || undefined}
                 onChange={(event) => setCustomDate('start', event.target.value)}
-                className="rounded-lg border border-[#E5E5E5] bg-white px-2 py-1 text-xs text-gray-900 focus:border-[#C62828] focus:outline-none"
+                className="rounded-lg border border-tradeflow-gray-200 bg-white px-2 py-1 text-xs text-gray-900 focus:border-tradeflow-green focus:outline-none"
               />
             </label>
             <label className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
@@ -318,7 +298,7 @@ export default function AnalyticsPage() {
                 value={endDate}
                 min={startDate || undefined}
                 onChange={(event) => setCustomDate('end', event.target.value)}
-                className="rounded-lg border border-[#E5E5E5] bg-white px-2 py-1 text-xs text-gray-900 focus:border-[#C62828] focus:outline-none"
+                className="rounded-lg border border-tradeflow-gray-200 bg-white px-2 py-1 text-xs text-gray-900 focus:border-tradeflow-green focus:outline-none"
               />
             </label>
           </div>
@@ -328,12 +308,12 @@ export default function AnalyticsPage() {
       {/* Reporting Period Indicator */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <p className="flex items-center gap-2 text-xs font-extrabold text-gray-500">
-          <CalendarDays className="h-4 w-4 text-[#C62828]" aria-hidden="true" />
+          <CalendarDays className="h-4 w-4 text-green-700" aria-hidden="true" />
           Selected Window: <span className="text-gray-900 font-bold">{rangeLabel}</span>
         </p>
         {loading && (
           <span className="flex items-center gap-2 text-xs font-bold text-gray-500">
-            <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#C62828]" aria-hidden="true" />
+            <RefreshCw className="h-3.5 w-3.5 animate-spin text-green-700" aria-hidden="true" />
             Computing aggregation metrics…
           </span>
         )}
@@ -346,8 +326,8 @@ export default function AnalyticsPage() {
       )}
 
       {loading && !report ? (
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-16 text-center text-xs font-bold text-gray-500">
-          <RefreshCw className="h-8 w-8 animate-spin text-[#C62828] mx-auto mb-3" />
+        <div className="rounded-2xl border border-tradeflow-gray-200 bg-white p-16 text-center text-xs font-bold text-gray-500">
+          <RefreshCw className="h-8 w-8 animate-spin text-green-700 mx-auto mb-3" />
           Aggregating wholesaler data in IST…
         </div>
       ) : report ? (
@@ -404,25 +384,25 @@ export default function AnalyticsPage() {
 
           {/* INSIGHTS SUMMARY BANNER */}
           <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 to-white p-4 flex items-center gap-3">
-              <div className="p-3 bg-purple-100 text-purple-700 rounded-xl">
+            <div className="rounded-2xl border border-tradeflow-sky/30 bg-gradient-to-br from-tradeflow-sky-50 to-white p-4 flex items-center gap-3">
+              <div className="p-3 bg-tradeflow-sky-50 text-tradeflow-navy rounded-xl">
                 <RefreshCw className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-[11px] font-extrabold uppercase text-purple-800">Return Rate %</p>
-                <p className="text-xl font-black text-purple-950 mt-0.5">{insights.returnRatePercent}%</p>
-                <p className="text-[10px] text-purple-700 font-semibold">{insights.returnedOrders} returns / {insights.deliveredOrders} delivered</p>
+                <p className="text-[11px] font-extrabold uppercase text-tradeflow-navy">Return Rate %</p>
+                <p className="text-xl font-black text-tradeflow-navy mt-0.5">{insights.returnRatePercent}%</p>
+                <p className="text-[10px] text-tradeflow-navy/75 font-semibold">{insights.returnedOrders} returns / {insights.deliveredOrders} delivered</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-4 flex items-center gap-3">
-              <div className="p-3 bg-rose-100 text-rose-700 rounded-xl">
+            <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 flex items-center gap-3">
+              <div className="p-3 bg-amber-100 text-amber-800 rounded-xl">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-[11px] font-extrabold uppercase text-rose-800">Low-Stock Alerts</p>
-                <p className="text-xl font-black text-rose-950 mt-0.5">{insights.lowStockAlerts.length} Products</p>
-                <p className="text-[10px] text-rose-700 font-semibold">Stock &le; low-stock threshold</p>
+                <p className="text-[11px] font-extrabold uppercase text-amber-800">Low-Stock Alerts</p>
+                <p className="text-xl font-black text-tradeflow-navy mt-0.5">{insights.lowStockAlerts.length} Products</p>
+                <p className="text-[10px] text-amber-700 font-semibold">Stock &le; low-stock threshold</p>
               </div>
             </div>
 
@@ -459,13 +439,13 @@ export default function AnalyticsPage() {
 
           {/* CHARTS ROW 1: Revenue Trend & Order Status Breakdown */}
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm xl:col-span-2">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm xl:col-span-2">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-extrabold text-[#1F1F1F]">Revenue Trend (IST)</h2>
+                  <h2 className="font-extrabold text-tradeflow-navy">Revenue Trend (IST)</h2>
                   <p className="mt-0.5 text-xs text-gray-500">Daily revenue and orders formatted in Indian Standard Time</p>
                 </div>
-                <Activity className="h-5 w-5 text-[#C62828]" aria-hidden="true" />
+                <Activity className="h-5 w-5 text-green-700" aria-hidden="true" />
               </div>
               <div className="h-72">
                 {report.trend.length ? (
@@ -473,27 +453,27 @@ export default function AnalyticsPage() {
                     <AreaChart data={report.trend} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
                       <defs>
                         <linearGradient id="reportRevenueFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#C62828" stopOpacity={0.24} />
-                          <stop offset="95%" stopColor="#C62828" stopOpacity={0.02} />
+                          <stop offset="5%" stopColor="var(--color-tradeflow-green)" stopOpacity={0.24} />
+                          <stop offset="95%" stopColor="var(--color-tradeflow-green)" stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#EFEFEF" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-tradeflow-gray-200)" />
                       <XAxis dataKey="date" tickFormatter={formatTrendDate} fontSize={11} />
                       <YAxis tickFormatter={formatCompactCurrency} fontSize={11} width={58} />
                       <Tooltip
                         labelFormatter={(label) => formatTrendDate(String(label))}
                         formatter={(value) => [formatCurrency(Number(value || 0)), 'Revenue']}
                       />
-                      <Area type="monotone" dataKey="revenue" stroke="#C62828" strokeWidth={2.5} fill="url(#reportRevenueFill)" />
+                      <Area type="monotone" dataKey="revenue" stroke="var(--color-tradeflow-green)" strokeWidth={2.5} fill="url(#reportRevenueFill)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No revenue data for this period." />}
               </div>
             </article>
 
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h2 className="font-extrabold text-[#1F1F1F]">Orders by Status</h2>
+                <h2 className="font-extrabold text-tradeflow-navy">Orders by Status</h2>
                 <p className="mt-0.5 text-xs text-gray-500">Order distribution across lifecycle</p>
               </div>
               <div className="h-52">
@@ -508,14 +488,14 @@ export default function AnalyticsPage() {
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No orders for this period." />}
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[#E5E5E5] pt-3">
+              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-tradeflow-gray-200 pt-3">
                 {statusData.map((item) => (
                   <div key={item.status} className="flex min-w-0 items-center justify-between gap-2 text-xs">
                     <span className="flex min-w-0 items-center gap-1.5 capitalize text-gray-600">
                       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
                       <span className="truncate">{item.label}</span>
                     </span>
-                    <strong className="text-[#1F1F1F]">{item.count}</strong>
+                    <strong className="text-tradeflow-navy">{item.count}</strong>
                   </div>
                 ))}
               </div>
@@ -524,40 +504,40 @@ export default function AnalyticsPage() {
 
           {/* CHARTS ROW 2: Top 10 Products & Top Categories */}
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h2 className="font-extrabold text-[#1F1F1F]">Top 10 Products by Revenue</h2>
+                <h2 className="font-extrabold text-tradeflow-navy">Top 10 Products by Revenue</h2>
                 <p className="mt-0.5 text-xs text-gray-500">Highest grossing products in period</p>
               </div>
               <div className="h-72">
                 {topProducts.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={topProducts} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EFEFEF" />
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-tradeflow-gray-200)" />
                       <XAxis type="number" tickFormatter={formatCompactCurrency} fontSize={11} />
                       <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} />
                       <Tooltip formatter={(value) => [formatCurrency(Number(value || 0)), 'Revenue']} />
-                      <Bar dataKey="revenue" fill="#C62828" radius={[0, 5, 5, 0]} />
+                      <Bar dataKey="revenue" fill="var(--color-tradeflow-green)" radius={[0, 5, 5, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No product sales for this period." />}
               </div>
             </article>
 
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h2 className="font-extrabold text-[#1F1F1F]">Top Categories by Revenue</h2>
+                <h2 className="font-extrabold text-tradeflow-navy">Top Categories by Revenue</h2>
                 <p className="mt-0.5 text-xs text-gray-500">Sales breakdown by product category</p>
               </div>
               <div className="h-72">
                 {topCategories.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={topCategories} layout="vertical" margin={{ top: 4, right: 12, left: 8, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EFEFEF" />
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-tradeflow-gray-200)" />
                       <XAxis type="number" tickFormatter={formatCompactCurrency} fontSize={11} />
                       <YAxis type="category" dataKey="_id" width={130} tick={{ fontSize: 10 }} />
                       <Tooltip formatter={(value) => [formatCurrency(Number(value || 0)), 'Revenue']} />
-                      <Bar dataKey="revenue" fill="#2563EB" radius={[0, 5, 5, 0]} />
+                      <Bar dataKey="revenue" fill="var(--color-tradeflow-sky)" radius={[0, 5, 5, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No category sales for this period." />}
@@ -567,40 +547,40 @@ export default function AnalyticsPage() {
 
           {/* CHARTS ROW 3: Top Retailers & New Retailers Over Time */}
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h2 className="font-extrabold text-[#1F1F1F]">Top Retailers by Revenue</h2>
+                <h2 className="font-extrabold text-tradeflow-navy">Top Retailers by Revenue</h2>
                 <p className="mt-0.5 text-xs text-gray-500">Highest purchasing trade retailers</p>
               </div>
               <div className="h-72">
                 {topRetailers.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={topRetailers} margin={{ top: 8, right: 8, left: 4, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#EFEFEF" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-tradeflow-gray-200)" />
                       <XAxis dataKey="name" fontSize={10} interval={0} angle={-15} textAnchor="end" />
                       <YAxis tickFormatter={formatCompactCurrency} fontSize={11} />
                       <Tooltip formatter={(value) => [formatCurrency(Number(value || 0)), 'Revenue']} />
-                      <Bar dataKey="revenue" fill="#0D9488" radius={[5, 5, 0, 0]} />
+                      <Bar dataKey="revenue" fill="var(--color-tradeflow-navy)" radius={[5, 5, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No retailer sales for this period." />}
               </div>
             </article>
 
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h2 className="font-extrabold text-[#1F1F1F]">New Retailers Over Time</h2>
+                <h2 className="font-extrabold text-tradeflow-navy">New Retailers Over Time</h2>
                 <p className="mt-0.5 text-xs text-gray-500">Retailer connections added over time (IST)</p>
               </div>
               <div className="h-72">
                 {newRetailersTrend.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={newRetailersTrend} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#EFEFEF" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-tradeflow-gray-200)" />
                       <XAxis dataKey="date" tickFormatter={formatTrendDate} fontSize={11} />
                       <YAxis fontSize={11} />
                       <Tooltip formatter={(value) => [Number(value || 0), 'New Retailers']} />
-                      <Line type="monotone" dataKey="count" stroke="#7C3AED" strokeWidth={2.5} dot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="count" stroke="var(--color-tradeflow-sky)" strokeWidth={2.5} dot={{ r: 4 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No new retailer connections in this period." />}
@@ -610,22 +590,22 @@ export default function AnalyticsPage() {
 
           {/* CHARTS ROW 4: Stock Movement (Added vs Sold) */}
           <section className="grid grid-cols-1 gap-5">
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h2 className="font-extrabold text-[#1F1F1F]">Stock Movement (Units Added vs Sold)</h2>
+                <h2 className="font-extrabold text-tradeflow-navy">Stock Movement (Units Added vs Sold)</h2>
                 <p className="mt-0.5 text-xs text-gray-500">Inventory flow over time in Indian Standard Time</p>
               </div>
               <div className="h-72">
                 {movementTrend.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={movementTrend} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#EFEFEF" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-tradeflow-gray-200)" />
                       <XAxis dataKey="date" tickFormatter={formatTrendDate} fontSize={11} />
                       <YAxis fontSize={11} />
                       <Tooltip formatter={(value) => [Number(value || 0), 'Units']} />
                       <Legend />
-                      <Bar dataKey="added" name="Units Added" fill="#16A34A" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="sold" name="Units Sold" fill="#DC2626" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="added" name="Units Added" fill="var(--color-tradeflow-green)" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="sold" name="Units Sold" fill="var(--color-tradeflow-sky)" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart label="No inventory movement in this period." />}
@@ -636,25 +616,25 @@ export default function AnalyticsPage() {
           {/* INSIGHT DETAILS CARDS */}
           <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Low-Stock Alerts Card */}
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm space-y-3">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-rose-600" />
-                  <h3 className="font-extrabold text-[#1F1F1F]">Low-Stock Alerts</h3>
+                  <AlertTriangle className="h-5 w-5 text-amber-700" />
+                  <h3 className="font-extrabold text-tradeflow-navy">Low-Stock Alerts</h3>
                 </div>
-                <span className="text-xs font-bold bg-rose-50 text-rose-700 px-2.5 py-1 rounded-full">
+                <span className="text-xs font-bold bg-amber-50 text-amber-800 px-2.5 py-1 rounded-full">
                   {insights.lowStockAlerts.length} items
                 </span>
               </div>
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {insights.lowStockAlerts.map((prod) => (
-                  <div key={prod._id} className="flex items-center justify-between p-2.5 bg-rose-50/50 rounded-xl border border-rose-100 text-xs">
+                  <div key={prod._id} className="flex items-center justify-between p-2.5 bg-amber-50/50 rounded-xl border border-amber-100 text-xs">
                     <div>
                       <p className="font-bold text-gray-900">{prod.name}</p>
                       <p className="text-[10px] text-gray-500">SKU: {prod.sku}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-black text-rose-700">{prod.stock} in stock</p>
+                      <p className="font-black text-amber-800">{prod.stock} in stock</p>
                       <p className="text-[10px] text-gray-500">Threshold: {prod.threshold}</p>
                     </div>
                   </div>
@@ -666,11 +646,11 @@ export default function AnalyticsPage() {
             </article>
 
             {/* Fast vs Slow Moving Products */}
-            <article className="rounded-2xl border border-[#E5E5E5] bg-white p-5 shadow-sm space-y-3">
+            <article className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
                   <Flame className="h-5 w-5 text-amber-600" />
-                  <h3 className="font-extrabold text-[#1F1F1F]">Fast &amp; Slow Moving Insights</h3>
+                  <h3 className="font-extrabold text-tradeflow-navy">Fast &amp; Slow Moving Insights</h3>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

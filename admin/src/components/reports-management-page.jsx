@@ -159,7 +159,7 @@ export function ReportsManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Super Admin Reports & Analytics"
+        title=" Reports & Analytics"
         description="Comprehensive business analytics, tax ledgers, payout logs, top earners, and sales performance."
         action={
           <div className="flex flex-wrap items-center gap-2">
@@ -201,7 +201,7 @@ export function ReportsManagementPage() {
               <span>Sales Report</span>
             </TabsTrigger>
             <TabsTrigger value="products" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
-              <Package className="size-4 text-indigo-600" />
+              <Package className="size-4 text-status-info" />
               <span>Products Report</span>
             </TabsTrigger>
             <TabsTrigger value="gst" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
@@ -213,7 +213,7 @@ export function ReportsManagementPage() {
               <span>TDS Report (Sec 194-O)</span>
             </TabsTrigger>
             <TabsTrigger value="earners" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
-              <Award className="size-4 text-yellow-600" />
+              <Award className="size-4 text-amber-600" />
               <span>Top Earners & Buyers</span>
             </TabsTrigger>
             <TabsTrigger value="payouts" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">

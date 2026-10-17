@@ -59,6 +59,7 @@ const walletTransactionSchema = new mongoose.Schema(
       default: 'COMPLETED',
       index: true,
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

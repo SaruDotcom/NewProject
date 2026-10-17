@@ -83,6 +83,14 @@ class OrderService {
       productMap[String(p._id)] = p;
     });
 
+    const [wholesalerProfileForTax, retailerProfileForTax] = await Promise.all([
+      WholesalerProfile.findOne({ userId: wholesalerId }).lean(),
+      RetailerProfile.findOne({ userId: retailerId }).lean(),
+    ]);
+    const wholesalerState = String(wholesalerProfileForTax?.address?.state || '').trim().toLowerCase();
+    const retailerState = String((billingAddress || shippingAddress || retailerProfileForTax?.address || {}).state || retailerProfileForTax?.state || '').trim().toLowerCase();
+    const isIntraState = Boolean(wholesalerState && retailerState && wholesalerState === retailerState);
+
     let subtotal = 0;
     let totalTax = 0;
     const calculatedOrderItems = [];
@@ -126,9 +134,16 @@ class OrderService {
       }
 
       const itemSubtotal = unitPrice * quantity;
-      const gstRate = product.gst !== undefined ? product.gst : 18;
-      const itemGst = Math.round((itemSubtotal * (gstRate / 100)) * 100) / 100;
-      const itemTotal = itemSubtotal + itemGst;
+      const hasSplitTax = product.cgst !== undefined || product.sgst !== undefined || product.igst !== undefined;
+      const cgst = isIntraState ? Number(product.cgst || 0) : 0;
+      const sgst = isIntraState ? Number(product.sgst || 0) : 0;
+      const igst = isIntraState ? 0 : Number(product.igst || 0);
+      const gstRate = product.taxConfigured === false ? 0 : (hasSplitTax ? cgst + sgst + igst : Number(product.gst || 0));
+      const priceIncludesTax = hasSplitTax ? Boolean(product.priceIncludesTax) : false;
+      const itemGst = priceIncludesTax
+        ? Math.round((itemSubtotal * gstRate / (100 + gstRate)) * 100) / 100
+        : Math.round((itemSubtotal * (gstRate / 100)) * 100) / 100;
+      const itemTotal = priceIncludesTax ? itemSubtotal : itemSubtotal + itemGst;
 
       subtotal += itemSubtotal;
       totalTax += itemGst;
@@ -144,6 +159,11 @@ class OrderService {
         costPriceAtOrder: Number(product.costPrice || 0),
         gstRate,
         gstAmount: itemGst,
+        hsnCode: product.hsnCode || product.hsn || '',
+        cgst: hasSplitTax ? cgst : null,
+        sgst: hasSplitTax ? sgst : null,
+        igst: hasSplitTax ? igst : null,
+        priceIncludesTax,
         total: itemTotal,
       });
 

@@ -141,7 +141,6 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         categoryAttributes: {
           modelNumber: 'EP-100',
           warrantyPeriod: '1 Year Manufacturer Warranty',
-          color: 'Black',
         },
       });
 
@@ -179,6 +178,7 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         moq: 2,
         stock: 20,
         categoryAttributes: {
+          modelNumber: 'ALPHA-01',
           warrantyPeriod: '6 Months Manufacturer Warranty',
         },
       });
@@ -271,7 +271,7 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         costPrice: 250,
         moq: 10,
         stock: 100,
-        categoryAttributes: { warrantyPeriod: '1 Year' },
+        categoryAttributes: { modelNumber: 'WRONG-CAT-01', warrantyPeriod: '1 Year' },
       });
 
     expect(invalidResponse.status).toBe(400);

@@ -7,7 +7,6 @@ const {
   AdminProfile,
   RefreshToken,
   Wallet,
-  Invitation,
   WholesalerRetailerRelationship,
 } = require('../../models');
 const { ROLES, USER_STATUS, KYC_STATUS, AUDIT_ACTION, RELATIONSHIP_STATUS } = require('../../config/constants');
@@ -21,6 +20,8 @@ const {
 const { hashToken, generateSecureToken } = require('../../utils/crypto');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
+const ReferralService = require('../referrals/referrals.service');
+const WholesalerInvitesService = require('../wholesaler-invites/wholesalerInvites.service');
 
 class AuthService {
   /**
@@ -76,10 +77,6 @@ class AuthService {
       throw new ForbiddenError(`Your account has been ${user.status.toLowerCase()}. Please contact administrator.`, 'ACCOUNT_RESTRICTED');
     }
 
-    if (user.role === ROLES.WHOLESALER && user.status === USER_STATUS.PENDING) {
-      throw new ForbiddenError('Your wholesaler account is pending admin approval.', 'WHOLESALER_APPROVAL_PENDING');
-    }
-
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       throw new UnauthorizedError('Invalid credentials or password incorrect', 'INVALID_CREDENTIALS');
@@ -132,6 +129,7 @@ class AuthService {
       email,
       password,
       phone,
+      loginId,
       role: rawRole,
       businessName,
       businessLogoUrl,
@@ -150,24 +148,54 @@ class AuthService {
       pickupState,
       pickupPincode,
       gstStatus,
-      inviteToken,
       referralCode,
+      inviteToken,
+      ref,
+      adminCode,
+      utmSource = '',
+      utmMedium = '',
+      utmCampaign = '',
     } = payload;
 
     const role = (rawRole || 'RETAILER').toUpperCase();
+    const referral = role === ROLES.RETAILER
+      ? (req?.retailerReferral || await ReferralService.resolveActiveCode(referralCode))
+      : null;
 
-    if (role === ROLES.SUPER_ADMIN) {
-      throw new ForbiddenError('Cannot self-register as SUPER_ADMIN');
+    if (![ROLES.WHOLESALER, ROLES.RETAILER].includes(role)) {
+      throw new ForbiddenError('Only wholesaler and retailer accounts can self-register.', 'INVALID_REGISTRATION_ROLE');
     }
 
+    if (role === ROLES.RETAILER && !loginId) {
+      throw new BadRequestError('A retailer login ID is required.', 'LOGIN_ID_REQUIRED');
+    }
+
+    if (role === ROLES.RETAILER && !phone) {
+      throw new BadRequestError('A valid mobile number is required to register.', 'INVALID_PHONE');
+    }
+
+    let normalizedPhone;
     if (phone) {
-      const normalizedPhone = phone.trim();
-      const isValidPhone = /^\+?91?\d{10}$|^\d{10}$/.test(normalizedPhone);
+      const submittedPhone = phone.trim();
+      const isRetailerPhone = role === ROLES.RETAILER;
+      const isValidPhone = isRetailerPhone
+        ? /^(?:\+?91)?[6-9]\d{9}$/.test(submittedPhone)
+        : /^\+?91?\d{10}$|^\d{10}$/.test(submittedPhone);
       if (!isValidPhone) {
         throw new BadRequestError('Invalid mobile number format. Please provide a valid 10-digit number.', 'INVALID_PHONE');
       }
-      
-      const phoneExists = await User.findOne({ phone: normalizedPhone });
+      normalizedPhone = isRetailerPhone
+        ? submittedPhone.replace(/^\+?91(?=[6-9]\d{9}$)/, '')
+        : submittedPhone;
+      const phoneExists = isRetailerPhone
+        ? await User.findOne({
+            $or: [
+              { phone: normalizedPhone },
+              { phone: `+91${normalizedPhone}` },
+              { phone: `91${normalizedPhone}` },
+            ],
+          })
+        : await User.findOne({ phone: normalizedPhone });
       if (phoneExists) {
         throw new ConflictError('This mobile number is already registered. Please log in instead or use a different number.', 'PHONE_ALREADY_EXISTS');
       }
@@ -179,18 +207,49 @@ class AuthService {
       throw new ConflictError('User with this email already exists', 'EMAIL_ALREADY_EXISTS');
     }
 
+    const normalizedLoginId = role === ROLES.RETAILER ? loginId.trim().toUpperCase() : undefined;
+    if (normalizedLoginId && await User.findOne({ loginId: normalizedLoginId })) {
+      throw new ConflictError('This retailer ID is already registered. Please choose another ID.', 'LOGIN_ID_ALREADY_EXISTS');
+    }
+
+    const adminRefCode = String(ref || adminCode || '').trim();
+    let validatedAdminCode = '';
+    if (role === ROLES.WHOLESALER && adminRefCode) {
+      const validation = await WholesalerInvitesService.validateAdminRef(adminRefCode, {
+        ip: req?.ip,
+        userAgent: req?.get ? req.get('user-agent') : req?.headers?.['user-agent'],
+      });
+      if (!validation.valid) {
+        throw new BadRequestError(validation.message || 'Invalid or paused referral link.', 'INVALID_REFERRAL_CODE');
+      }
+      validatedAdminCode = validation.code || adminRefCode.toUpperCase();
+    }
+
+    const inviteClaim = role === ROLES.WHOLESALER && inviteToken
+      ? await WholesalerInvitesService.claim(inviteToken)
+      : null;
+    let inviteCompleted = false;
+    try {
     const passwordHash = await User.hashPassword(password);
 
     const user = new User({
       name,
       email: normalizedEmail,
-      phone: phone ? phone.trim() : undefined,
+      loginId: normalizedLoginId,
+      phone: normalizedPhone || undefined,
       passwordHash,
       role,
-      status: role === ROLES.WHOLESALER ? USER_STATUS.PENDING : USER_STATUS.ACTIVE,
+      status: USER_STATUS.ACTIVE,
     });
 
-    await user.save();
+    try {
+      await user.save();
+    } catch (error) {
+      if (error.code === 11000 && error.keyPattern?.loginId) {
+        throw new ConflictError('This retailer ID is already registered. Please choose another ID.', 'LOGIN_ID_ALREADY_EXISTS');
+      }
+      throw error;
+    }
 
     // Create role-specific profiles
     if (role === ROLES.WHOLESALER) {
@@ -217,6 +276,15 @@ class AuthService {
           sameAsBusinessAddress: sameAsBusinessAddress !== false,
         },
         kycStatus: KYC_STATUS.SUBMITTED,
+        registrationSource: validatedAdminCode
+          ? 'ADMIN_LINK'
+          : (inviteClaim
+              ? 'ADMIN_INVITE'
+              : ([utmSource, utmMedium, utmCampaign].some((value) => value?.trim()) ? 'CAMPAIGN' : 'DIRECT')),
+        adminReferralCode: validatedAdminCode || '',
+        utmSource: (utmSource || '').trim(),
+        utmMedium: (utmMedium || '').trim(),
+        utmCampaign: (utmCampaign || '').trim(),
         registrationDetails: {
           ownerName: name,
           email: normalizedEmail,
@@ -252,6 +320,7 @@ class AuthService {
     } else if (role === ROLES.RETAILER) {
       const retailerProfile = await RetailerProfile.create({
         userId: user._id,
+        ownerName: name,
         businessName: businessName || `${name}'s Store`,
         gstin: gstin || undefined,
         gstStatus: gstStatus || 'UNREGISTERED',
@@ -261,62 +330,39 @@ class AuthService {
           state: state || '',
           pincode: pincode || '',
         },
+        registrationSource: 'REFERRAL',
+        utmSource: String(utmSource || '').slice(0, 100).trim(),
+        utmMedium: String(utmMedium || '').slice(0, 100).trim(),
+        utmCampaign: String(utmCampaign || '').slice(0, 100).trim(),
       });
 
       user.retailerProfile = retailerProfile._id;
       await user.save();
 
-      // If registered with invite token or referral code, process association immediately
-      const tokenOrCode = referralCode || inviteToken;
-      if (tokenOrCode) {
-        try {
-          const resolved = await this.resolveWholesalerFromCodeOrToken(tokenOrCode);
-          if (resolved && resolved.wholesalerId) {
-            const targetWholesalerId = resolved.wholesalerId;
-            const [invitedWholesaler, invitedWholesalerProfile] = await Promise.all([
-              User.findById(targetWholesalerId).select('name email phone').lean(),
-              WholesalerProfile.findOne({ userId: targetWholesalerId }).lean(),
-            ]);
+      const targetWholesalerId = referral.wholesaler._id;
+      const relationship = await WholesalerRetailerRelationship.create({
+        wholesalerId: targetWholesalerId,
+        retailerId: user._id,
+        referralCode: referral.profile.retailerReferralCode,
+        status: RELATIONSHIP_STATUS.ACTIVE,
+      });
 
-            const relationshipData = {
-              wholesalerId: targetWholesalerId,
-              retailerId: user._id,
-              status: RELATIONSHIP_STATUS.ACTIVE,
-            };
-            if (resolved.invitation) {
-              relationshipData.invitationId = resolved.invitation._id;
-            }
+      retailerProfile.assignedWholesalerId = targetWholesalerId;
+      retailerProfile.wholesalerId = targetWholesalerId;
+      retailerProfile.createdByWholesalerId = targetWholesalerId;
+      retailerProfile.activeRelationshipId = relationship._id;
+      retailerProfile.referralCodeUsed = referral.profile.retailerReferralCode;
+      retailerProfile.wholesalerInfo = {
+        businessName: referral.profile.businessName || '',
+      };
+      await retailerProfile.save();
 
-            const relationship = await WholesalerRetailerRelationship.create(relationshipData);
-
-            retailerProfile.assignedWholesalerId = targetWholesalerId;
-            retailerProfile.wholesalerId = targetWholesalerId;
-            retailerProfile.createdByWholesalerId = targetWholesalerId;
-            retailerProfile.activeRelationshipId = relationship._id;
-            retailerProfile.wholesalerInfo = {
-              businessName: invitedWholesalerProfile?.businessName || invitedWholesaler?.name || '',
-              ownerName: invitedWholesaler?.name || '',
-              email: invitedWholesaler?.email || '',
-              phone: invitedWholesaler?.phone || '',
-            };
-            await retailerProfile.save();
-
-            if (resolved.invitation) {
-              resolved.invitation.usedCount += 1;
-              await resolved.invitation.save();
-            }
-
-            await NotificationService.notify({
-              recipientId: targetWholesalerId,
-              title: 'New Retailer Joined via Referral',
-              message: `${retailerProfile.businessName} (${name}) has self-registered using your referral link/code.`,
-              data: { retailerId: user._id, relationshipId: relationship._id },
-            });
-          }
-        } catch (inviteErr) {
-          // Continue registration even if referral association encounters an issue
-        }
-      }
+      await NotificationService.notify({
+        recipientId: targetWholesalerId,
+        title: 'New Retailer Joined via Referral',
+        message: `${retailerProfile.businessName} has registered using your referral link/code.`,
+        data: { retailerId: user._id, relationshipId: relationship._id },
+      });
     }
 
     const { accessToken, rawRefreshToken, refreshTokenHash, refreshExpiry } = this.generateTokens(user);
@@ -343,12 +389,27 @@ class AuthService {
       .populate('wholesalerProfile')
       .populate('retailerProfile');
 
+    if (inviteClaim) {
+      await WholesalerInvitesService.completeClaim(inviteClaim.claimId, user._id);
+      inviteCompleted = true;
+    }
+
     return {
       token: accessToken,
       accessToken,
       refreshToken: rawRefreshToken,
       user: fullUser.toJSON(),
     };
+    } catch (error) {
+      if (inviteClaim && !inviteCompleted) {
+        try {
+          await WholesalerInvitesService.releaseClaim(inviteClaim.claimId);
+        } catch (releaseError) {
+          console.error('Failed to release wholesaler invitation registration claim:', releaseError);
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -470,69 +531,6 @@ class AuthService {
     return { message: 'Password updated successfully. Please log in with your new credentials.' };
   }
 
-  /**
-   * Resolve Wholesaler ID from invitation token, ObjectId, or Referral Code
-   */
-  static async resolveWholesalerFromCodeOrToken(codeOrToken) {
-    if (!codeOrToken) return null;
-    const cleanStr = String(codeOrToken).trim();
-
-    // 1. Try invitation token hash
-    try {
-      const tokenHashVal = hashToken(cleanStr);
-      const invitation = await Invitation.findOne({ tokenHash: tokenHashVal });
-      if (invitation && invitation.isValid()) {
-        return { wholesalerId: invitation.wholesalerId, invitation };
-      }
-    } catch {}
-
-    // 2. Try direct Mongo ObjectId of wholesaler (User._id or WholesalerProfile._id)
-    if (cleanStr.match(/^[0-9a-fA-F]{24}$/)) {
-      const wholesaler = await User.findOne({ _id: cleanStr, role: ROLES.WHOLESALER });
-      if (wholesaler) return { wholesalerId: wholesaler._id, invitation: null };
-
-      const profile = await WholesalerProfile.findOne({ _id: cleanStr });
-      if (profile) return { wholesalerId: profile.userId, invitation: null };
-    }
-
-    // 3. Try REF- referral code format (e.g. REF-SHOR-E3ADA9 or REF-E3ADA9 or E3ADA9)
-    const upperStr = cleanStr.toUpperCase();
-    const codeParts = upperStr.split('-');
-    const suffixCandidate = codeParts[codeParts.length - 1];
-
-    const profiles = await WholesalerProfile.find({}).select('_id userId businessName').lean();
-
-    for (const p of profiles) {
-      const uIdStr = String(p.userId || '').toUpperCase();
-      const pIdStr = String(p._id || '').toUpperCase();
-
-      const uShortId = uIdStr.slice(-6);
-      const pShortId = pIdStr.slice(-6);
-
-      const bNamePrefix = (p.businessName || 'WHOLESALER').replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase();
-
-      const possibleCodes = [
-        `REF-${bNamePrefix}-${uShortId}`,
-        `REF-${bNamePrefix}-${pShortId}`,
-        `REF-${uShortId}`,
-        `REF-${pShortId}`,
-        uShortId,
-        pShortId,
-        uIdStr,
-        pIdStr,
-      ];
-
-      if (possibleCodes.includes(upperStr)) {
-        return { wholesalerId: p.userId, invitation: null };
-      }
-
-      if (suffixCandidate && (suffixCandidate === uShortId || suffixCandidate === pShortId)) {
-        return { wholesalerId: p.userId, invitation: null };
-      }
-    }
-
-    return null;
-  }
 }
 
 module.exports = AuthService;

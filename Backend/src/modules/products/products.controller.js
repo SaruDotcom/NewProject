@@ -1,6 +1,9 @@
 const ProductService = require('./products.service');
+const BulkProductService = require('./products.bulk.service');
+const ProductTemplateService = require('./products.template.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
+const { uploadProductImage } = require('../../services/cloudinary.service');
 
 class ProductController {
   // Upload product images
@@ -8,8 +11,8 @@ class ProductController {
     if (!req.files || req.files.length === 0) {
       return ApiResponse.error(res, 'No images uploaded', 400);
     }
-    const urls = req.files.map(file => `${req.protocol}://${req.get('host')}/uploads/products/${file.filename}`);
-    return ApiResponse.success(res, urls, 'Images uploaded successfully');
+    const images = await Promise.all(req.files.map((file) => uploadProductImage(file, req)));
+    return ApiResponse.success(res, images, 'Images uploaded successfully');
   });
 
   // Super Admin global products list
@@ -40,6 +43,30 @@ class ProductController {
   createProduct = asyncHandler(async (req, res) => {
     const result = await ProductService.createProduct(req.body, req.user, req);
     return ApiResponse.created(res, result, 'Product created successfully');
+  });
+
+  previewBulkProducts = asyncHandler(async (req, res) => {
+    const rows = await BulkProductService.preview(req.body.rows, req.user);
+    return ApiResponse.success(res, { rows }, 'Bulk product preview generated');
+  });
+
+  downloadBulkProductTemplate = asyncHandler(async (req, res) => {
+    const { buffer, filename } = await ProductTemplateService.create(
+      req.user._id,
+      req.query.category,
+    );
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length,
+      'Cache-Control': 'no-store',
+    });
+    return res.status(200).send(buffer);
+  });
+
+  importBulkProducts = asyncHandler(async (req, res) => {
+    const result = await BulkProductService.importValidRows(req.body.rows, req.user, req);
+    return ApiResponse.success(res, result, 'Bulk product import completed');
   });
 
   // Update product

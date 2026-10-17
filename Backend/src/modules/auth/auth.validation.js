@@ -16,7 +16,21 @@ const registerSchema = Joi.object({
   name: Joi.string().required().trim().min(2).max(100),
   email: emailField.required(),
   password: Joi.string().required().min(6).max(128),
-  phone: Joi.string().optional().allow('', null),
+  phone: Joi.string()
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.string().optional().allow('', null),
+      otherwise: Joi.string().required().pattern(/^(?:\+?91)?[6-9]\d{9}$/),
+    }),
+  loginId: Joi.string()
+    .trim()
+    .uppercase()
+    .pattern(/^[A-Z0-9_-]{4,32}$/)
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.optional(),
+      otherwise: Joi.required(),
+    }),
   role: Joi.string()
     .valid(ROLES.WHOLESALER, ROLES.RETAILER, 'wholesaler', 'retailer')
     .default(ROLES.RETAILER),
@@ -42,8 +56,13 @@ const registerSchema = Joi.object({
   // Retailer specific
   gstStatus: Joi.string().optional().allow('', null),
   gstNumber: Joi.string().optional().allow('', null),
-  inviteToken: Joi.string().optional().allow('', null),
-  referralCode: Joi.string().optional().allow('', null),
+  referralCode: Joi.string().optional().allow('', null).trim().max(32),
+  inviteToken: Joi.string().optional().trim().pattern(/^[a-f0-9]{64}$/i),
+  ref: Joi.string().optional().trim().max(64).allow('', null),
+  adminCode: Joi.string().optional().trim().max(64).allow('', null),
+  utmSource: Joi.string().optional().trim().max(100).allow(''),
+  utmMedium: Joi.string().optional().trim().max(100).allow(''),
+  utmCampaign: Joi.string().optional().trim().max(100).allow(''),
 });
 
 const refreshTokenSchema = Joi.object({

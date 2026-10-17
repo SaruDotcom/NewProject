@@ -74,6 +74,7 @@ const returnSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

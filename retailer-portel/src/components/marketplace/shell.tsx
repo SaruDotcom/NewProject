@@ -21,14 +21,16 @@ import {
   CheckCircle,
   RateReview,
   LocalOffer,
+  SupportAgent,
 } from "@mui/icons-material";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore } from "@/state/store";
+import { getAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
-import { money } from "./primitives";
+import { money, TradeFlowMark } from "./primitives";
 import { FeedbackModal } from "./FeedbackModal";
 
 const primary = [
@@ -48,6 +50,7 @@ const account = [
     label: "Notifications",
     icon: Notifications,
   },
+  { to: "/support" as const, label: "Help & Support", icon: SupportAgent },
   { to: "/profile" as const, label: "Business profile", icon: Person },
   { to: "/addresses" as const, label: "Addresses", icon: LocationOn },
   { to: "/settings" as const, label: "Settings", icon: Settings },
@@ -81,43 +84,34 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
   );
 }
 
-export function Logo() {
+export function Logo({ variant = "default" }: { variant?: "default" | "light" }) {
   const { retailerProfile } = useStore();
   const logoUrl = retailerProfile?.logo?.trim();
-  const retailerName = retailerProfile?.businessName?.trim() || "My Store";
-  const initials = retailerName.slice(0, 2).toUpperCase();
+  const hasCustomName = Boolean(retailerProfile?.businessName?.trim());
+  const retailerName = retailerProfile?.businessName?.trim() || "TradeFlow";
+  const isLight = variant === "light";
 
-  if (logoUrl) {
-    return (
-      <Link to="/" className="flex items-center gap-2.5 group focus-visible:outline-none">
+  return (
+    <Link to="/" className="flex items-center gap-2.5 group focus-visible:outline-none">
+      {logoUrl ? (
         <img
           src={logoUrl}
           alt={retailerName}
           className="size-9 sm:size-10 rounded-xl object-contain border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105"
         />
-        <div className="flex flex-col">
-          <span className="font-black text-ink tracking-tight text-lg sm:text-xl leading-none truncate max-w-[180px]">
-            {retailerName}
-          </span>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary leading-none mt-0.5">
-            Wholesale Store
-          </span>
-        </div>
-      </Link>
-    );
-  }
-
-  return (
-    <Link to="/" className="flex items-center gap-2.5 group focus-visible:outline-none">
-      <span className="grid size-9 sm:size-10 place-items-center rounded-xl bg-gradient-to-br from-primary to-ink text-primary-foreground font-black text-lg shadow-sm transition-transform group-hover:scale-105">
-        {initials}
-      </span>
+      ) : (
+        <TradeFlowMark className="size-9 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
+      )}
       <div className="flex flex-col">
-        <span className="font-black text-ink tracking-tight text-lg sm:text-xl leading-none truncate max-w-[180px]">
-          {retailerName}
+        <span className={cn("font-black tracking-tight text-lg sm:text-xl leading-none truncate max-w-[180px]", isLight ? "text-white" : "text-ink")}>
+          {hasCustomName ? retailerName : (
+            <>
+              Trade<span className="text-tradeflow-green">Flow</span>
+            </>
+          )}
         </span>
-        <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary leading-none mt-0.5">
-          Wholesale Store
+        <span className={cn("text-[10px] font-extrabold uppercase tracking-widest leading-none mt-0.5", isLight ? "text-tradeflow-green" : "text-primary")}>
+          Retailer Portal
         </span>
       </div>
     </Link>
@@ -155,7 +149,10 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const { retailerProfile, logout, isLoggedIn, linkedWholesaler, isLoading } = useStore();
-  const auth = ["/login", "/register", "/forgot-password"].includes(path);
+  const token = getAuthToken();
+  const authenticated = isLoggedIn && Boolean(token);
+  const isLanding = path === "/" && !authenticated;
+  const auth = isLanding || ["/login", "/register", "/forgot-password"].includes(path);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const safeRetailerProfile = retailerProfile ?? null;
@@ -403,7 +400,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
         <div className="shell py-12 sm:py-16">
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-4">
             <div>
-              <Logo />
+              <Logo variant="light" />
               <p className="mt-4 text-xs leading-relaxed text-primary-foreground/70">
                 Empowering independent retailers across India with direct access to verified B2B wholesale suppliers.
               </p>
@@ -440,7 +437,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="mt-12 border-t border-primary-foreground/10 pt-6 text-center text-xs text-primary-foreground/50">
-            © 2026 NEXORA Retailer Portal. All rights reserved. Trade rates reserved for verified retailers.
+            © 2026 TradeFlow Retailer Portal. All rights reserved. Trade rates reserved for verified retailers.
           </div>
         </div>
       </footer>

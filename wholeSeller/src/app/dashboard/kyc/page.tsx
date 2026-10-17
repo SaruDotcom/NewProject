@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, ArrowUpFromLine, CheckCircle2, Clock3, FileCheck2, FileImage, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api from '@/lib/api';
+import { wholesalerQueryKeys } from '@/lib/query-client';
 
 const emptyForm = {
   businessName: '',
@@ -23,7 +25,7 @@ const emptyForm = {
   branch: '',
 };
 
-const inputClass = 'w-full rounded-md border border-[#D8D8D8] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#C62828]';
+const inputClass = 'w-full rounded-md border border-tradeflow-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-tradeflow-green';
 const fieldClass = 'space-y-1.5';
 const documentSlots = [
   { key: 'panCard', type: 'PAN_CARD', title: 'PAN card', side: 'Front side' },
@@ -37,50 +39,52 @@ const emptyDocumentFiles: DocumentFiles = { panCard: null, aadhaarFront: null, a
 
 export default function KycPage() {
   const { profile, updateProfile } = useWholesaler();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [documentFiles, setDocumentFiles] = useState<DocumentFiles>(emptyDocumentFiles);
   const [existingDocuments, setExistingDocuments] = useState<KycDocument[]>([]);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [status, setStatus] = useState(profile.kycStatus || 'DRAFT');
   const [reviewReason, setReviewReason] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const kycQuery = useQuery({
+    queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'kyc'),
+    queryFn: () => api.getMyKyc(),
+    enabled: Boolean(profile.id),
+  });
+  const loading = kycQuery.isLoading;
+
   useEffect(() => {
-    let mounted = true;
-    api.getMyKyc()
-      .then((response) => {
-        if (!mounted) return;
-        const application = response?.data || {};
-        const nextStatus = application.status || 'DRAFT';
-        setStatus(nextStatus);
-        setReviewReason(application.reviewReason || '');
-        setExistingDocuments(application.documents || []);
-        const hasGst = application.hasGst !== undefined ? Boolean(application.hasGst) : Boolean(application.gstin || profile.gstin);
-        updateProfile({ kycStatus: nextStatus });
-        setForm({
-          businessName: application.businessName || profile.businessName || '',
-          ownerName: application.ownerName || profile.ownerName || '',
-          businessType: application.businessType || 'Proprietorship',
-          pan: application.pan || '',
-          hasGst,
-          gstin: application.gstin || profile.gstin || '',
-          street: application.registeredAddress?.street || profile.streetAddress || '',
-          city: application.registeredAddress?.city || profile.city || '',
-          state: application.registeredAddress?.state || profile.state || '',
-          pincode: application.registeredAddress?.pincode || profile.pincode || '',
-          accountHolderName: application.bankDetails?.accountHolderName || profile.businessName || '',
-          accountNumber: application.bankDetails?.accountNumber || profile.accountNumber || '',
-          ifscCode: application.bankDetails?.ifscCode || profile.ifscCode || '',
-          bankName: application.bankDetails?.bankName || profile.bankName || '',
-          branch: application.bankDetails?.branch || '',
-        });
-      })
-      .catch((loadError: any) => mounted && setError(loadError?.message || 'Unable to load KYC details.'))
-      .finally(() => mounted && setLoading(false));
-    return () => { mounted = false; };
-  }, [profile.accountNumber, profile.bankName, profile.businessName, profile.city, profile.gstin, profile.ifscCode, profile.ownerName, profile.pincode, profile.state, profile.streetAddress, updateProfile]);
+    const application = kycQuery.data?.data || {};
+    if (kycQuery.data) {
+      const nextStatus = application.status || 'DRAFT';
+      setStatus(nextStatus);
+      setReviewReason(application.reviewReason || '');
+      setExistingDocuments(application.documents || []);
+      const hasGst = application.hasGst !== undefined ? Boolean(application.hasGst) : Boolean(application.gstin || profile.gstin);
+      updateProfile({ kycStatus: nextStatus });
+      setForm({
+        businessName: application.businessName || profile.businessName || '',
+        ownerName: application.ownerName || profile.ownerName || '',
+        businessType: application.businessType || 'Proprietorship',
+        pan: application.pan || '',
+        hasGst,
+        gstin: application.gstin || profile.gstin || '',
+        street: application.registeredAddress?.street || profile.streetAddress || '',
+        city: application.registeredAddress?.city || profile.city || '',
+        state: application.registeredAddress?.state || profile.state || '',
+        pincode: application.registeredAddress?.pincode || profile.pincode || '',
+        accountHolderName: application.bankDetails?.accountHolderName || profile.businessName || '',
+        accountNumber: application.bankDetails?.accountNumber || profile.accountNumber || '',
+        ifscCode: application.bankDetails?.ifscCode || profile.ifscCode || '',
+        bankName: application.bankDetails?.bankName || profile.bankName || '',
+        branch: application.bankDetails?.branch || '',
+      });
+    }
+    if (kycQuery.error) setError(kycQuery.error.message || 'Unable to load KYC details.');
+  }, [kycQuery.data, kycQuery.error, profile.accountNumber, profile.bankName, profile.businessName, profile.city, profile.gstin, profile.ifscCode, profile.ownerName, profile.pincode, profile.state, profile.streetAddress, updateProfile]);
 
   useEffect(() => {
     let active = true;
@@ -227,8 +231,11 @@ export default function KycPage() {
       setStatus(nextStatus);
       setReviewReason('');
       updateProfile({ kycStatus: nextStatus });
-      const refreshed = await api.getMyKyc();
-      setExistingDocuments(refreshed?.data?.documents || []);
+      await queryClient.invalidateQueries({
+        queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'kyc'),
+      });
+      const refreshed = await kycQuery.refetch();
+      setExistingDocuments(refreshed.data?.data?.documents || []);
       setDocumentFiles(emptyDocumentFiles);
     } catch (submitError: any) {
       setError(submitError?.message || 'Unable to submit KYC details.');
@@ -239,18 +246,18 @@ export default function KycPage() {
 
   const isLocked = ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'].includes(status);
   const statusConfig = status === 'APPROVED'
-    ? { icon: CheckCircle2, tone: 'border-[#2E7D32]/25 bg-[#E8F5E9] text-[#2E7D32]', title: 'KYC approved', detail: 'You can now add products and categories.' }
+    ? { icon: CheckCircle2, tone: 'border-status-success/25 bg-tradeflow-green-50 text-status-success', title: 'KYC approved', detail: 'You can now add products and categories.' }
     : isLocked
-      ? { icon: Clock3, tone: 'border-[#F9A825]/30 bg-[#FFF8E1] text-[#795900]', title: 'KYC under review', detail: 'Product and category creation will unlock after approval.' }
-      : { icon: AlertCircle, tone: 'border-[#C62828]/20 bg-[#FFEBEE] text-[#B71C1C]', title: status === 'REJECTED' ? 'KYC needs changes' : status === 'RESUBMISSION_REQUIRED' ? 'KYC resubmission requested' : 'Complete your KYC', detail: reviewReason || 'Submit your legal business, address, and bank details for verification.' };
+      ? { icon: Clock3, tone: 'border-amber-500/30 bg-amber-50 text-status-warning-foreground', title: 'KYC under review', detail: 'Product and category creation will unlock after approval.' }
+      : { icon: AlertCircle, tone: 'border-tradeflow-green/20 bg-tradeflow-green-50 text-green-700', title: status === 'REJECTED' ? 'KYC needs changes' : status === 'RESUBMISSION_REQUIRED' ? 'KYC resubmission requested' : 'Complete your KYC', detail: reviewReason || 'Submit your legal business, address, and bank details for verification.' };
   const StatusIcon = statusConfig.icon;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-col gap-4 border-b border-[#E5E5E5] pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 border-b border-tradeflow-gray-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wide text-[#C62828]"><FileCheck2 className="h-4 w-4" /> Account verification</div>
-          <h1 className="text-3xl font-extrabold text-[#1F1F1F]">Verify your business</h1>
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wide text-green-700"><FileCheck2 className="h-4 w-4" /> Account verification</div>
+          <h1 className="text-3xl font-extrabold text-tradeflow-navy">Verify your business</h1>
           <p className="mt-1 text-sm text-gray-500">Submit your legal identity and payout details for review.</p>
         </div>
         <div className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-xs font-bold ${statusConfig.tone}`}>
@@ -265,10 +272,10 @@ export default function KycPage() {
         <form onSubmit={handleSubmit} className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.8fr)]">
           <div className="space-y-5">
             <fieldset disabled={isLocked || saving} className="space-y-5 disabled:opacity-75">
-              <section className="overflow-hidden rounded-lg border border-[#E5E5E5] bg-white shadow-sm">
-                <div className="border-b border-[#E5E5E5] px-5 py-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#C62828]">01 · Business identity</p>
-                  <h2 className="mt-1 text-base font-extrabold text-[#1F1F1F]">Legal details</h2>
+              <section className="overflow-hidden rounded-lg border border-tradeflow-gray-200 bg-white shadow-sm">
+                <div className="border-b border-tradeflow-gray-200 px-5 py-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-green-700">01 · Business identity</p>
+                  <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Legal details</h2>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
                   <label className={fieldClass}>Business name *<input required className={inputClass} value={form.businessName} onChange={changeField('businessName')} /></label>
@@ -287,26 +294,26 @@ export default function KycPage() {
                     />
                   </label>
                   
-                  <div className={`${fieldClass} sm:col-span-2 rounded-md border border-[#E5E5E5] bg-[#FAF9F7] p-3.5`}>
-                    <p className="text-xs font-bold text-[#1F1F1F]">Do you have a GST number? *</p>
+                  <div className={`${fieldClass} sm:col-span-2 rounded-md border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3.5`}>
+                    <p className="text-xs font-bold text-tradeflow-navy">Do you have a GST number? *</p>
                     <div className="flex items-center gap-6 pt-2">
-                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[#1F1F1F]">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-tradeflow-navy">
                         <input
                           type="radio"
                           name="hasGst"
                           checked={form.hasGst}
                           onChange={() => setForm((curr) => ({ ...curr, hasGst: true }))}
-                          className="h-4 w-4 accent-[#C62828]"
+                          className="h-4 w-4 accent-tradeflow-green"
                         />
                         Yes (GST Registered)
                       </label>
-                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[#1F1F1F]">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-tradeflow-navy">
                         <input
                           type="radio"
                           name="hasGst"
                           checked={!form.hasGst}
                           onChange={() => setForm((curr) => ({ ...curr, hasGst: false, gstin: '' }))}
-                          className="h-4 w-4 accent-[#C62828]"
+                          className="h-4 w-4 accent-tradeflow-green"
                         />
                         No (Not Registered)
                       </label>
@@ -330,10 +337,10 @@ export default function KycPage() {
                 </div>
               </section>
 
-              <section className="overflow-hidden rounded-lg border border-[#E5E5E5] bg-white shadow-sm">
-                <div className="border-b border-[#E5E5E5] px-5 py-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#C62828]">02 · Registered address</p>
-                  <h2 className="mt-1 text-base font-extrabold text-[#1F1F1F]">Where your business is registered</h2>
+              <section className="overflow-hidden rounded-lg border border-tradeflow-gray-200 bg-white shadow-sm">
+                <div className="border-b border-tradeflow-gray-200 px-5 py-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-green-700">02 · Registered address</p>
+                  <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Where your business is registered</h2>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
                   <label className={`${fieldClass} sm:col-span-2`}>Street address *<input required className={inputClass} value={form.street} onChange={changeField('street')} /></label>
@@ -354,10 +361,10 @@ export default function KycPage() {
                 </div>
               </section>
 
-              <section className="overflow-hidden rounded-lg border border-[#E5E5E5] bg-white shadow-sm">
-                <div className="border-b border-[#E5E5E5] px-5 py-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#C62828]">03 · Payout account</p>
-                  <h2 className="mt-1 text-base font-extrabold text-[#1F1F1F]">Bank details</h2>
+              <section className="overflow-hidden rounded-lg border border-tradeflow-gray-200 bg-white shadow-sm">
+                <div className="border-b border-tradeflow-gray-200 px-5 py-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-green-700">03 · Payout account</p>
+                  <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Bank details</h2>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
                   <label className={fieldClass}>Account holder name *<input required className={inputClass} value={form.accountHolderName} onChange={changeField('accountHolderName')} /></label>
@@ -392,7 +399,7 @@ export default function KycPage() {
             </fieldset>
 
             {!isLocked && (
-              <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-[#C62828] px-5 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#B71C1C] disabled:cursor-wait disabled:opacity-60">
+              <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-tradeflow-green px-5 py-3 text-sm font-bold text-tradeflow-navy shadow-sm transition-colors hover:bg-tradeflow-green-hover disabled:cursor-wait disabled:opacity-60">
                 {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                 {saving ? 'Submitting securely...' : status === 'DRAFT' ? 'Submit for verification' : 'Resubmit for verification'}
               </button>
@@ -400,10 +407,10 @@ export default function KycPage() {
           </div>
 
           <aside className="space-y-5 lg:sticky lg:top-24">
-            <section className="overflow-hidden rounded-lg border border-[#E5E5E5] bg-white shadow-sm">
-              <div className="border-b border-[#E5E5E5] px-5 py-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#C62828]">04 · Identity documents</p>
-                <h2 className="mt-1 text-base font-extrabold text-[#1F1F1F]">Upload clear card images</h2>
+            <section className="overflow-hidden rounded-lg border border-tradeflow-gray-200 bg-white shadow-sm">
+              <div className="border-b border-tradeflow-gray-200 px-5 py-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-wide text-green-700">04 · Identity documents</p>
+                <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Upload clear card images</h2>
                 <p className="mt-1 text-xs text-gray-500">PAN front, Aadhaar front and back. JPG, PNG or WEBP, up to 10 MB each.</p>
               </div>
               <div className="space-y-3 p-4">
@@ -414,14 +421,14 @@ export default function KycPage() {
                   const selectedFile = documentFiles[slot.key];
                   const labelId = `kyc-document-${slot.key}`;
                   return (
-                    <div key={slot.key} className="rounded-md border border-[#E5E5E5] bg-[#FCFBF9] p-3">
+                    <div key={slot.key} className="rounded-md border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <div><p className="text-xs font-extrabold text-[#1F1F1F]">{slot.title}</p><p className="text-[11px] text-gray-500">{slot.side}</p></div>
-                        {existing && !selectedFile && <span className="rounded-sm bg-[#E8F5E9] px-2 py-1 text-[10px] font-bold text-[#2E7D32]">On file</span>}
+                        <div><p className="text-xs font-extrabold text-tradeflow-navy">{slot.title}</p><p className="text-[11px] text-gray-500">{slot.side}</p></div>
+                        {existing && !selectedFile && <span className="rounded-sm bg-tradeflow-green-50 px-2 py-1 text-[10px] font-bold text-status-success">On file</span>}
                       </div>
-                      <label htmlFor={labelId} className={`group relative flex h-36 cursor-pointer items-center justify-center overflow-hidden rounded border border-dashed ${preview ? 'border-[#2E7D32]/40 bg-white' : 'border-[#C9C9C9] bg-white hover:border-[#C62828]'}`}>
+                      <label htmlFor={labelId} className={`group relative flex h-36 cursor-pointer items-center justify-center overflow-hidden rounded border border-dashed ${preview ? 'border-status-success/40 bg-white' : 'border-tradeflow-gray-300 bg-white hover:border-tradeflow-green'}`}>
                         {preview ? <img src={preview} alt={`${slot.title} ${slot.side} preview`} className="h-full w-full object-contain p-2" /> : <span className="flex flex-col items-center gap-2 px-3 text-center text-xs text-gray-500"><FileImage className="h-7 w-7 text-gray-400" /><span>{existing ? 'Loading saved document preview...' : 'Choose an image'}</span></span>}
-                        {!isLocked && <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-sm bg-[#1F1F1F]/85 px-2 py-1 text-[10px] font-bold text-white"><ArrowUpFromLine className="h-3 w-3" />{selectedFile || !existing ? 'Upload' : 'Replace'}</span>}
+                        {!isLocked && <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-sm bg-tradeflow-navy/85 px-2 py-1 text-[10px] font-bold text-white"><ArrowUpFromLine className="h-3 w-3" />{selectedFile || !existing ? 'Upload' : 'Replace'}</span>}
                       </label>
                       <input id={labelId} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={isLocked || saving} onChange={changeDocument(slot.key)} />
                       <p className="mt-2 truncate text-[10px] text-gray-500">{selectedFile?.name || existing?.originalName || 'Required for verification'}</p>
@@ -429,8 +436,8 @@ export default function KycPage() {
                   );
                 })}
               </div>
-              <div className="flex items-start gap-2 border-t border-[#E5E5E5] bg-[#F7F6F3] px-4 py-3 text-[11px] leading-relaxed text-gray-600">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#2E7D32]" />
+              <div className="flex items-start gap-2 border-t border-tradeflow-gray-200 bg-tradeflow-gray-50 px-4 py-3 text-[11px] leading-relaxed text-gray-600">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-status-success" />
                 Your documents are sent securely and only visible to you and authorized reviewers.
               </div>
             </section>

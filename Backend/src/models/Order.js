@@ -15,8 +15,16 @@ const orderItemSchema = new mongoose.Schema(
     pricePerUnit: { type: Number, required: true, min: 0 },
     subtotal: { type: Number, required: true, min: 0 },
     costPriceAtOrder: { type: Number, default: 0, min: 0 },
+    // Compatibility fields consumed by existing analytics aggregations.
+    unitPrice: { type: Number, min: 0, default: undefined },
+    categoryName: { type: String, default: '' },
     gstRate: { type: Number, default: 18 },
     gstAmount: { type: Number, default: 0 },
+    hsnCode: { type: String, default: '' },
+    cgst: { type: Number, default: null },
+    sgst: { type: Number, default: null },
+    igst: { type: Number, default: null },
+    priceIncludesTax: { type: Boolean, default: false },
     total: { type: Number, required: true, min: 0 },
   },
   { _id: true }
@@ -86,6 +94,12 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
+    },
+    // Legacy wholesaler reporting reads totalAmount instead of grandTotal.
+    totalAmount: {
+      type: Number,
+      min: 0,
+      default: undefined,
     },
     orderStatus: {
       type: String,
@@ -158,6 +172,7 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isDemo: { type: Boolean, default: false, index: true },
   },
   {
     timestamps: true,

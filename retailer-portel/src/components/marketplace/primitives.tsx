@@ -5,14 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useStore, getCategoryHierarchy, type Product, type Wholesaler, type Order } from "@/state/store";
-import productSheet from "@/assets/product-sheet.jpg";
 
 export const money = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
 
+export function TradeFlowMark({ className = "size-9" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 512 512" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="512" height="512" rx="112" fill="#12304A" />
+      <rect x="120" y="144" width="272" height="64" rx="16" fill="#20A66A" />
+      <rect x="216" y="192" width="80" height="176" rx="16" fill="#20A66A"/>
+    </svg>
+  );
+}
+
 export function StatusBadge({ status }: { status: string }) {
   const good = ["Connected", "Delivered", "Confirmed", "In stock"].includes(status);
-  const warn = ["Pending", "Processing", "Request Pending", "Shipped"].includes(status);
+  const warn = ["Pending", "Processing", "Request Pending", "Out of stock"].includes(status);
+  const info = status === "Shipped";
+  const danger = ["Cancelled", "Rejected"].includes(status);
   return (
     <Badge
       variant="outline"
@@ -20,7 +31,9 @@ export function StatusBadge({ status }: { status: string }) {
         "border-0 font-semibold",
         good && "bg-success/10 text-success",
         warn && "bg-warning/15 text-warning-foreground",
-        !good && !warn && "bg-muted text-muted-foreground"
+        info && "bg-status-info-50 text-status-info-foreground",
+        danger && "bg-status-danger-50 text-status-danger",
+        !good && !warn && !info && !danger && "bg-muted text-muted-foreground"
       )}
     >
       {status}
@@ -55,18 +68,15 @@ export function SectionHeading({
 }
 
 export function ProductVisual({ index, name, className }: { index: number; name: string; className?: string }) {
-  const x = (index % 3) * 33.333,
-    y = Math.floor((index % 6) / 3) * 50;
+  void index;
   return (
     <div
       role="img"
       aria-label={name}
-      className={cn("bg-canvas bg-[length:300%_200%]", className)}
-      style={{
-        backgroundImage: `url(${productSheet})`,
-        backgroundPosition: `${x === 0 ? 0 : x === 33.333 ? 50 : 100}% ${y === 0 ? 0 : 100}%`,
-      }}
-    />
+      className={cn("grid place-items-center bg-muted text-muted-foreground", className)}
+    >
+      <Inventory2 className="size-8" />
+    </div>
   );
 }
 
@@ -93,12 +103,13 @@ export function ProductCard({
   if (premium)
     return (
       <article className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
-        <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="relative block aspect-[4/3] overflow-hidden bg-[#f4f3f0] p-3">
+        <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="relative block aspect-[4/3] overflow-hidden bg-tradeflow-gray-50 p-3">
           {productImg ? (
             <img src={productImg} alt={product.name} className="h-full w-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-105" />
           ) : (
             <ProductVisual index={product.image} name={product.name} className="h-full w-full transition-transform duration-300 group-hover:scale-105" />
           )}
+          {!productImg && <span className="absolute left-3 top-3 rounded-sm border border-border bg-card/90 px-2 py-1 text-[10px] font-bold text-muted-foreground">No image</span>}
           {discount > 0 && <span className="absolute bottom-3 left-3 rounded-sm bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground">{discount}% OFF</span>}
         </Link>
         <Button
@@ -125,7 +136,7 @@ export function ProductCard({
           </div>
           <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
             <span className="text-muted-foreground">MOQ: <b className="text-foreground">{product.moq} × {product.unit || 'units'}</b></span>
-            <span className={cn("rounded-sm px-2 py-1 font-bold", product.stock > 20 ? "bg-success/10 text-success" : product.stock > 0 ? "bg-warning/15 text-warning-foreground" : "bg-destructive/10 text-destructive")}>
+            <span className={cn("rounded-sm px-2 py-1 font-bold", product.stock > 20 ? "bg-success/10 text-success" : "bg-warning/15 text-warning-foreground")}>
               {product.stock > 0 ? "In stock" : "Out of stock"}
             </span>
           </div>
@@ -159,12 +170,13 @@ export function ProductCard({
     );
   return (
     <article className={cn("group relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:border-primary/35 hover:shadow-md", list && "sm:grid sm:grid-cols-[180px_1fr_auto]")}>
-      <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="relative block overflow-hidden bg-[#f4f3f0] p-3">
+      <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="relative block overflow-hidden bg-tradeflow-gray-50 p-3">
         {productImg ? (
           <img src={productImg} alt={product.name} className={cn("aspect-[4/3] w-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-[1.03]", list && "sm:aspect-square sm:h-full")} />
         ) : (
           <ProductVisual index={product.image} name={product.name} className={cn("aspect-[4/3] w-full transition-transform duration-300 group-hover:scale-[1.02]", list && "sm:aspect-square sm:h-full")} />
         )}
+        {!productImg && <span className="absolute left-3 top-3 rounded-sm border border-border bg-card/90 px-2 py-1 text-[10px] font-bold text-muted-foreground">No image</span>}
         {discount > 0 && <span className="absolute bottom-3 left-3 rounded-sm bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground">{discount}% OFF</span>}
       </Link>
       <Button aria-label="Toggle wishlist" variant="secondary" size="icon" className="absolute right-3 top-3 border border-border/70 bg-card/95 shadow-sm" onClick={() => toggleWishlist(product.id)}>
@@ -185,7 +197,7 @@ export function ProductCard({
         </div>
         <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
           <span className="text-muted-foreground">MOQ: <b>{product.moq} × {product.unit || 'units'}</b></span>
-          <span className={cn("rounded-sm px-2 py-1 font-bold", product.stock > 20 ? "bg-success/10 text-success" : product.stock > 0 ? "bg-warning/15 text-warning-foreground" : "bg-destructive/10 text-destructive")}>
+          <span className={cn("rounded-sm px-2 py-1 font-bold", product.stock > 20 ? "bg-success/10 text-success" : "bg-warning/15 text-warning-foreground")}>
             {product.stock > 0 ? "In stock" : "Out of stock"}
           </span>
         </div>
@@ -546,7 +558,7 @@ export function OrderCard({ order }: { order: Order }) {
           </h3>
           <div className="flex items-center gap-2">
             {order.isCreditOrder ? (
-              <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 font-bold border-purple-200">
+              <Badge className="bg-tradeflow-navy text-white dark:bg-tradeflow-navy-hover dark:text-white font-bold border-tradeflow-navy/20">
                 Credit
               </Badge>
             ) : (
@@ -563,7 +575,7 @@ export function OrderCard({ order }: { order: Order }) {
             {order.creditPaymentStatus === "PAID" ? (
               <Badge className="bg-emerald-100 text-emerald-800 font-bold">PAID</Badge>
             ) : order.creditPaymentStatus === "OVERDUE" ? (
-              <Badge className="bg-red-100 text-red-800 font-bold animate-pulse">OVERDUE</Badge>
+              <Badge className="bg-amber-100 text-amber-800 font-bold animate-pulse">OVERDUE</Badge>
             ) : (
               <Badge className="bg-amber-100 text-amber-800 font-bold">PAYMENT PENDING</Badge>
             )}

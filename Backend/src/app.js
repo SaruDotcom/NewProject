@@ -44,6 +44,26 @@ const path = require('path');
 const env = require('./config/env');
 app.use('/uploads/products', express.static(path.join(env.UPLOAD_PATH, 'products')));
 
+// Serve MongoDB GridFS product images
+app.get('/product-images/:id', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const { ObjectId } = mongoose.Types;
+    if (!ObjectId.isValid(req.params.id)) {
+      return res.status(404).send('Invalid image ID');
+    }
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'productImages' });
+    const file = await mongoose.connection.db.collection('productImages.files').findOne({ _id: new ObjectId(req.params.id) });
+    if (!file) return res.status(404).send('Image not found');
+    res.setHeader('Content-Type', file.contentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    bucket.openDownloadStream(new ObjectId(req.params.id)).pipe(res);
+  } catch (err) {
+    res.status(500).send('Error streaming product image');
+  }
+});
+
+
 // Top-level Health check endpoint
 app.get('/health', (req, res) => {
   const mongoose = require('mongoose');

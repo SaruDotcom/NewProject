@@ -42,6 +42,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { KpiCard, PageHeader, StatusBadge } from "@/components/admin-ui";
+import { CategoryCard } from "@/components/categories/category-card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { toast } from "sonner";
@@ -51,15 +52,6 @@ const initial = {
   pagination: { page: 1, limit: 12, total: 0, totalPages: 1 },
   filters: { parents: [] },
 };
-
-// Default high-quality category image placeholders if category has no imageUrl
-const DEFAULT_CATEGORY_IMAGES = [
-  "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&q=80&w=600",
-];
 
 export function CategoriesManagementPage() {
   const [viewMode, setViewMode] = useState("GRID"); // 'GRID' | 'TABLE'
@@ -323,117 +315,30 @@ export function CategoriesManagementPage() {
           <>
             {/* VIEW MODE 1: GRID CARDS VIEW WITH IMAGES */}
             {viewMode === "GRID" && (
-              <div className="p-5 grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-5 p-5 sm:grid-cols-2 lg:grid-cols-3">
                 {result.items.map((row, idx) => {
-                  const fallbackImage = DEFAULT_CATEGORY_IMAGES[idx % DEFAULT_CATEGORY_IMAGES.length];
-                  const displayImage = row.imageUrl && row.imageUrl.trim() ? row.imageUrl : fallbackImage;
                   const isRoot = !row.parent && !row.parentId;
                   const subCount = row.subcategories || 0;
                   const prodCount = row.products || row.productCount || 0;
+                  const categoryId = String(row._id || row.id || "");
+                  const subcategories = result.items
+                    .filter((candidate) => String(candidate.parentId?._id || candidate.parentId || "") === categoryId)
+                    .map((candidate) => ({
+                      id: String(candidate._id || candidate.id),
+                      name: candidate.name,
+                    }));
 
                   return (
-                    <div
+                    <CategoryCard
                       key={String(row._id || row.id || idx)}
-                      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-md"
-                    >
-                      {/* Image Header Container */}
-                      <div className="relative h-44 w-full overflow-hidden bg-muted">
-                        <img
-                          src={displayImage}
-                          alt={row.name}
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                          onError={(e) => {
-                            e.target.src = fallbackImage;
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-
-                        {/* Top Badges */}
-                        <div className="absolute left-3 top-3 flex items-center gap-1.5">
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-md ${
-                              isRoot
-                                ? "bg-primary/90 text-primary-foreground"
-                                : "bg-purple-900/90 text-purple-100"
-                            }`}
-                          >
-                            {isRoot ? "Root Category" : `Sub of ${row.parent?.name || "Parent"}`}
-                          </span>
-                        </div>
-
-                        {/* Dropdown Menu Actions */}
-                        <div className="absolute right-3 top-3">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="secondary"
-                                size="icon"
-                                className="size-8 rounded-full bg-black/50 text-white backdrop-blur-md hover:bg-black/70"
-                                aria-label={`Actions for ${row.name}`}
-                              >
-                                <MoreHorizontal className="size-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem onSelect={() => openEdit(row)}>
-                                <Edit className="mr-2 size-3.5" /> Edit Category
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive font-semibold"
-                                onSelect={() => setConfirmation({ id: row._id || row.id, name: row.name })}
-                              >
-                                <Trash2 className="mr-2 size-3.5" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        {/* Category Name Overlay */}
-                        <div className="absolute bottom-3 left-3 right-3 text-white">
-                          <h3 className="text-base font-black tracking-tight drop-shadow-sm truncate">
-                            {row.name}
-                          </h3>
-                          {row.slug && (
-                            <p className="text-[10px] font-mono opacity-80 truncate">/{row.slug}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Card Content & Stats */}
-                      <div className="flex flex-1 flex-col justify-between p-4 space-y-3">
-                        <p className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">
-                          {row.description || "No category description provided."}
-                        </p>
-
-                        <div className="grid grid-cols-2 gap-2 border-t pt-3 text-xs">
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <ShoppingBag className="size-3.5 text-primary shrink-0" />
-                            <div>
-                              <span className="text-[10px] uppercase font-bold block leading-none">Products</span>
-                              <span className="font-extrabold text-foreground text-sm">{prodCount}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Layers className="size-3.5 text-amber-500 shrink-0" />
-                            <div>
-                              <span className="text-[10px] uppercase font-bold block leading-none">Subcategories</span>
-                              <span className="font-extrabold text-foreground text-sm">{subCount}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Quick Edit Footer Button */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full mt-1 rounded-xl text-xs font-bold hover:bg-accent hover:text-primary"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Edit className="mr-1.5 size-3.5" /> Manage & Edit
-                        </Button>
-                      </div>
-                    </div>
+                      row={row}
+                      isRoot={isRoot}
+                      subCount={subCount}
+                      prodCount={prodCount}
+                      subcategories={subcategories}
+                      onEdit={() => openEdit(row)}
+                      onDelete={() => setConfirmation({ id: row._id || row.id, name: row.name })}
+                    />
                   );
                 })}
               </div>
@@ -455,8 +360,6 @@ export function CategoriesManagementPage() {
                   </TableHeader>
                   <TableBody>
                     {result.items.map((row, idx) => {
-                      const fallbackImage = DEFAULT_CATEGORY_IMAGES[idx % DEFAULT_CATEGORY_IMAGES.length];
-                      const displayImage = row.imageUrl && row.imageUrl.trim() ? row.imageUrl : fallbackImage;
                       const prodCount = row.products || row.productCount || 0;
                       const subCount = row.subcategories || 0;
 
@@ -464,14 +367,20 @@ export function CategoriesManagementPage() {
                         <TableRow key={String(row._id || row.id || idx)}>
                           <TableCell className="font-semibold">
                             <div className="flex items-center gap-3">
-                              <img
-                                src={displayImage}
-                                alt={row.name}
-                                className="size-10 rounded-xl object-cover border bg-muted shrink-0"
-                                onError={(e) => {
-                                  e.target.src = fallbackImage;
-                                }}
-                              />
+                              {row.imageUrl?.trim() ? (
+                                <img
+                                  src={row.imageUrl}
+                                  alt={row.name}
+                                  className="size-10 rounded-xl object-cover border bg-muted shrink-0"
+                                  onError={(event) => {
+                                    event.currentTarget.hidden = true;
+                                  }}
+                                />
+                              ) : (
+                                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-muted text-muted-foreground">
+                                  <Layers className="size-4" />
+                                </div>
+                              )}
                               <div>
                                 <span className="font-bold text-foreground block">{row.name}</span>
                                 {row.slug && <span className="text-[10px] font-mono text-muted-foreground">/{row.slug}</span>}
@@ -483,7 +392,7 @@ export function CategoriesManagementPage() {
                               className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${
                                 !row.parent && !row.parentId
                                   ? "bg-primary/10 text-primary"
-                                  : "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                                  : "bg-tradeflow-sky-50 text-tradeflow-navy dark:bg-tradeflow-navy-hover dark:text-tradeflow-sky"
                               }`}
                             >
                               {row.parent?.name || "Root Category"}
@@ -621,8 +530,8 @@ export function CategoriesManagementPage() {
                     src={form.imageUrl}
                     alt="Category Banner Preview"
                     className="h-full w-full object-cover"
-                    onError={(e) => {
-                      e.target.src = DEFAULT_CATEGORY_IMAGES[0];
+                    onError={(event) => {
+                      event.currentTarget.hidden = true;
                     }}
                   />
                   <span className="absolute bottom-1 right-2 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded-md">

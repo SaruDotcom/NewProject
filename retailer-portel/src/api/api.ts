@@ -1,6 +1,8 @@
 // Central API service for NEXORA Retailer Portal
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { queryClient, retailerQueryKeys } from "@/lib/query-client";
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 const TOKEN_KEY = 'nexora_jwt_token';
+const USER_ID_KEY = 'nexora_retailer_user_id';
 
 export type ApiEnvelope<T> = {
   success: boolean;
@@ -42,12 +44,17 @@ export type ApiProduct = {
   stock?: number;
   imageUrl?: string;
   images?: string[];
+  sizeChart?: {
+    unit: 'inch' | 'cm' | string;
+    measurements: Array<{ size: string; measurements: Record<string, number> }>;
+  } | null;
   description?: string;
   unit?: string;
   status?: string;
   pricingTiers?: Array<{ id: string; minQty: number; pricePerUnit: number }>;
   sizes?: string[];
   colors?: string[];
+  colorVariants?: Array<{ color: string; sku?: string; images?: string[] }>;
   additionalOptions?: Array<{ name: string; value: string }>;
   categoryAttributes?: Record<string, any>;
 };
@@ -107,6 +114,12 @@ export type ApiOrder = {
     subtotal?: number;
     total?: number;
     sku?: string;
+    hsnCode?: string;
+    cgst?: number | null;
+    sgst?: number | null;
+    igst?: number | null;
+    gstAmount?: number;
+    priceIncludesTax?: boolean;
   }>;
 };
 
@@ -148,6 +161,33 @@ export function setAuthToken(token: string) {
 
 export function clearAuthToken() {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_ID_KEY);
+  queryClient.clear();
+}
+
+function invalidateMutation(endpoint: string) {
+  const path = endpoint.split('?')[0];
+  const userId = localStorage.getItem(USER_ID_KEY);
+  if (!userId) return;
+
+  let resources: string[] = [];
+  if (path.startsWith('/retailer/cart')) resources = ['cart'];
+  else if (path.startsWith('/retailer/wishlist')) resources = ['wishlist'];
+  else if (path === '/retailer/checkout') resources = ['cart', 'orders', 'dashboard'];
+  else if (path.startsWith('/retailer/orders')) resources = ['orders', 'dashboard'];
+  else if (path.startsWith('/retailer/returns')) resources = ['returns', 'orders'];
+  else if (path.startsWith('/retailer/profile')) resources = ['profile', 'dashboard'];
+  else if (path.startsWith('/retailer/addresses')) resources = ['addresses'];
+  else if (path.startsWith('/retailer/notifications')) resources = ['notifications'];
+  else if (path.startsWith('/retailer/invitations')) resources = ['wholesaler', 'products', 'categories', 'dashboard'];
+  else if (path.startsWith('/support/tickets')) resources = ['support'];
+  else if (path.startsWith('/reviews')) resources = ['reviews'];
+
+  resources.forEach((resource) => {
+    void queryClient.invalidateQueries({
+      queryKey: retailerQueryKeys.resource(userId, resource),
+    });
+  });
 }
 
 export class ApiError extends Error {
@@ -203,6 +243,10 @@ async function request<T = unknown>(endpoint: string, options: RequestInit = {})
     throw new ApiError(errorMessage, response.status, data);
   }
 
+  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
+    invalidateMutation(endpoint);
+  }
+
   return (data ?? null) as T;
 }
 
@@ -215,10 +259,17 @@ export const api = {
 
   logout: () => request('/auth/logout', { method: 'POST' }),
 
+  getReferral: (code: string) =>
+    request<ApiEnvelope<{ wholesaler: { businessName: string; logo: string; city: string; categories?: string[] } }>>(
+      `/referral/${encodeURIComponent(code)}`,
+      { method: 'GET' },
+    ),
+
   register: (payload: {
     name: string;
     email: string;
     password: string;
+    loginId: string;
     phone?: string;
     role?: string;
     businessName?: string;
@@ -230,10 +281,9 @@ export const api = {
     gstStatus?: string;
     gstin?: string;
     gstNumber?: string;
-    inviteToken?: string;
-    referralCode?: string;
+    referralCode: string;
   }) =>
-    request<ApiEnvelope<{ user?: RetailerUser }>>('/auth/register', {
+    request<ApiEnvelope<{ token?: string; accessToken?: string; user?: RetailerUser }>>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ ...payload, role: payload.role || 'retailer' }),
     }),
@@ -291,10 +341,10 @@ export const api = {
 
   getCart: () => request<ApiEnvelope<any>>('/retailer/cart', { method: 'GET' }),
 
-  addToCart: (productId: string, quantity = 1) =>
+  addToCart: (productId: string, quantity = 1, color?: string) =>
     request<ApiEnvelope<any>>('/retailer/cart', {
       method: 'POST',
-      body: JSON.stringify({ productId, quantity }),
+      body: JSON.stringify({ productId, quantity, ...(color ? { color } : {}) }),
     }),
 
   updateCartItem: (itemId: string, quantity: number) =>
@@ -383,10 +433,50 @@ export const api = {
   getTransactions: () => request<ApiEnvelope<any[]>>('/retailer/transactions', { method: 'GET' }),
 
   submitFeedback: (payload: { title?: string; comment: string; rating: number; wholesalerId?: string; productId?: string }) =>
-    request<ApiEnvelope<any>>('/reviews', {
+    request<ApiEnvelope<any>>('/support/tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'Feedback',
+        subject: payload.title?.trim() || 'Retailer Platform Feedback',
+        message: `Rating: ${payload.rating}/5\n\n${payload.comment.trim()}`,
+      }),
+    }),
+
+  submitSupportTicket: (payload: {
+    type: string;
+    subject: string;
+    message: string;
+    priority?: string;
+    relatedOrderId?: string;
+    attachments?: Array<{ url: string; publicId?: string }>;
+  }) =>
+    request<ApiEnvelope<any>>('/support/tickets', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  getMySupportTickets: () => request<ApiEnvelope<any[]>>('/support/tickets/mine', { method: 'GET' }),
+
+  getSupportTicket: (ticketId: string) =>
+    request<ApiEnvelope<any>>(`/support/tickets/${encodeURIComponent(ticketId)}`, { method: 'GET' }),
+
+  replySupportTicket: (ticketId: string, message: string) =>
+    request<ApiEnvelope<any>>(`/support/tickets/${encodeURIComponent(ticketId)}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+
+  markSupportTicketRead: (ticketId: string) =>
+    request<ApiEnvelope<any>>(`/support/tickets/${encodeURIComponent(ticketId)}/read`, { method: 'PATCH' }),
+
+  uploadSupportAttachments: (files: FileList | File[]) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append('images', file));
+    return request<ApiEnvelope<Array<{ url: string; publicId: string }>>>('/support/tickets/attachments', {
+      method: 'POST',
+      body: formData,
+    });
+  },
 
   // Retailer Coupons & Offers
   getCoupons: () => request<ApiEnvelope<any[]>>('/retailer/coupons', { method: 'GET' }),

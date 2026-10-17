@@ -27,6 +27,8 @@ import {
 
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
+import { HelpSupportPage } from "@/components/marketplace/support";
+import { LandingPage } from "@/components/marketplace/landing";
 
 function isBusinessSetupComplete(profile: ReturnType<typeof useStore>["retailerProfile"]) {
   if (profile.profileComplete) return true;
@@ -58,20 +60,40 @@ function RouterView() {
   const token = getAuthToken();
   const authenticated = isLoggedIn && Boolean(token);
 
+  // Validate token with backend before showing store: prevent flash of store content
+  if (isLoading && Boolean(token) && !isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-[#F4F7F8] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-8 border-3 border-[#D8E1E5] border-t-[#20A66A] rounded-full animate-spin" />
+          <span className="text-xs font-semibold text-[#647782]">Verifying wholesale session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Public Landing Page: logged-out visitors who open "/" see a landing page, not the store
+  if (path === "/" && !authenticated) {
+    return <LandingPage />;
+  }
+  if (path === "/landing") {
+    return <LandingPage />;
+  }
+
   // Public authentication routes
-  const isRefPath = path === "/register" || path.startsWith("/join") || path.startsWith("/invite");
+  const isRefPath = path === "/register";
   if (path === "/login") {
     const searchParams = new URLSearchParams(url.search);
-    const hasRef = searchParams.has("ref") || searchParams.has("referralCode") || searchParams.has("inviteToken");
+    const hasRef = searchParams.has("ref");
     return <AuthPage mode={hasRef ? "register" : "login"} />;
   }
   if (isRefPath) return <AuthPage mode="register" />;
   if (path === "/forgot-password") return <AuthPage mode="forgot" />;
 
-  // Route Guard: Require authentication for all protected pages
+  // Route Guard: Require authentication for all protected store pages
   if (!authenticated) {
     const searchParams = new URLSearchParams(url.search);
-    const hasRef = searchParams.has("ref") || searchParams.has("referralCode") || searchParams.has("inviteToken");
+    const hasRef = searchParams.has("ref");
     return <AuthPage mode={hasRef || isRefPath ? "register" : "login"} />;
   }
 
@@ -79,6 +101,7 @@ function RouterView() {
     return <ProfilePage setupMode />;
   }
 
+  // Logged-in retailers keep seeing their store home as today
   if (path === "/") return <HomePage />;
   if (path === "/products") return <ProductsPage initialCategory={url.searchParams.get("category") ?? "All"} />;
   if (path.startsWith("/products/")) return <ProductDetailPage productId={decodeURIComponent(path.split("/")[2] ?? "")} />;
@@ -98,6 +121,7 @@ function RouterView() {
   if (path === "/checkout") return <CheckoutPage />;
   if (path === "/wishlist") return <WishlistPage />;
   if (path === "/notifications") return <NotificationsPage />;
+  if (path === "/support") return <HelpSupportPage />;
   if (path === "/coupons") return <CouponsPage />;
   if (path === "/profile" || path === "/setup") return <ProfilePage setupMode={!isBusinessSetupComplete(retailerProfile)} />;
   if (path === "/addresses") return <AddressesPage />;
