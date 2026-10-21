@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Building2,
@@ -83,6 +83,8 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
 
   // Inline Validation Errors State
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submissionInProgress = useRef(false);
 
   useEffect(() => {
     if (getAuthToken() === 'demo-wholesaler-token') {
@@ -194,6 +196,7 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (submissionInProgress.current) return;
     if (!validateForm()) {
       return;
     }
@@ -203,6 +206,8 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
       return;
     }
 
+    submissionInProgress.current = true;
+    setIsSubmitting(true);
     try {
       const attribution = readUtmAttribution();
       await registerWholesaler({
@@ -236,6 +241,9 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
       } else {
         setErrors((prev) => ({ ...prev, form: msg }));
       }
+    } finally {
+      submissionInProgress.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -670,10 +678,11 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
             <div className="pt-4 border-t border-tradeflow-gray-200">
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-3 bg-tradeflow-green text-tradeflow-navy text-sm font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all"
+                disabled={isSubmitting}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-tradeflow-green text-tradeflow-navy text-sm font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <span>Create Account &amp; Open Dashboard</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>{isSubmitting ? 'Creating Account...' : 'Create Account &amp; Open Dashboard'}</span>
+                {!isSubmitting && <ArrowRight className="w-4 h-4" />}
               </button>
             </div>
           </form>

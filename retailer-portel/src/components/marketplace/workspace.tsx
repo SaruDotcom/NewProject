@@ -11,6 +11,14 @@ import { useStore, getCategoryHierarchy, mapOrder } from "@/state/store";
 import { ApiError, api, setAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { retailerQueryKeys } from "@/lib/query-client";
+import {
+  clearStoredReferralAttribution,
+  createReferralAttribution,
+  getReferralAttributionFromUrl,
+  getStoredReferralAttribution,
+  saveReferralAttribution,
+  type ReferralAttribution,
+} from "@/lib/referral-attribution";
 import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, money } from "./primitives";
 
 export function DashboardPage() {
@@ -1591,7 +1599,7 @@ export function SettingsPage() {
 }
 
 export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "forgot" }) {
-  const { login } = useStore();
+  const { login, isLoggedIn } = useStore();
 
   const [mode, setMode] = useState<"login" | "register" | "forgot">(initialMode);
   const [email, setEmail] = useState("");
@@ -1600,11 +1608,14 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
   const [loginId, setLoginId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
-  const referralFromLink =
-    new URLSearchParams(window.location.search).get("ref")?.trim() ||
-    (typeof window !== "undefined" ? localStorage.getItem("nexora_retailer_referral_code")?.trim() : "") ||
-    "";
-  const [referralCode, setReferralCode] = useState(referralFromLink.toUpperCase());
+  const [referralAttribution, setReferralAttribution] = useState<ReferralAttribution | null>(() => {
+    if (typeof window === "undefined") return null;
+    return isLoggedIn
+      ? getStoredReferralAttribution()
+      : getReferralAttributionFromUrl(new URL(window.location.href)) || getStoredReferralAttribution();
+  });
+  const [referralCode, setReferralCode] = useState(referralAttribution?.code || "");
+  const [manualReferralCode, setManualReferralCode] = useState("");
   const [referralWholesaler, setReferralWholesaler] = useState<{
     code: string;
     businessName: string;
@@ -1612,7 +1623,7 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
     city: string;
   } | null>(null);
   const activeReferralWholesaler =
-    referralWholesaler?.code === referralFromLink.toUpperCase() ? referralWholesaler : null;
+    referralWholesaler?.code === referralCode.toUpperCase() ? referralWholesaler : null;
   const [referralError, setReferralError] = useState("");
   const [isLookingUpReferral, setIsLookingUpReferral] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1622,29 +1633,35 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
   }, [initialMode]);
 
   useEffect(() => {
-    const code = referralFromLink.toUpperCase();
+    const code = referralAttribution?.code.trim().toUpperCase() || "";
     setReferralCode(code);
     setReferralWholesaler(null);
-    setReferralError("");
     if (mode !== "register" || !code) {
       setIsLookingUpReferral(false);
       return;
     }
 
     let isCurrentLookup = true;
+    setReferralError("");
     setIsLookingUpReferral(true);
     void api.getReferral(code)
       .then((response) => {
-        if (isCurrentLookup) setReferralWholesaler({ ...response.data.wholesaler, code });
+        if (!isCurrentLookup) return;
+        const savedAttribution = { ...referralAttribution, code };
+        saveReferralAttribution(savedAttribution);
+        setReferralWholesaler({ ...response.data.wholesaler, code });
       })
       .catch((error: unknown) => {
         if (!isCurrentLookup) return;
         const status = error instanceof ApiError ? error.status : undefined;
-        setReferralError(
-          status === 403 || status === 404
-            ? "This invite link is invalid or inactive. Ask your wholesaler for a new invite link."
-            : "Unable to verify this invite link. Please try again.",
-        );
+        if (status === 403 || status === 404) {
+          if (getStoredReferralAttribution()?.code === code) clearStoredReferralAttribution();
+          setReferralAttribution(null);
+          setReferralCode("");
+          setReferralError("This link is no longer valid. Ask your wholesaler for a new link.");
+        } else {
+          setReferralError("Unable to verify this invite link. Please try again.");
+        }
       })
       .finally(() => {
         if (isCurrentLookup) setIsLookingUpReferral(false);
@@ -1653,7 +1670,28 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
     return () => {
       isCurrentLookup = false;
     };
-  }, [mode, referralFromLink]);
+  }, [mode, referralAttribution]);
+
+  const handleManualReferralSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = manualReferralCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+      setReferralError("Enter a valid 6-character wholesaler code.");
+      return;
+    }
+    setReferralError("");
+    setReferralCode(code);
+    setReferralAttribution(createReferralAttribution(code, new URL(window.location.href)));
+  };
+
+  const clearReferral = () => {
+    clearStoredReferralAttribution();
+    setReferralAttribution(null);
+    setReferralWholesaler(null);
+    setReferralCode("");
+    setManualReferralCode("");
+    setReferralError("");
+  };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1687,6 +1725,12 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
           email: email.trim(),
           password,
           referralCode: referralCode.trim().toUpperCase(),
+          utmSource: referralAttribution?.utmSource || "",
+          utmMedium: referralAttribution?.utmMedium || "",
+          utmCampaign: referralAttribution?.utmCampaign || "",
+          utmTerm: referralAttribution?.utmTerm || "",
+          utmContent: referralAttribution?.utmContent || "",
+          firstLandingAt: referralAttribution?.firstLandingAt,
         });
 
         const token = res.data.token || res.data.accessToken;
@@ -1728,7 +1772,39 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
           </p>
         </div>
 
-        {(mode !== "register" || activeReferralWholesaler) ? (
+        {mode === "register" && !activeReferralWholesaler && (
+          <div className="mt-6 space-y-3">
+            {isLookingUpReferral ? (
+              <div className="space-y-2 text-center" role="status">
+                <p className="text-sm text-muted-foreground">Checking your wholesaler invite...</p>
+                <Input value={referralCode} readOnly aria-label="Wholesaler invite code" className="text-center font-mono uppercase" />
+              </div>
+            ) : (
+              <form className="grid gap-3" onSubmit={handleManualReferralSubmit}>
+                {referralError && <p role="alert" className="text-xs font-semibold text-red-600">{referralError}</p>}
+                <label className="text-xs font-bold text-ink">
+                  6-Character Wholesaler Code
+                  <Input
+                    className="mt-1.5 uppercase font-mono tracking-wider font-bold"
+                    type="text"
+                    maxLength={6}
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    placeholder="e.g. WS1234"
+                    value={manualReferralCode}
+                    onChange={(event) => setManualReferralCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                    required
+                  />
+                </label>
+                <Button type="submit" size="lg" disabled={manualReferralCode.length !== 6} className="rounded-xl font-extrabold">
+                  Verify code & continue
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
+
+        {(mode !== "register" || activeReferralWholesaler) && (
         <form className="mt-6 grid gap-4" onSubmit={handleAuthSubmit}>
           {mode === "register" && (
               <div className="grid gap-3">
@@ -1741,25 +1817,31 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
                     readOnly
                   />
                 </label>
-                {isLookingUpReferral && (
-                  <p className="text-xs text-muted-foreground">Checking referral link...</p>
-                )}
-              {referralError && (
-                <p role="alert" className="text-xs font-semibold text-red-600">{referralError}</p>
-              )}
               {activeReferralWholesaler && (
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  {activeReferralWholesaler.logo && (
-                    <img src={activeReferralWholesaler.logo} alt="" className="size-12 rounded-lg object-cover" />
-                  )}
-                  <div>
-                    <p className="text-xs text-muted-foreground">You are joining:</p>
-                    <p className="font-bold text-ink">{activeReferralWholesaler.businessName}</p>
-                    {activeReferralWholesaler.city && (
-                      <p className="text-xs text-muted-foreground">{activeReferralWholesaler.city}</p>
+                <>
+                  <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                    {activeReferralWholesaler.logo ? (
+                      <img src={activeReferralWholesaler.logo} alt="" className="size-12 rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex size-12 items-center justify-center rounded-lg bg-white text-primary">
+                        <VerifiedUser className="size-6" />
+                      </div>
                     )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground">You are joining:</p>
+                      <p className="truncate font-bold text-ink">
+                        {activeReferralWholesaler.businessName}{activeReferralWholesaler.city ? `, ${activeReferralWholesaler.city}` : ""}
+                      </p>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-emerald-700">
+                      <Verified fontSize="small" />
+                      Verified
+                    </span>
                   </div>
-                </div>
+                  <button type="button" onClick={clearReferral} className="justify-self-start text-xs font-semibold text-muted-foreground underline underline-offset-2 hover:text-ink">
+                    Not your wholesaler?
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -1864,14 +1946,6 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
             </Button>
           )}
         </form>
-        ) : (
-          <div className="mt-6 space-y-3 text-center" role="status">
-            {!referralFromLink
-              ? <p className="text-sm text-muted-foreground">Registration is by invitation only. Ask your wholesaler for an invite link.</p>
-              : isLookingUpReferral
-                ? <><p className="text-sm text-muted-foreground">Checking invite link...</p><Input className="text-center font-mono uppercase" value={referralCode} readOnly aria-label="Wholesaler invite code" /></>
-                : <><Input className="text-center font-mono uppercase" value={referralCode} readOnly aria-label="Wholesaler invite code" /><p role="alert" className="text-sm font-semibold text-red-600">{referralError || "This invite link is invalid or inactive. Ask your wholesaler for a new invite link."}</p></>}
-          </div>
         )}
 
         <div className="mt-6 text-center text-xs text-muted-foreground">

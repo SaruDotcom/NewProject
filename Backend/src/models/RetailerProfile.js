@@ -107,6 +107,9 @@ const retailerProfileSchema = new mongoose.Schema(
     utmSource: { type: String, default: '', trim: true, maxlength: 100 },
     utmMedium: { type: String, default: '', trim: true, maxlength: 100 },
     utmCampaign: { type: String, default: '', trim: true, maxlength: 100 },
+    utmTerm: { type: String, default: '', trim: true, maxlength: 100 },
+    utmContent: { type: String, default: '', trim: true, maxlength: 100 },
+    firstLandingAt: { type: Date },
   },
   {
     timestamps: true,

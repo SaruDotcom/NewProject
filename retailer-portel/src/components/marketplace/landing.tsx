@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import {
   CheckCircle,
@@ -26,6 +26,14 @@ import { useStore } from "@/state/store";
 import { api, setAuthToken, ApiError } from "@/api/api";
 import { TradeFlowMark } from "./primitives";
 import { toast } from "sonner";
+import {
+  clearStoredReferralAttribution,
+  createReferralAttribution,
+  getReferralAttributionFromUrl,
+  getStoredReferralAttribution,
+  saveReferralAttribution,
+  type ReferralAttribution,
+} from "@/lib/referral-attribution";
 
 export interface WholesalerPublicInfo {
   businessName: string;
@@ -35,8 +43,6 @@ export interface WholesalerPublicInfo {
   code: string;
 }
 
-const STORAGE_REF_KEY = "nexora_retailer_referral_code";
-const STORAGE_REF_TIME = "nexora_retailer_referral_time";
 const STORAGE_POPUP_DISMISSED = "nexora_popup_dismissed_at";
 
 export function LandingPage() {
@@ -48,6 +54,7 @@ export function LandingPage() {
 
   // Referral State
   const [referralCode, setReferralCode] = useState("");
+  const [referralAttribution, setReferralAttribution] = useState<ReferralAttribution | null>(null);
   const [supplier, setSupplier] = useState<WholesalerPublicInfo | null>(null);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [referralError, setReferralError] = useState("");
@@ -86,37 +93,11 @@ export function LandingPage() {
     }
   }, []);
 
-  // Referral Code Lookup and Storage
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const refFromUrl = urlParams.get("ref")?.trim().toUpperCase();
-
-    let codeToVerify = "";
-    if (refFromUrl) {
-      codeToVerify = refFromUrl;
-      try {
-        localStorage.setItem(STORAGE_REF_KEY, refFromUrl);
-        localStorage.setItem(STORAGE_REF_TIME, String(Date.now()));
-      } catch (e) {
-        console.warn("Could not save referral code to storage", e);
-      }
-    } else {
-      try {
-        const storedCode = localStorage.getItem(STORAGE_REF_KEY);
-        if (storedCode) codeToVerify = storedCode.trim().toUpperCase();
-      } catch (e) {
-        console.warn("Could not read referral code from storage", e);
-      }
-    }
-
-    if (codeToVerify) {
-      setReferralCode(codeToVerify);
-      setManualCodeInput(codeToVerify);
-      verifyCode(codeToVerify);
-    }
-  }, []);
-
-  const verifyCode = async (code: string): Promise<boolean> => {
+  const verifyCode = useCallback(async (
+    code: string,
+    attribution = createReferralAttribution(code, new URL(window.location.href)),
+    openRegistration = false,
+  ): Promise<boolean> => {
     const cleanCode = code.trim().toUpperCase();
     if (!cleanCode) return false;
 
@@ -136,27 +117,55 @@ export function LandingPage() {
         };
         setSupplier(wholesalerInfo);
         setReferralCode(cleanCode);
+        const savedAttribution = { ...attribution, code: cleanCode };
+        setReferralAttribution(savedAttribution);
+        saveReferralAttribution(savedAttribution);
         setReferralError("");
-        try {
-          localStorage.setItem(STORAGE_REF_KEY, cleanCode);
-          localStorage.setItem(STORAGE_REF_TIME, String(Date.now()));
-        } catch {
-          // ignore storage error
+        if (openRegistration) {
+          setModalMode("register");
+          setModalOpen(true);
         }
         return true;
       } else {
         setSupplier(null);
-        setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
+        if (getStoredReferralAttribution()?.code === cleanCode) {
+          clearStoredReferralAttribution();
+          setReferralAttribution(null);
+          setReferralCode("");
+        }
+        setReferralError("This link is no longer valid. Ask your wholesaler for a new link.");
         return false;
       }
     } catch (err) {
       setSupplier(null);
-      setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
+      const status = err instanceof ApiError ? err.status : undefined;
+      if (status === 403 || status === 404) {
+        if (getStoredReferralAttribution()?.code === cleanCode) {
+          clearStoredReferralAttribution();
+          setReferralAttribution(null);
+          setReferralCode("");
+        }
+        setReferralError("This link is no longer valid. Ask your wholesaler for a new link.");
+      } else {
+        setReferralError("Unable to verify this invite link. Please try again.");
+      }
       return false;
     } finally {
       setIsVerifyingCode(false);
     }
-  };
+  }, []);
+
+  // Verify incoming links before saving them; a valid later link replaces the prior one.
+  useEffect(() => {
+    if (isLoggedIn) return;
+    const fromUrl = getReferralAttributionFromUrl(new URL(window.location.href));
+    const attribution = fromUrl || getStoredReferralAttribution();
+    if (!attribution) return;
+
+    setReferralCode(attribution.code);
+    setManualCodeInput(attribution.code);
+    void verifyCode(attribution.code, attribution, Boolean(fromUrl));
+  }, [isLoggedIn, verifyCode]);
 
   // Auto-open popup ~3 seconds after landing for logged-out visitors
   useEffect(() => {
@@ -178,7 +187,8 @@ export function LandingPage() {
     if (hasBeenDismissedRecently) return;
 
     const timer = window.setTimeout(() => {
-      openModal();
+      setModalMode(supplier ? "register" : "enter_code");
+      setModalOpen(true);
     }, 3000);
 
     return () => window.clearTimeout(timer);
@@ -202,7 +212,7 @@ export function LandingPage() {
     if (mode) {
       setModalMode(mode);
     } else {
-      setModalMode(supplier ? "welcome" : "enter_code");
+      setModalMode(supplier ? "register" : "enter_code");
     }
     setModalOpen(true);
   };
@@ -218,10 +228,21 @@ export function LandingPage() {
 
   const handleManualCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await verifyCode(manualCodeInput);
+    const attribution = createReferralAttribution(manualCodeInput, new URL(window.location.href));
+    const success = await verifyCode(manualCodeInput, attribution);
     if (success) {
-      setModalMode("welcome");
+      setModalMode("register");
     }
+  };
+
+  const clearReferral = () => {
+    clearStoredReferralAttribution();
+    setReferralAttribution(null);
+    setReferralCode("");
+    setSupplier(null);
+    setManualCodeInput("");
+    setReferralError("");
+    setModalMode("enter_code");
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -250,6 +271,12 @@ export function LandingPage() {
         email: regEmail.trim(),
         password: regPassword,
         referralCode: referralCode.trim().toUpperCase(),
+        utmSource: referralAttribution?.utmSource || "",
+        utmMedium: referralAttribution?.utmMedium || "",
+        utmCampaign: referralAttribution?.utmCampaign || "",
+        utmTerm: referralAttribution?.utmTerm || "",
+        utmContent: referralAttribution?.utmContent || "",
+        firstLandingAt: referralAttribution?.firstLandingAt,
       });
 
       const token = res.data?.token || res.data?.accessToken;
@@ -1255,6 +1282,31 @@ export function LandingPage() {
                     Connecting directly to <strong className="text-[#12304A]">{supplier.businessName}</strong>
                   </p>
                 </div>
+
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  {supplier.logo ? (
+                    <img src={supplier.logo} alt="" className="size-12 rounded-lg object-cover" />
+                  ) : (
+                    <div className="flex size-12 items-center justify-center rounded-lg bg-white text-[#20A66A]">
+                      <Building2 className="size-6" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-[#647782]">You are joining:</p>
+                    <p className="truncate font-bold text-[#12304A]">{supplier.businessName}{supplier.city ? `, ${supplier.city}` : ""}</p>
+                  </div>
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-[#198957]">
+                    <ShieldCheck className="size-3.5" />
+                    Verified
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearReferral}
+                  className="self-start text-xs font-semibold text-[#647782] underline underline-offset-2 hover:text-[#12304A]"
+                >
+                  Not your wholesaler?
+                </button>
 
                 <form onSubmit={handleRegisterSubmit} className="flex flex-col gap-3">
                   {/* Referral Code (Pre-filled and Read-Only) */}

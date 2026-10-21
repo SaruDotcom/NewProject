@@ -155,6 +155,9 @@ class AuthService {
       utmSource = '',
       utmMedium = '',
       utmCampaign = '',
+      utmTerm = '',
+      utmContent = '',
+      firstLandingAt,
     } = payload;
 
     const role = (rawRole || 'RETAILER').toUpperCase();
@@ -334,6 +337,9 @@ class AuthService {
         utmSource: String(utmSource || '').slice(0, 100).trim(),
         utmMedium: String(utmMedium || '').slice(0, 100).trim(),
         utmCampaign: String(utmCampaign || '').slice(0, 100).trim(),
+        utmTerm: String(utmTerm || '').slice(0, 100).trim(),
+        utmContent: String(utmContent || '').slice(0, 100).trim(),
+        firstLandingAt: firstLandingAt ? new Date(firstLandingAt) : undefined,
       });
 
       user.retailerProfile = retailerProfile._id;

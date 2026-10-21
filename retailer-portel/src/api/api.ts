@@ -282,6 +282,12 @@ export const api = {
     gstin?: string;
     gstNumber?: string;
     referralCode: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    utmTerm?: string;
+    utmContent?: string;
+    firstLandingAt?: string;
   }) =>
     request<ApiEnvelope<{ token?: string; accessToken?: string; user?: RetailerUser }>>('/auth/register', {
       method: 'POST',

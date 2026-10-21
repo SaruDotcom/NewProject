@@ -63,6 +63,9 @@ const registerSchema = Joi.object({
   utmSource: Joi.string().optional().trim().max(100).allow(''),
   utmMedium: Joi.string().optional().trim().max(100).allow(''),
   utmCampaign: Joi.string().optional().trim().max(100).allow(''),
+  utmTerm: Joi.string().optional().trim().max(100).allow(''),
+  utmContent: Joi.string().optional().trim().max(100).allow(''),
+  firstLandingAt: Joi.date().iso().optional(),
 });
 
 const refreshTokenSchema = Joi.object({

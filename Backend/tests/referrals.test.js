@@ -56,8 +56,9 @@ describe('Wholesaler referral-only retailer registration', () => {
       businessName: 'Safe Business Name',
       logo: 'https://example.test/logo.png',
       city: 'Pune',
+      categories: [],
     });
-    expect(Object.keys(response.body.data.wholesaler).sort()).toEqual(['businessName', 'city', 'logo']);
+    expect(Object.keys(response.body.data.wholesaler).sort()).toEqual(['businessName', 'categories', 'city', 'logo']);
     expect(JSON.stringify(response.body)).not.toMatch(/Private Owner Name|private-owner@example\.test|9876543210|gstin|kyc/i);
   });
 
@@ -134,6 +135,12 @@ describe('Wholesaler referral-only retailer registration', () => {
       password: 'Password@123',
       role: 'retailer',
       referralCode,
+      utmSource: 'facebook',
+      utmMedium: 'paid_social',
+      utmCampaign: 'diwali',
+      utmTerm: 'wholesale',
+      utmContent: 'banner-a',
+      firstLandingAt: '2026-10-20T10:00:00.000Z',
       wholesalerId: '000000000000000000000000',
     };
 
@@ -148,6 +155,12 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(String(relationship.wholesalerId)).toBe(String(wholesaler._id));
     expect(relationship.referralCode).toBe(referralCode);
     expect(retailer.retailerProfile.referralCodeUsed).toBe(referralCode);
+    expect(retailer.retailerProfile.utmSource).toBe('facebook');
+    expect(retailer.retailerProfile.utmMedium).toBe('paid_social');
+    expect(retailer.retailerProfile.utmCampaign).toBe('diwali');
+    expect(retailer.retailerProfile.utmTerm).toBe('wholesale');
+    expect(retailer.retailerProfile.utmContent).toBe('banner-a');
+    expect(retailer.retailerProfile.firstLandingAt.toISOString()).toBe('2026-10-20T10:00:00.000Z');
 
     const duplicateMobile = await request(app).post('/api/v1/auth/register').send({
       ...payload,

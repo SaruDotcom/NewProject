@@ -81,20 +81,30 @@ function RouterView() {
   }
 
   // Public authentication routes
+  if (/^\/r\/[^/]+$/.test(path)) {
+    return authenticated
+      ? <HomePage />
+      : <AuthPage key={`${path}${url.search}`} mode="register" />;
+  }
   const isRefPath = path === "/register";
   if (path === "/login") {
     const searchParams = new URLSearchParams(url.search);
     const hasRef = searchParams.has("ref");
-    return <AuthPage mode={hasRef ? "register" : "login"} />;
+    if (authenticated && hasRef) return <HomePage />;
+    return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} />;
   }
-  if (isRefPath) return <AuthPage mode="register" />;
-  if (path === "/forgot-password") return <AuthPage mode="forgot" />;
+  if (isRefPath) {
+    return authenticated
+      ? <HomePage />
+      : <AuthPage key={`${path}${url.search}`} mode="register" />;
+  }
+  if (path === "/forgot-password") return <AuthPage key={`${path}${url.search}`} mode="forgot" />;
 
   // Route Guard: Require authentication for all protected store pages
   if (!authenticated) {
     const searchParams = new URLSearchParams(url.search);
     const hasRef = searchParams.has("ref");
-    return <AuthPage mode={hasRef || isRefPath ? "register" : "login"} />;
+    return <AuthPage key={`${path}${url.search}`} mode={hasRef || isRefPath ? "register" : "login"} />;
   }
 
   if (!isLoading && !isBusinessSetupComplete(retailerProfile) && path !== "/profile" && path !== "/setup") {

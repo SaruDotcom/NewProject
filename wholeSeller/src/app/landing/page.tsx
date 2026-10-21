@@ -16,15 +16,16 @@ import {
   Menu,
   Package,
   ReceiptText,
+  RotateCcw,
   ShieldCheck,
   ShoppingBag,
   Store,
+  Tag,
   Truck,
   TrendingUp,
   Users,
   Wallet,
   X,
-  Zap,
 } from 'lucide-react';
 import { WholesalerProvider } from '@/context/WholesalerContext';
 import { LoginForm } from '@/app/login/page';
@@ -33,30 +34,52 @@ import { BRAND_NAME } from '@/config/brand';
 import { WHOLESALER_PLAN_PRICING } from '@/config/plans';
 import { clearAuthToken, getAuthToken } from '@/lib/api';
 
-const features = [
-  { icon: Package, title: 'Add all your products', text: 'Keep product names, prices and photos together.' },
-  { icon: Boxes, title: 'Stock updates by itself', text: 'See stock change as your orders move forward.' },
-  { icon: Link2, title: 'Invite your retailers', text: 'Share a link so retailers can connect with your shop.' },
-  { icon: ShoppingBag, title: 'Get orders from retailers', text: 'Review new orders and see what needs to happen next.' },
-  { icon: CreditCard, title: 'Give credit safely', text: 'Set credit limits and payment time for each retailer.' },
-  { icon: ReceiptText, title: 'GST bills in one click', text: 'Keep tax details ready for clear customer bills.' },
-  { icon: FileSpreadsheet, title: 'Upload products in bulk', text: 'Add or update products with the Excel upload.' },
-  { icon: BarChart3, title: 'See how business is going', text: 'Check sales, orders, products and stock in one place.' },
-];
+const landingCopy = {
+  hero: {
+    label: 'B2B WHOLESALE PLATFORM',
+    headline: 'Run Your B2B Wholesale Business Online. Add Retailers, Take Orders, Grow Faster.',
+    subtext: 'Add your retailers with your own link, share your catalog, and receive orders, payments and bills in one place.',
+    primaryButton: 'Register Free',
+    secondaryButton: 'See How It Works',
+  },
+  metadata: {
+    title: `${BRAND_NAME} · B2B Wholesale Business Online`,
+    description: 'Add retailers online, share your wholesale catalog, and manage B2B orders, stock, payments and bills in one place.',
+  },
+  keyMessages: [
+    { icon: Users, title: 'Add Your Retailers Online', text: 'Every retailer joins with your link and sees only your products.' },
+    { icon: Package, title: 'Sell in Bulk, Your Way', text: 'Set bulk prices, minimum order quantity and credit terms for each retailer.' },
+    { icon: Truck, title: 'Track Every Order', text: 'Follow each order from placement through delivery and payment.' },
+  ],
+  features: [
+    { icon: Link2, title: 'Retailer onboarding by link', text: 'Share your link so retailers can join your business online.' },
+    { icon: Package, title: 'Product catalog with categories and colors', text: 'Organize products so retailers can find the right items.' },
+    { icon: Boxes, title: 'Automatic stock updates', text: 'Stock changes as you manage orders.' },
+    { icon: CreditCard, title: 'Bulk pricing and minimum order quantity', text: 'Set prices and order quantities for bulk purchases.' },
+    { icon: CircleDollarSign, title: 'Credit for trusted retailers', text: 'Set credit terms for retailers you trust.' },
+    { icon: ReceiptText, title: 'GST invoices', text: 'Create GST invoices for retailer orders.' },
+    { icon: FileSpreadsheet, title: 'Bulk Excel product upload', text: 'Add or update products using an Excel file.' },
+    { icon: Tag, title: 'Coupons and offers', text: 'Share offers with your connected retailers.' },
+    { icon: BarChart3, title: 'Reports and analytics', text: 'Review orders, sales and stock in clear reports.' },
+    { icon: RotateCcw, title: 'Returns handling', text: 'Review and manage retailer return requests.' },
+  ],
+  steps: [
+    { icon: Store, title: 'Register your business', text: 'Create an account for your wholesale business.' },
+    { icon: Package, title: 'Add your products', text: 'Add products and prices after your business is approved.' },
+    { icon: Users, title: 'Share your link with retailers', text: 'Send your link so your retailers can join.' },
+    { icon: ShoppingBag, title: 'Receive and manage orders', text: 'Review retailer orders and manage their progress.' },
+  ],
+  faqs: [
+    ['Who is this B2B service for?', 'Manufacturers, wholesalers, distributors and stockists can manage products, retailers and orders.'],
+    ['When can I add products?', 'Your account is ready after registration. Add products after your business details are approved.'],
+    ['How do retailers join my business?', 'Share your link. Retailers who join see your products and can order from your catalog.'],
+    ['Can I upload products in bulk?', 'Yes. Use the Excel upload to add or update products in bulk.'],
+  ],
+};
 
-const steps = [
-  { icon: Store, title: 'Register free', text: 'Create an account for your wholesale business.' },
-  { icon: Package, title: 'Add your products', text: 'Get your business details approved, then add products and prices.' },
-  { icon: Users, title: 'Invite retailers', text: 'Share your retailer link with your customers.' },
-  { icon: ShoppingBag, title: 'Get orders', text: 'Review retailer orders and arrange delivery.' },
-];
-
-const faqs = [
-  ['Who can use this service?', 'Wholesale businesses can manage products, stock, retailers, orders and payments.'],
-  ['Can I add products right after I register?', 'Your account is ready right away. Add products and categories after your business details are approved.'],
-  ['How do retailers connect with my shop?', 'Share your retailer link. Retailers can use it to connect with your business.'],
-  ['Can I add many products at once?', 'Yes. Use the existing Excel upload to add or update products in bulk.'],
-];
+const steps = landingCopy.steps;
+const features = landingCopy.features;
+const faqs = landingCopy.faqs;
 
 function setMeta(name: string, content: string, property = false) {
   const selector = property ? `meta[property="${name}"]` : `meta[name="${name}"]`;
@@ -236,10 +259,10 @@ function LandingContent() {
   }, [navigate]);
 
   useEffect(() => {
-    document.title = `${BRAND_NAME} · Simple tools for wholesale`;
-    setMeta('description', 'Add products, manage stock, invite retailers and receive orders in one simple place.');
-    setMeta('og:title', `${BRAND_NAME} · Simple tools for wholesale`, true);
-    setMeta('og:description', 'Add products, manage stock, invite retailers and receive orders in one simple place.', true);
+    document.title = landingCopy.metadata.title;
+    setMeta('description', landingCopy.metadata.description);
+    setMeta('og:title', landingCopy.metadata.title, true);
+    setMeta('og:description', landingCopy.metadata.description, true);
     setMeta('og:type', 'website', true);
 
     const params = new URLSearchParams(window.location.search);
@@ -355,22 +378,28 @@ function LandingContent() {
           <BarChart3 className="absolute bottom-1/4 left-[46%] size-10" />
           <CircleDollarSign className="absolute bottom-1/3 right-[41%] size-8" />
         </div>
-        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 md:py-24 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 md:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
           <div className="relative z-10 landing-reveal">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-emerald-100 shadow-sm"><Zap className="size-3.5" /> Simple tools for wholesale</span>
-            <h1 className="mt-6 max-w-2xl font-heading text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">Products, stock and orders. <span className="text-emerald-200">All in one place.</span></h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-white/80 sm:text-lg">Add products, see orders and manage your stock from one simple online shop dashboard.</p>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-emerald-100 shadow-sm">{landingCopy.hero.label}</span>
+            <h1 className="mt-6 max-w-2xl font-heading text-4xl font-bold leading-[1.14] tracking-[-0.035em] sm:text-5xl lg:text-[3.4rem]">{landingCopy.hero.headline}</h1>
+            <p className="mt-5 max-w-xl text-base leading-7 text-white/80 sm:text-lg">{landingCopy.hero.subtext}</p>
             <div className="mt-8 flex flex-wrap gap-3">
               {loggedIn ? (
                 <Link to="/dashboard" className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5 hover:bg-emerald-50">Go to Dashboard <ArrowRight className="size-4" /></Link>
               ) : (
                 <>
-                  <button type="button" onClick={() => showModal('register')} className="inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-5 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5 hover:bg-tradeflow-green-hover">Register Free <ArrowRight className="size-4" /></button>
-                  <button type="button" onClick={() => showModal('login')} className="inline-flex items-center rounded-xl border border-white/30 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/20">Login</button>
+                  <button type="button" onClick={() => showModal('register')} className="inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-5 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5 hover:bg-tradeflow-green-hover">{landingCopy.hero.primaryButton} <ArrowRight className="size-4" /></button>
+                  <a href="#how-it-works" className="inline-flex items-center rounded-xl border border-white/30 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/20">{landingCopy.hero.secondaryButton}</a>
                 </>
               )}
             </div>
-            <p className="mt-4 flex items-start gap-2 text-xs text-white/75"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-200" /> Your account is ready after registration. We approve your business details before you add products or categories.</p>
+            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/85">
+              {[
+                { icon: Users, text: 'Add retailers online' },
+                { icon: Package, text: 'Catalog and stock in one place' },
+                { icon: ReceiptText, text: 'GST bills and payments' },
+              ].map(({ icon: Icon, text }) => <span key={text} className="inline-flex items-center gap-2"><Icon className="size-4 text-emerald-200" />{text}</span>)}
+            </div>
           </div>
 
           <div className="relative mx-auto w-full max-w-2xl landing-reveal" aria-label="Illustration of your online shop dashboard">
@@ -408,11 +437,13 @@ function LandingContent() {
         </div>
       </section>
 
-      <section className="border-b border-tradeflow-gray-200 bg-white px-5 py-7" aria-label="Three steps to get started">
-        <p className="mx-auto mb-4 max-w-7xl text-center text-xs font-extrabold uppercase tracking-[0.16em] text-tradeflow-green">Three steps to get started</p>
-        <div className="mx-auto grid max-w-7xl gap-2 text-center sm:grid-cols-3 sm:gap-4">
-          {['1. Register free.', '2. Add your products.', '3. Invite retailers and get orders.'].map((line) => (
-            <p key={line} className="rounded-xl bg-tradeflow-gray-50 px-4 py-3 text-sm font-bold text-tradeflow-navy">{line}</p>
+      <section className="border-b border-tradeflow-gray-200 bg-white px-5 py-7" aria-label="B2B wholesale tools">
+        <div className="mx-auto grid max-w-7xl gap-3 sm:grid-cols-3 sm:gap-4">
+          {landingCopy.keyMessages.map(({ icon: Icon, title, text }) => (
+            <article key={title} className="flex items-start gap-3 rounded-xl bg-tradeflow-gray-50 px-4 py-4">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-tradeflow-green/10 text-tradeflow-green"><Icon className="size-5" /></span>
+              <div><h2 className="text-sm font-bold text-tradeflow-navy">{title}</h2><p className="mt-1 text-xs leading-5 text-gray-600">{text}</p></div>
+            </article>
           ))}
         </div>
       </section>
@@ -430,18 +461,18 @@ function LandingContent() {
       <section className="bg-tradeflow-gray-50 px-5 py-16">
         <div className="mx-auto max-w-7xl">
           <div className="landing-reveal mx-auto max-w-2xl text-center">
-            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Before and after</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">From paper notes to a clear view</h2>
-            <p className="mt-3 text-sm leading-5 text-gray-600">Keep product, stock and order details together instead of searching through paper records.</p>
+            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">A clear view of your business</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Bring B2B retailer orders online</h2>
+            <p className="mt-3 text-sm leading-5 text-gray-600">Share your catalog with retailers and manage their orders in one place.</p>
           </div>
           <div className="landing-reveal mt-9 grid gap-4 md:grid-cols-2">
             <article className="flex gap-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-6 shadow-sm">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800"><FileSpreadsheet className="size-5" /></span>
-              <div><h3 className="font-heading font-bold">Before: paper register</h3><p className="mt-2 text-sm leading-5 text-gray-600">Product lists, stock notes and orders kept in separate places.</p></div>
+              <div><h3 className="font-heading font-bold">Add retailers with your link</h3><p className="mt-2 text-sm leading-5 text-gray-600">Retailers join your business and see your catalog.</p></div>
             </article>
             <article className="flex gap-4 rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800"><Store className="size-5" /></span>
-              <div><h3 className="font-heading font-bold">After: online shop dashboard</h3><p className="mt-2 text-sm leading-5 text-gray-600">See products, stock and retailer orders together on one screen.</p></div>
+              <div><h3 className="font-heading font-bold">Receive and manage orders</h3><p className="mt-2 text-sm leading-5 text-gray-600">Follow orders, stock, payments and bills together.</p></div>
             </article>
           </div>
         </div>
@@ -449,15 +480,15 @@ function LandingContent() {
 
       <section id="features" className="mx-auto max-w-7xl px-5 py-16 lg:px-8">
         <div className="landing-reveal mx-auto max-w-2xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Simple tools for daily work</p>
-          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">Why wholesalers choose us</h2>
-          <p className="mt-3 text-sm leading-5 text-gray-600">Find the everyday tools for products, stock, retailers, orders and payments.</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Tools for daily wholesale work</p>
+          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">B2B tools for wholesale businesses</h2>
+          <p className="mt-3 text-sm leading-5 text-gray-600">Add retailers, share products and keep orders moving.</p>
         </div>
         <div className="landing-reveal mt-8 grid gap-3 rounded-2xl bg-tradeflow-navy p-5 text-white sm:grid-cols-3 sm:p-6">
           {[
-            { icon: Package, text: 'Keep products and prices together.' },
-            { icon: Users, text: 'Stay connected with your retailers.' },
-            { icon: CircleDollarSign, text: 'Keep orders and payments easy to follow.' },
+          { icon: Package, text: 'Share your catalog with retailers.' },
+          { icon: Users, text: 'Add retailers online with your link.' },
+          { icon: CircleDollarSign, text: 'Track orders, payments and bills.' },
           ].map(({ icon: Icon, text }) => <div key={text} className="flex items-center gap-3 rounded-xl bg-white/5 p-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-tradeflow-green/15 text-emerald-200"><Icon className="size-5" /></span><p className="text-sm font-semibold leading-5">{text}</p></div>)}
         </div>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -475,8 +506,8 @@ function LandingContent() {
         <div className="mx-auto max-w-7xl">
           <div className="landing-reveal mx-auto max-w-2xl text-center">
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Get started</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Four simple steps</h2>
-            <p className="mt-3 text-sm leading-5 text-gray-600">Set up your shop, connect retailers and start handling orders.</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">How it works</h2>
+            <p className="mt-3 text-sm leading-5 text-gray-600">Set up your business and start taking orders from retailers.</p>
           </div>
           <div className="relative mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <div className="pointer-events-none absolute left-[12%] right-[12%] top-7 hidden border-t-2 border-dotted border-tradeflow-green/40 lg:block" />
@@ -497,36 +528,36 @@ function LandingContent() {
       <section className="bg-gradient-to-br from-sky-50 via-white to-emerald-50 px-5 py-16">
         <div className="mx-auto max-w-5xl">
           <div className="landing-reveal mx-auto max-w-2xl text-center">
-            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">For your kind of business</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Made for wholesalers and retailers</h2>
-            <p className="mt-3 max-w-lg text-sm leading-5 text-gray-600">Wholesalers manage products and orders. Retailers connect with suppliers and place orders.</p>
+            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Who it is for</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">For manufacturers and wholesale suppliers</h2>
+            <p className="mt-3 max-w-lg text-sm leading-5 text-gray-600">For manufacturers, wholesalers, distributors and stockists.</p>
           </div>
           <div className="landing-reveal mt-8">
             <article className="landing-motion rounded-3xl bg-tradeflow-navy p-6 text-white shadow-xl transition hover:-translate-y-1 sm:p-8">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-4 sm:w-1/3"><span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-emerald-200"><Building2 className="size-7" /></span><div><p className="text-xs font-bold uppercase tracking-wider text-white/60">Your business</p><h3 className="mt-1 font-heading text-xl font-extrabold">Wholesaler</h3></div></div>
                 <div className="grid gap-3 sm:flex-1 sm:grid-cols-3">
-                  {['Add products and categories', 'Track stock automatically', 'Manage orders and payments'].map((text) => <p key={text} className="flex items-center gap-2 rounded-xl bg-white/5 p-3 text-sm font-semibold"><Check className="size-4 shrink-0 text-emerald-300" />{text}</p>)}
+                  {['Add retailers with your link', 'Share products and bulk prices', 'Take orders and track payments'].map((text) => <p key={text} className="flex items-center gap-2 rounded-xl bg-white/5 p-3 text-sm font-semibold"><Check className="size-4 shrink-0 text-emerald-300" />{text}</p>)}
                 </div>
               </div>
             </article>
             <div className="flex flex-col items-center py-3 text-center text-sm font-semibold text-tradeflow-navy">
               <span className="h-7 border-l-2 border-dotted border-tradeflow-green" />
-              <span className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm"><Link2 className="size-4 text-tradeflow-green" />Invites with your referral link</span>
+              <span className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm"><Link2 className="size-4 text-tradeflow-green" />Retailers join with your link</span>
               <ArrowDown className="mt-1 size-5 text-tradeflow-green" />
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              {['Join using your link', 'See only your products', 'Place orders and track them'].map((text, index) => <article key={text} className="landing-motion flex items-center gap-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-md transition hover:-translate-y-1"><span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><Store className="size-6" /></span><div><p className="text-[10px] font-bold uppercase tracking-wider text-tradeflow-green">Retailer {index + 1}</p><h3 className="mt-1 font-heading font-bold">{text}</h3></div></article>)}
+              {['Join with your link', 'See your products', 'Place and track orders'].map((text, index) => <article key={text} className="landing-motion flex items-center gap-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-md transition hover:-translate-y-1"><span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><Store className="size-6" /></span><div><p className="text-[10px] font-bold uppercase tracking-wider text-tradeflow-green">Retailer {index + 1}</p><h3 className="mt-1 font-heading font-bold">{text}</h3></div></article>)}
             </div>
           </div>
-          <p className="mt-6 text-center text-sm font-medium leading-6 text-gray-600">Each retailer is linked to one wholesaler. You control your own catalog, prices and credit terms.</p>
+          <p className="mt-6 text-center text-sm font-medium leading-6 text-gray-600">Retailers see your catalog. You set your prices, minimum order quantities and credit terms.</p>
         </div>
       </section>
 
       <section id="pricing" className="mx-auto max-w-5xl px-5 py-16 lg:px-8">
         <div className="landing-reveal mx-auto max-w-2xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Current plan choices</p>
-          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Choose a plan when you are ready</h2>
+          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Plans for your business</p>
+          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Plans for your wholesale business</h2>
           <p className="mt-3 text-sm leading-5 text-gray-600">See the same monthly and yearly prices shown in your account.</p>
         </div>
         <div className="mt-8 grid gap-5 md:grid-cols-2">
@@ -549,8 +580,8 @@ function LandingContent() {
         <div className="mx-auto max-w-4xl">
           <div className="landing-reveal text-center">
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Questions and answers</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Things you may want to know</h2>
-            <p className="mt-3 text-sm leading-5 text-gray-600">Quick answers about getting started with products, retailers and orders.</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Common questions</h2>
+            <p className="mt-3 text-sm leading-5 text-gray-600">Answers about adding retailers, products and orders.</p>
           </div>
           <div className="mt-8 space-y-3">
             {faqs.map(([question, answer]) => (
@@ -566,8 +597,8 @@ function LandingContent() {
       <section className="bg-gradient-to-r from-tradeflow-navy via-[#174a57] to-tradeflow-green px-5 py-16 text-center text-white">
         <div className="landing-reveal mx-auto max-w-3xl">
           <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-white/10 text-emerald-200"><ArrowDownLeft className="size-6" /></span>
-          <h2 className="mt-4 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">Ready to get started?</h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-5 text-white/80">Register free, add products after your business is approved, then invite retailers to order.</p>
+          <h2 className="mt-4 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">Bring your retailers online today</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-5 text-white/80">Register your business, share your link and start receiving retailer orders online.</p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             {loggedIn ? (
               <Link to="/dashboard" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5">Go to Dashboard <ArrowRight className="size-4" /></Link>
