@@ -82,6 +82,10 @@ const kycApplicationSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    reviewNote: {
+      type: String,
+      default: '',
+    },
     history: [
       {
         fromStatus: { type: String },

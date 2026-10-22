@@ -30,7 +30,7 @@ const env = {
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
-  
+
   LOG_LEVEL: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
@@ -39,6 +39,10 @@ const env = {
 
   SUPER_ADMIN_EMAIL: process.env.SUPER_ADMIN_EMAIL || 'admin@yourapp.com',
   SUPER_ADMIN_PASSWORD: process.env.SUPER_ADMIN_PASSWORD || 'ChangeThisPassword123',
+
+  EMAIL_PROVIDER_API_KEY: process.env.EMAIL_PROVIDER_API_KEY || '',
+  EMAIL_FROM: process.env.EMAIL_FROM || '',
+  EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || '',
 };
 
 env.assertCloudinaryConfigured = () => {
@@ -46,6 +50,14 @@ env.assertCloudinaryConfigured = () => {
     .filter((key) => !env[key]);
   if (missing.length) {
     throw new Error(`Cloudinary product-image uploads require: ${missing.join(', ')}`);
+  }
+};
+
+env.assertEmailConfigured = () => {
+  const missing = ['EMAIL_PROVIDER_API_KEY', 'EMAIL_FROM', 'EMAIL_FROM_NAME']
+    .filter((key) => !env[key]);
+  if (missing.length) {
+    throw new Error(`Email service is not configured. Set: ${missing.join(', ')}`);
   }
 };
 

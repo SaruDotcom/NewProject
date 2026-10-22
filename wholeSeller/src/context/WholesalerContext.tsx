@@ -88,7 +88,12 @@ interface WholesalerContextType {
 
   // Actions
   updateReturnStatus: (returnId: string, status: 'APPROVED' | 'REJECTED') => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  resendLoginOtp: (challengeToken: string) => Promise<{ maskedEmail: string; resendAfterSeconds: number }>;
+  verifyLoginOtp: (challengeToken: string, code: string) => Promise<void>;
+  sendTwoFactorOtp: (resend?: boolean) => Promise<{ maskedEmail: string; resendAfterSeconds: number }>;
+  verifyTwoFactorOtp: (code: string) => Promise<void>;
+  disableTwoFactor: () => Promise<void>;
   registerWholesaler: (data: WholesalerAccountRegistration, passwordInput: string) => Promise<void>;
   refreshData: (silent?: boolean) => Promise<void>;
   markNotificationsRead: () => Promise<void>;
@@ -105,11 +110,17 @@ interface WholesalerContextType {
   updateRetailerLimit: (id: string, newLimit: number, newDiscount: number) => void;
   updateOrderStatus: (id: string, status: OrderStatus, tracking?: string) => Promise<void>;
 
-  toggleTwoFactor: () => void;
   generateNewApiKey: () => void;
   updateSubscription: (plan: 'MONTHLY' | 'ANNUAL') => void;
   terminateSession: (sessionId: string) => void;
   addAuditLog: (action: string, status?: 'Success' | 'Warning' | 'Failed') => void;
+}
+
+export interface LoginResult {
+  requiresTwoFactor: boolean;
+  challengeToken?: string;
+  maskedEmail?: string;
+  resendAfterSeconds?: number;
 }
 
 const WholesalerContext = createContext<WholesalerContextType | undefined>(undefined);
@@ -240,6 +251,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           accountNumber: wp.bankDetails?.accountNumber || prev.accountNumber,
           ifscCode: wp.bankDetails?.ifscCode || prev.ifscCode,
           kycStatus: wp.kycStatus || prev.kycStatus,
+          twoFactorEnabled: Boolean(wp.twoFactorEnabled),
         }));
       }
 
@@ -472,18 +484,27 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const login = async (identifier: string, password: string) => {
+  const login = async (identifier: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
     try {
       const res = await api.login({ email: identifier, password, role: 'WHOLESALER' });
+      if (res?.data?.requiresTwoFactor && res.data.challengeToken) {
+        return {
+          requiresTwoFactor: true,
+          challengeToken: res.data.challengeToken,
+          maskedEmail: res.data.maskedEmail,
+          resendAfterSeconds: res.data.resendAfterSeconds,
+        };
+      }
       if (res?.data?.token) {
         setAuthToken(res.data.token);
+      } else {
+        throw new Error('Login did not return an authentication token.');
       }
       await refreshData();
+      return { requiresTwoFactor: false };
     } catch (err: any) {
       if (
-        identifier.toLowerCase().includes('apex') ||
-        identifier.toLowerCase().includes('wholesaler') ||
         String(err?.message || '').toLowerCase().includes('failed to fetch') ||
         String(err?.message || '').toLowerCase().includes('networkerror')
       ) {
@@ -499,13 +520,41 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           accountStatus: 'ACTIVE',
           kycStatus: 'APPROVED',
         });
-        return;
+        return { requiresTwoFactor: false };
       }
       setIsLoading(false);
       throw err;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const resendLoginOtp = async (challengeToken: string) => {
+    const response = await api.resendLoginOtp(challengeToken);
+    return response.data;
+  };
+
+  const verifyLoginOtp = async (challengeToken: string, code: string) => {
+    const response = await api.verifyLoginOtp(challengeToken, code);
+    setAuthToken(response.data.token);
+    await refreshData();
+  };
+
+  const sendTwoFactorOtp = async (resend = false) => {
+    const response = await api.sendTwoFactorOtp(resend);
+    return response.data;
+  };
+
+  const verifyTwoFactorOtp = async (code: string) => {
+    await api.verifyTwoFactorOtp(code);
+    await refreshData(true);
+    addAuditLog('Two-Factor Authentication Enabled');
+  };
+
+  const disableTwoFactor = async () => {
+    await api.disableTwoFactor();
+    await refreshData(true);
+    addAuditLog('Two-Factor Authentication Disabled');
   };
 
   const logout = () => {
@@ -544,10 +593,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         utmMedium: data.utmMedium,
         utmCampaign: data.utmCampaign,
       });
-      if (!response?.data?.token) throw new Error('Registration succeeded but no access token was returned.');
-      setAuthToken(response.data.token);
-      localStorage.setItem('wholesaler_user_id', response.data.user?._id || response.data.user?.id || '');
-      await refreshData();
+      if (!response?.data?.user) throw new Error('Registration succeeded but no account details were returned.');
+      clearAuthToken();
     } catch (err: any) {
       setIsLoading(false);
       throw err;
@@ -738,14 +785,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const toggleTwoFactor = () => {
-    setProfile((prev) => {
-      const nextVal = !prev.twoFactorEnabled;
-      addAuditLog(`Two-Factor Authentication ${nextVal ? 'Enabled' : 'Disabled'}`);
-      return { ...prev, twoFactorEnabled: nextVal };
-    });
-  };
-
   const generateNewApiKey = () => {
     const newKey = `wh_live_pk_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
     setProfile((prev) => ({ ...prev, apiKey: newKey }));
@@ -789,6 +828,11 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         notifications,
         isLoading,
         login,
+        resendLoginOtp,
+        verifyLoginOtp,
+        sendTwoFactorOtp,
+        verifyTwoFactorOtp,
+        disableTwoFactor,
         registerWholesaler,
         refreshData,
         markNotificationsRead,
@@ -803,7 +847,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updateRetailerLimit,
         updateOrderStatus,
         updateReturnStatus,
-        toggleTwoFactor,
         generateNewApiKey,
         updateSubscription,
         terminateSession,
@@ -829,7 +872,12 @@ const fallbackWholesalerContext: WholesalerContextType = {
   notifications: [],
   isLoading: false,
   updateReturnStatus: async () => undefined,
-  login: async () => undefined,
+  login: async () => ({ requiresTwoFactor: false }),
+  resendLoginOtp: async () => ({ maskedEmail: '', resendAfterSeconds: 60 }),
+  verifyLoginOtp: async () => undefined,
+  sendTwoFactorOtp: async () => ({ maskedEmail: '', resendAfterSeconds: 60 }),
+  verifyTwoFactorOtp: async () => undefined,
+  disableTwoFactor: async () => undefined,
   registerWholesaler: async () => undefined,
   refreshData: async () => undefined,
   markNotificationsRead: async () => undefined,
@@ -843,7 +891,6 @@ const fallbackWholesalerContext: WholesalerContextType = {
   deleteCategory: async () => ({ success: false }),
   updateRetailerLimit: () => undefined,
   updateOrderStatus: async () => undefined,
-  toggleTwoFactor: () => undefined,
   generateNewApiKey: () => undefined,
   updateSubscription: () => undefined,
   terminateSession: () => undefined,

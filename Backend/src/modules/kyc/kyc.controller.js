@@ -25,7 +25,7 @@ class KycController {
 
   // Admin gets single KYC
   getKycById = asyncHandler(async (req, res) => {
-    const application = await KycService.getKycById(req.params.id);
+    const application = await KycService.getKycById(req.params.id, req.user, req);
     return ApiResponse.success(res, application, 'KYC application retrieved successfully');
   });
 
@@ -37,13 +37,20 @@ class KycController {
 
   // Admin rejects KYC
   rejectKyc = asyncHandler(async (req, res) => {
-    const application = await KycService.rejectKyc(req.params.id, req.body.reason, req.user, req);
+    const application = await KycService.rejectKyc(req.params.id, req.body.reason || req.body.note, req.user, req);
     return ApiResponse.success(res, application, 'KYC application rejected');
   });
 
   // Admin requests resubmission
   requestResubmission = asyncHandler(async (req, res) => {
-    const application = await KycService.requestResubmission(req.params.id, req.body.reason, req.user, req);
+    const reason = req.body.reason || req.body.note;
+    const application = await KycService.requestResubmission(
+      req.params.id,
+      reason,
+      req.user,
+      req,
+      req.body.documentsToResubmit
+    );
     return ApiResponse.success(res, application, 'KYC resubmission requested');
   });
 
@@ -51,7 +58,8 @@ class KycController {
   getDocumentFile = asyncHandler(async (req, res) => {
     const { filePath, mimeType, originalName } = await KycService.getDocumentFile(
       req.params.docId,
-      req.user
+      req.user,
+      req
     );
 
     res.setHeader('Content-Type', mimeType);

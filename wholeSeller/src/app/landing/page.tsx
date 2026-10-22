@@ -104,9 +104,10 @@ function AuthModal({
   setTab: (value: 'welcome' | 'register' | 'login') => void;
   inviteToken: string;
   onClose: () => void;
-  onSuccess: (registered: boolean) => void;
+  onSuccess: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [registrationEmail, setRegistrationEmail] = useState('');
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -193,8 +194,16 @@ function AuthModal({
             </div>
             <div className="p-2 sm:p-4">
               {tab === 'register'
-                ? <RegisterForm embedded inviteToken={inviteToken} onSuccess={() => onSuccess(true)} />
-                : <LoginForm embedded onSuccess={() => onSuccess(false)} />}
+                ? <RegisterForm embedded inviteToken={inviteToken} onGoToLogin={(email) => {
+                    setRegistrationEmail(email);
+                    setTab('login');
+                  }} />
+                : <LoginForm
+                    embedded
+                    initialEmail={registrationEmail}
+                    registrationComplete={Boolean(registrationEmail)}
+                    onSuccess={onSuccess}
+                  />}
               <p className="pb-3 text-center text-xs text-gray-500">
                 Trouble opening this form? <Link to="/login" className="font-bold text-tradeflow-green underline underline-offset-2">Open the login page</Link>
               </p>
@@ -320,9 +329,9 @@ function LandingContent() {
     setModalTab(null);
   };
 
-  const authSuccess = (registered: boolean) => {
+  const authSuccess = () => {
     setModalTab(null);
-    navigate('/dashboard', { replace: true, state: registered ? { registrationSuccess: true } : undefined });
+    navigate('/dashboard', { replace: true });
   };
 
   const showModal = (tab: 'register' | 'login') => {

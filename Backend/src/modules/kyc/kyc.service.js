@@ -3,6 +3,10 @@ const {
   KycDocument,
   WholesalerProfile,
   User,
+  WholesalerRetailerRelationship,
+  Product,
+  Order,
+  AuditLog,
 } = require('../../models');
 const { KYC_STATUS, AUDIT_ACTION, ROLES } = require('../../config/constants');
 const {
@@ -190,9 +194,16 @@ class KycService {
     const { page, limit, skip, sort } = parsePagination(query);
     const filter = {};
 
-    if (query.status) {
+    if (query.status && query.status !== 'all') {
       if (query.status === 'PENDING') {
-        filter.status = { $in: [KYC_STATUS.SUBMITTED, KYC_STATUS.UNDER_REVIEW] };
+        filter.status = { $in: [KYC_STATUS.SUBMITTED, KYC_STATUS.UNDER_REVIEW, 'PENDING'] };
+      } else if (
+        query.status === 'RESUBMISSION_REQUIRED' ||
+        query.status === 'RESUBMIT_REQUESTED'
+      ) {
+        filter.status = {
+          $in: [KYC_STATUS.RESUBMIT_REQUESTED, KYC_STATUS.RESUBMISSION_REQUIRED],
+        };
       } else {
         filter.status = query.status;
       }
@@ -227,19 +238,69 @@ class KycService {
   }
 
   /**
-   * Super Admin gets single KYC application details
+   * Super Admin gets single KYC application details with full wholesaler profile and activity
    */
-  static async getKycById(kycId) {
+  static async getKycById(kycId, requestingUser = null, req = null) {
     const application = await KycApplication.findById(kycId)
-      .populate('wholesalerId', 'name email phone status createdAt')
+      .populate('wholesalerId', 'name email phone status lastLoginAt createdAt')
       .populate('documents')
-      .populate('reviewedBy', 'name email');
+      .populate('reviewedBy', 'name email')
+      .populate('history.changedBy', 'name email role');
 
     if (!application) {
       throw new NotFoundError('KYC Application not found');
     }
 
-    return application;
+    const wholesalerUserId = application.wholesalerId?._id || application.wholesalerId;
+
+    const [wholesalerProfile, linkedRetailersCount, productsCount, ordersCount, auditLogs] = await Promise.all([
+      WholesalerProfile.findOne({ userId: wholesalerUserId }).lean(),
+      WholesalerRetailerRelationship.countDocuments({ wholesalerId: wholesalerUserId }),
+      Product.countDocuments({ wholesalerId: wholesalerUserId, isDeleted: { $ne: true } }),
+      Order.countDocuments({ wholesalerId: wholesalerUserId }),
+      AuditLog.find({
+        $or: [
+          { entityId: String(application._id) },
+          { entityId: String(wholesalerUserId) },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .populate('actorId', 'name email role')
+        .lean(),
+    ]);
+
+    if (requestingUser) {
+      await AuditService.log({
+        actorId: requestingUser._id,
+        actorRole: requestingUser.role,
+        action: AUDIT_ACTION.KYC_VIEWED,
+        entityType: 'KycApplication',
+        entityId: String(application._id),
+        metadata: {
+          businessName: application.businessName,
+          wholesalerId: wholesalerUserId,
+        },
+        req,
+      });
+    }
+
+    const responseData = application.toObject();
+    responseData.profile = wholesalerProfile || {};
+    responseData.stats = {
+      linkedRetailersCount: linkedRetailersCount || 0,
+      productsCount: productsCount || 0,
+      ordersCount: ordersCount || 0,
+    };
+    responseData.auditLogs = auditLogs || [];
+
+    if (responseData.wholesalerId && typeof responseData.wholesalerId === 'object') {
+      delete responseData.wholesalerId.passwordHash;
+      delete responseData.wholesalerId.resetPasswordTokenHash;
+      delete responseData.wholesalerId.resetPasswordExpires;
+    }
+
+    return responseData;
   }
 
   /**
@@ -256,6 +317,7 @@ class KycService {
     application.reviewedBy = adminUser._id;
     application.reviewedAt = new Date();
     application.reviewReason = 'Verified and Approved';
+    application.reviewNote = 'Verified and Approved';
     application.history.push({
       fromStatus: previousStatus,
       toStatus: KYC_STATUS.APPROVED,
@@ -312,6 +374,7 @@ class KycService {
     application.reviewedBy = adminUser._id;
     application.reviewedAt = new Date();
     application.reviewReason = reason;
+    application.reviewNote = reason;
     application.history.push({
       fromStatus: previousStatus,
       toStatus: KYC_STATUS.REJECTED,
@@ -351,7 +414,7 @@ class KycService {
   /**
    * Super Admin Requests KYC Resubmission
    */
-  static async requestResubmission(kycId, reason, adminUser, req = null) {
+  static async requestResubmission(kycId, reason, adminUser, req = null, documentsToResubmit = []) {
     if (!reason) {
       throw new BadRequestError('A reason is required to request KYC resubmission');
     }
@@ -362,13 +425,14 @@ class KycService {
     }
 
     const previousStatus = application.status;
-    application.status = KYC_STATUS.RESUBMISSION_REQUIRED;
+    application.status = KYC_STATUS.RESUBMIT_REQUESTED;
     application.reviewedBy = adminUser._id;
     application.reviewedAt = new Date();
     application.reviewReason = reason;
+    application.reviewNote = reason;
     application.history.push({
       fromStatus: previousStatus,
-      toStatus: KYC_STATUS.RESUBMISSION_REQUIRED,
+      toStatus: KYC_STATUS.RESUBMIT_REQUESTED,
       reason,
       changedBy: adminUser._id,
       changedAt: new Date(),
@@ -377,7 +441,7 @@ class KycService {
 
     await WholesalerProfile.findOneAndUpdate(
       { userId: application.wholesalerId },
-      { kycStatus: KYC_STATUS.RESUBMISSION_REQUIRED }
+      { kycStatus: KYC_STATUS.RESUBMIT_REQUESTED }
     );
 
     await AuditService.log({
@@ -387,8 +451,8 @@ class KycService {
       entityType: 'KycApplication',
       entityId: application._id,
       before: { status: previousStatus },
-      after: { status: KYC_STATUS.RESUBMISSION_REQUIRED, reason },
-      metadata: { reason },
+      after: { status: KYC_STATUS.RESUBMIT_REQUESTED, reason },
+      metadata: { reason, documentsToResubmit },
       req,
     });
 
@@ -396,7 +460,7 @@ class KycService {
       recipientId: application.wholesalerId,
       title: 'KYC Resubmission Required',
       message: `Please update and resubmit your KYC details. Reason: ${reason}`,
-      data: { kycId: application._id, status: KYC_STATUS.RESUBMISSION_REQUIRED, reason },
+      data: { kycId: application._id, status: KYC_STATUS.RESUBMIT_REQUESTED, reason, documentsToResubmit },
     });
 
     return application;
@@ -405,7 +469,7 @@ class KycService {
   /**
    * Securely stream KYC document with role/ownership authorization check
    */
-  static async getDocumentFile(documentId, requestingUser) {
+  static async getDocumentFile(documentId, requestingUser, req = null) {
     const doc = await KycDocument.findById(documentId);
     if (!doc) {
       throw new NotFoundError('Document not found');
@@ -417,6 +481,22 @@ class KycService {
 
     if (!isOwner && !isAdmin) {
       throw new ForbiddenError('You do not have permission to access this document');
+    }
+
+    if (isAdmin) {
+      await AuditService.log({
+        actorId: requestingUser._id,
+        actorRole: requestingUser.role,
+        action: AUDIT_ACTION.KYC_DOCUMENT_VIEWED,
+        entityType: 'KycDocument',
+        entityId: String(doc._id),
+        metadata: {
+          documentType: doc.documentType,
+          originalName: doc.originalName,
+          wholesalerId: doc.wholesalerId,
+        },
+        req,
+      });
     }
 
     const filePath = StorageService.getFilePath('kyc', doc.fileKey);

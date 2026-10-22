@@ -5,6 +5,36 @@ const asyncHandler = require('../../utils/asyncHandler');
 class AuthController {
   login = asyncHandler(async (req, res) => {
     const result = await AuthService.login({ ...req.body, req });
+    return ApiResponse.success(res, result, result.requiresTwoFactor ? 'Verification code sent' : 'Login successful');
+  });
+
+  sendTwoFactorCode = asyncHandler(async (req, res) => {
+    const result = await AuthService.sendTwoFactorCode(req.user._id, 'ENABLE_2FA');
+    return ApiResponse.success(res, result, `Verification code sent to ${result.maskedEmail}`);
+  });
+
+  resendTwoFactorCode = asyncHandler(async (req, res) => {
+    const result = await AuthService.sendTwoFactorCode(req.user._id, 'ENABLE_2FA', true);
+    return ApiResponse.success(res, result, `Verification code sent to ${result.maskedEmail}`);
+  });
+
+  verifyTwoFactorCode = asyncHandler(async (req, res) => {
+    const result = await AuthService.verifyTwoFactorCode(req.user._id, req.body.code);
+    return ApiResponse.success(res, result, 'Two-factor authentication enabled');
+  });
+
+  disableTwoFactor = asyncHandler(async (req, res) => {
+    const result = await AuthService.disableTwoFactor(req.user._id);
+    return ApiResponse.success(res, result, 'Two-factor authentication disabled');
+  });
+
+  resendLoginCode = asyncHandler(async (req, res) => {
+    const result = await AuthService.resendLoginCode(req.body.challengeToken);
+    return ApiResponse.success(res, result, `Verification code sent to ${result.maskedEmail}`);
+  });
+
+  verifyLoginCode = asyncHandler(async (req, res) => {
+    const result = await AuthService.verifyLoginCode(req.body.challengeToken, req.body.code, req);
     return ApiResponse.success(res, result, 'Login successful');
   });
 

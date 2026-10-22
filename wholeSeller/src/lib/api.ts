@@ -227,9 +227,33 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
 export const api = {
   // Auth
   login: (credentials: { email?: string; loginId?: string; mobile?: string; phone?: string; password?: string; role?: string }) =>
-    request<{ success: boolean; data: { token: string; user: any } }>('/auth/login', {
+    request<{ success: boolean; data: { token?: string; user?: any; requiresTwoFactor?: boolean; challengeToken?: string; maskedEmail?: string; resendAfterSeconds?: number } }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
+    }),
+  resendLoginOtp: (challengeToken: string) =>
+    request<{ success: boolean; data: { maskedEmail: string; resendAfterSeconds: number } }>('/auth/login/2fa/resend', {
+      method: 'POST',
+      body: JSON.stringify({ challengeToken }),
+    }),
+  verifyLoginOtp: (challengeToken: string, code: string) =>
+    request<{ success: boolean; data: { token: string; user: any } }>('/auth/login/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ challengeToken, code }),
+    }),
+  sendTwoFactorOtp: (resend = false) =>
+    request<{ success: boolean; data: { maskedEmail: string; resendAfterSeconds: number } }>(
+      `/auth/2fa/enable/${resend ? 'resend' : 'send'}`,
+      { method: 'POST' },
+    ),
+  verifyTwoFactorOtp: (code: string) =>
+    request<{ success: boolean; data: { twoFactorEnabled: boolean } }>('/auth/2fa/enable/verify', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  disableTwoFactor: () =>
+    request<{ success: boolean; data: { twoFactorEnabled: boolean } }>('/auth/2fa/disable', {
+      method: 'POST',
     }),
 
   register: (payload: {
@@ -259,7 +283,7 @@ export const api = {
     utmMedium?: string;
     utmCampaign?: string;
   }) =>
-    request<{ success: boolean; message: string; data: { token: string; accessToken: string; refreshToken: string; user: any } }>('/auth/register', {
+    request<{ success: boolean; message: string; data: { user: any; token?: string; accessToken?: string; refreshToken?: string } }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ ...payload, role: 'wholesaler' }),
     }),

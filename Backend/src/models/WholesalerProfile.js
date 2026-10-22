@@ -135,6 +135,10 @@ const wholesalerProfileSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    twoFactorEnabled: {
+      type: Boolean,
+      default: false,
+    },
     isDeleted: {
       type: Boolean,
       default: false,

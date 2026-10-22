@@ -20,6 +20,7 @@ const {
 const { hashToken, generateSecureToken } = require('../../utils/crypto');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
+const EmailOtpService = require('../../services/emailOtp.service');
 const ReferralService = require('../referrals/referrals.service');
 const WholesalerInvitesService = require('../wholesaler-invites/wholesalerInvites.service');
 
@@ -82,6 +83,14 @@ class AuthService {
       throw new UnauthorizedError('Invalid credentials or password incorrect', 'INVALID_CREDENTIALS');
     }
 
+    if (user.role === ROLES.WHOLESALER && user.wholesalerProfile?.twoFactorEnabled) {
+      return EmailOtpService.startLogin(user);
+    }
+
+    return this.completeLogin(user, req);
+  }
+
+  static async completeLogin(user, req = null) {
     // Generate tokens
     const { accessToken, rawRefreshToken, refreshTokenHash, refreshExpiry } = this.generateTokens(user);
 
@@ -118,6 +127,38 @@ class AuthService {
       refreshToken: rawRefreshToken,
       user: userObj,
     };
+  }
+
+  static async sendTwoFactorCode(userId, purpose, resend = false) {
+    if (purpose === 'ENABLE_2FA') {
+      return resend
+        ? EmailOtpService.resendEnable(userId)
+        : EmailOtpService.startEnable(userId);
+    }
+    throw new BadRequestError('Unsupported verification code purpose.', 'OTP_PURPOSE_INVALID');
+  }
+
+  static async verifyTwoFactorCode(userId, code) {
+    return EmailOtpService.verifyEnable(userId, code);
+  }
+
+  static async disableTwoFactor(userId) {
+    return EmailOtpService.disable(userId);
+  }
+
+  static async resendLoginCode(challengeToken) {
+    return EmailOtpService.resendLogin(challengeToken);
+  }
+
+  static async verifyLoginCode(challengeToken, code, req = null) {
+    const user = await EmailOtpService.verifyLogin(challengeToken, code);
+    if (!user || user.isDeleted) {
+      throw new UnauthorizedError('Invalid credentials or account does not exist', 'INVALID_CREDENTIALS');
+    }
+    if (user.status === USER_STATUS.SUSPENDED || user.status === USER_STATUS.BLOCKED) {
+      throw new ForbiddenError(`Your account has been ${user.status.toLowerCase()}. Please contact administrator.`, 'ACCOUNT_RESTRICTED');
+    }
+    return this.completeLogin(user, req);
   }
 
   /**
@@ -371,15 +412,17 @@ class AuthService {
       });
     }
 
-    const { accessToken, rawRefreshToken, refreshTokenHash, refreshExpiry } = this.generateTokens(user);
+    const tokens = role === ROLES.WHOLESALER ? null : this.generateTokens(user);
 
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash: refreshTokenHash,
-      expiresAt: refreshExpiry,
-      ipAddress: req?.ip || '',
-      userAgent: req?.headers['user-agent'] || '',
-    });
+    if (tokens) {
+      await RefreshToken.create({
+        userId: user._id,
+        tokenHash: tokens.refreshTokenHash,
+        expiresAt: tokens.refreshExpiry,
+        ipAddress: req?.ip || '',
+        userAgent: req?.headers['user-agent'] || '',
+      });
+    }
 
     await AuditService.log({
       actorId: user._id,
@@ -400,10 +443,14 @@ class AuthService {
       inviteCompleted = true;
     }
 
+    if (!tokens) {
+      return { user: fullUser.toJSON() };
+    }
+
     return {
-      token: accessToken,
-      accessToken,
-      refreshToken: rawRefreshToken,
+      token: tokens.accessToken,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.rawRefreshToken,
       user: fullUser.toJSON(),
     };
     } catch (error) {

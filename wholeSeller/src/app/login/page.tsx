@@ -3,30 +3,46 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Lock, Mail, ArrowRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { WholesalerProvider, useWholesaler } from '@/context/WholesalerContext';
 
-type LoginFormProps = { onSuccess?: () => void; embedded?: boolean };
+type LoginFormProps = {
+  onSuccess?: () => void;
+  embedded?: boolean;
+  initialEmail?: string;
+  registrationComplete?: boolean;
+};
 
-export function LoginForm({ onSuccess, embedded = false }: LoginFormProps) {
+export function LoginForm({ onSuccess, embedded = false, initialEmail = '', registrationComplete = false }: LoginFormProps) {
   const navigate = useNavigate();
-  const { login } = useWholesaler();
-  const [email, setEmail] = useState('');
+  const { login, resendLoginOtp, verifyLoginOtp } = useWholesaler();
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loginChallenge, setLoginChallenge] = useState<{ token: string; maskedEmail: string } | null>(null);
+  const [loginOtp, setLoginOtp] = useState('');
+  const [loginOtpError, setLoginOtpError] = useState<string | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  React.useEffect(() => {
+    if (!loginChallenge || resendSeconds <= 0) return;
+    const timer = window.setTimeout(() => setResendSeconds((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [loginChallenge, resendSeconds]);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const queryId = params.get('email') || params.get('mobile') || params.get('phone');
       if (queryId) setEmail(queryId);
-      if (params.get('registered')) {
-        setInfoMessage('Registration successful. Your account is ready to use.');
+      else if (initialEmail) setEmail(initialEmail);
+      if (registrationComplete || params.get('registered')) {
+        setInfoMessage('Registration complete. Please log in.');
       } else if (params.get('expired')) {
         setInfoMessage('Your session has expired. Please sign in again to access the dashboard.');
       }
     }
-  }, []);
+  }, [initialEmail, registrationComplete]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,11 +50,48 @@ export function LoginForm({ onSuccess, embedded = false }: LoginFormProps) {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
+      const result = await login(email, password);
+      if (result.requiresTwoFactor && result.challengeToken) {
+        setLoginChallenge({ token: result.challengeToken, maskedEmail: result.maskedEmail || '' });
+        setResendSeconds(result.resendAfterSeconds || 60);
+        setLoginOtp('');
+        return;
+      }
       if (onSuccess) onSuccess();
       else navigate('/dashboard');
     } catch (err: any) {
       setLoginError(err?.message || 'Invalid email/mobile or password');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVerifyLoginOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!loginChallenge) return;
+    setLoginOtpError(null);
+    setIsSubmitting(true);
+    try {
+      await verifyLoginOtp(loginChallenge.token, loginOtp);
+      if (onSuccess) onSuccess();
+      else navigate('/dashboard');
+    } catch (error: any) {
+      setLoginOtpError(error?.message || 'Could not verify the code. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendLoginOtp = async () => {
+    if (!loginChallenge || resendSeconds > 0) return;
+    setLoginOtpError(null);
+    setIsSubmitting(true);
+    try {
+      const result = await resendLoginOtp(loginChallenge.token);
+      setLoginChallenge((current) => current ? { ...current, maskedEmail: result.maskedEmail } : current);
+      setResendSeconds(result.resendAfterSeconds);
+    } catch (error: any) {
+      setLoginOtpError(error?.message || 'Could not send the code. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -73,6 +126,35 @@ export function LoginForm({ onSuccess, embedded = false }: LoginFormProps) {
             </div>
           )}
 
+          {loginChallenge ? (
+            <form onSubmit={handleVerifyLoginOtp} className="space-y-5 text-xs">
+              <p className="text-center text-gray-600">Enter the verification code sent to <strong className="text-tradeflow-navy">{loginChallenge.maskedEmail}</strong>.</p>
+              {loginOtpError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700">{loginOtpError}</div>}
+              <div>
+                <label className="mb-1 block font-bold text-gray-700">Email verification code</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={loginOtp}
+                  onChange={(event) => setLoginOtp(event.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter 6-digit code"
+                  className="w-full rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 px-4 py-3 text-center font-mono text-lg font-bold tracking-[0.4em] focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <button type="button" onClick={handleResendLoginOtp} disabled={isSubmitting || resendSeconds > 0} className="font-bold text-green-700 disabled:text-gray-400">
+                  {resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend code'}
+                </button>
+                <button type="submit" disabled={isSubmitting || loginOtp.length !== 6} className="flex items-center gap-2 rounded-xl bg-tradeflow-green px-5 py-2.5 font-bold text-tradeflow-navy disabled:opacity-50">
+                  {isSubmitting ? 'Verifying...' : 'Verify & Sign In'} <ArrowRight className="size-4" />
+                </button>
+              </div>
+            </form>
+          ) : (
           <form onSubmit={handleLoginSubmit} className="space-y-5 text-xs">
             <div>
               <label className="block font-bold text-gray-700 mb-1">Registered Wholesaler Email</label>
@@ -130,6 +212,7 @@ export function LoginForm({ onSuccess, embedded = false }: LoginFormProps) {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+          )}
 
         </div>
 

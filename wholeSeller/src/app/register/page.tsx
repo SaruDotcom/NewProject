@@ -19,7 +19,7 @@ import api, { getAuthToken, clearAuthToken } from '@/lib/api';
 import { BRAND_NAME } from '@/config/brand';
 
 type RegisterFormProps = {
-  onSuccess?: () => void;
+  onGoToLogin?: (email: string) => void;
   inviteToken?: string;
   embedded?: boolean;
 };
@@ -41,7 +41,7 @@ function readUtmAttribution() {
   }
 }
 
-export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded = false }: RegisterFormProps) {
+export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedded = false }: RegisterFormProps) {
   const navigate = useNavigate();
   const { registerWholesaler } = useWholesaler();
   const searchParams = new URLSearchParams(window.location.search);
@@ -84,6 +84,7 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
   // Inline Validation Errors State
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [registrationResult, setRegistrationResult] = useState<{ businessName: string; email: string } | null>(null);
   const submissionInProgress = useRef(false);
 
   useEffect(() => {
@@ -230,8 +231,7 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
         ref: refValid && refCode ? refCode : undefined,
         ...attribution,
       }, password);
-      if (onSuccess) onSuccess();
-      else navigate('/dashboard', { replace: true, state: { registrationSuccess: true } });
+      setRegistrationResult({ businessName, email });
     } catch (err: any) {
       const msg = err?.message || 'Registration failed.';
       if (msg.toLowerCase().includes('mobile') || msg.toLowerCase().includes('phone')) {
@@ -246,6 +246,34 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
       setIsSubmitting(false);
     }
   };
+
+  if (registrationResult) {
+    const goToLogin = () => {
+      if (onGoToLogin) onGoToLogin(registrationResult.email);
+      else navigate(`/login?registered=1&email=${encodeURIComponent(registrationResult.email)}`, { replace: true });
+    };
+
+    return (
+      <div className={`${embedded ? 'bg-white text-tradeflow-navy' : 'min-h-screen bg-tradeflow-gray-50 text-tradeflow-navy'} flex flex-col justify-center px-4 py-10 sm:px-6 lg:px-8`}>
+        <div className="mx-auto w-full max-w-lg rounded-3xl border border-tradeflow-gray-200 bg-white p-8 text-center shadow-xl sm:p-10">
+          <CheckCircle2 className="mx-auto size-16 text-tradeflow-green" />
+          <h1 className="mt-5 text-2xl font-extrabold tracking-tight text-tradeflow-navy">Registration Successful</h1>
+          <p className="mt-3 text-sm leading-6 text-gray-600">Your account has been created. Please log in to continue.</p>
+          <div className="mt-6 rounded-2xl bg-tradeflow-gray-50 p-4 text-left text-sm">
+            <p className="font-bold text-tradeflow-navy">{registrationResult.businessName}</p>
+            <p className="mt-1 text-gray-600">{registrationResult.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={goToLogin}
+            className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-tradeflow-green px-5 py-3 text-sm font-bold text-tradeflow-navy shadow-md transition hover:bg-tradeflow-green-hover"
+          >
+            Go to Login <ArrowRight className="size-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`${embedded ? 'bg-white text-tradeflow-navy' : 'min-h-screen bg-tradeflow-gray-50 text-tradeflow-navy'} flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8`}>
@@ -681,7 +709,7 @@ export function RegisterForm({ onSuccess, inviteToken: inviteTokenProp, embedded
                 disabled={isSubmitting}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-tradeflow-green text-tradeflow-navy text-sm font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <span>{isSubmitting ? 'Creating Account...' : 'Create Account &amp; Open Dashboard'}</span>
+                <span>{isSubmitting ? 'Creating Account...' : 'Create Account'}</span>
                 {!isSubmitting && <ArrowRight className="w-4 h-4" />}
               </button>
             </div>

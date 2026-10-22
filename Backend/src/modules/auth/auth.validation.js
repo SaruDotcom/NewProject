@@ -81,10 +81,25 @@ const resetPasswordSchema = Joi.object({
   newPassword: Joi.string().required().min(6),
 });
 
+const otpCodeSchema = Joi.object({
+  code: Joi.string().required().pattern(/^\d{6}$/),
+});
+
+const loginOtpSchema = otpCodeSchema.keys({
+  challengeToken: Joi.string().required().hex().length(64),
+});
+
+const resendLoginOtpSchema = Joi.object({
+  challengeToken: Joi.string().required().hex().length(64),
+});
+
 module.exports = {
   loginSchema,
   registerSchema,
   refreshTokenSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  otpCodeSchema,
+  loginOtpSchema,
+  resendLoginOtpSchema,
 };

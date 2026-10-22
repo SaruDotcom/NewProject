@@ -309,7 +309,7 @@ export function AdminShell({ children }) {
                 className: "hidden min-w-40 sm:block",
                 children: [
                   _jsx("p", {
-                    className: "text-xs text-white/65",
+                    className: "text-xs text-gray/65",
                     children: "SUPER ADMIN",
                   }),
                   _jsx("p", {

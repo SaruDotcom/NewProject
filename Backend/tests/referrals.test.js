@@ -86,11 +86,43 @@ describe('Wholesaler referral-only retailer registration', () => {
       name: 'New Wholesaler',
       email: 'new-wholesaler@example.test',
       password: 'Password@123',
-      role: 'wholesaler',
+      phone: '9123456789',
+      role: ROLES.WHOLESALER,
     });
 
     expect(response.status).toBe(201);
     expect(response.body.data.user.role).toBe(ROLES.WHOLESALER);
+    expect(response.body.data).not.toHaveProperty('token');
+    expect(response.body.data).not.toHaveProperty('accessToken');
+    expect(response.body.data).not.toHaveProperty('refreshToken');
+
+    const login = await request(app).post('/api/v1/auth/login').send({
+      email: 'new-wholesaler@example.test',
+      password: 'Password@123',
+      role: ROLES.WHOLESALER,
+    });
+    expect(login.status).toBe(200);
+    expect(login.body.data.token).toBeTruthy();
+
+    const duplicateEmail = await request(app).post('/api/v1/auth/register').send({
+      name: 'Duplicate Email Wholesaler',
+      email: 'new-wholesaler@example.test',
+      password: 'Password@123',
+      phone: '9234567890',
+      role: 'wholesaler',
+    });
+    expect(duplicateEmail.status).toBe(409);
+    expect(duplicateEmail.body.code).toBe('EMAIL_ALREADY_EXISTS');
+
+    const duplicateMobile = await request(app).post('/api/v1/auth/register').send({
+      name: 'Duplicate Mobile Wholesaler',
+      email: 'duplicate-mobile@example.test',
+      password: 'Password@123',
+      phone: '9123456789',
+      role: 'wholesaler',
+    });
+    expect(duplicateMobile.status).toBe(409);
+    expect(duplicateMobile.body.code).toBe('PHONE_ALREADY_EXISTS');
   });
 
   test('wholesaler invite code is generated securely and remains stable', async () => {

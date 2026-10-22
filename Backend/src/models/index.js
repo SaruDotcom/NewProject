@@ -31,6 +31,7 @@ const SupportTicket = require('./SupportTicket');
 const Review = require('./Review');
 const Coupon = require('./Coupon');
 const WholesalerInvite = require('./WholesalerInvite');
+const EmailOtp = require('./EmailOtp');
 
 module.exports = {
   User,
@@ -66,4 +67,5 @@ module.exports = {
   Review,
   Coupon,
   WholesalerInvite,
+  EmailOtp,
 };

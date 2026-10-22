@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -25,7 +25,9 @@ export default function SecurityPage() {
     profile,
     sessions,
     auditLogs,
-    toggleTwoFactor,
+    sendTwoFactorOtp,
+    verifyTwoFactorOtp,
+    disableTwoFactor,
     generateNewApiKey,
     terminateSession,
     addAuditLog
@@ -43,6 +45,16 @@ export default function SecurityPage() {
   const [otpStep, setOtpStep] = useState<'REQUEST' | 'ENTER_OTP' | 'SUCCESS'>('REQUEST');
   const [enteredOtp, setEnteredOtp] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpMaskedEmail, setOtpMaskedEmail] = useState('');
+  const [otpResendSeconds, setOtpResendSeconds] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  useEffect(() => {
+    if (otpResendSeconds <= 0) return;
+    const timer = window.setTimeout(() => setOtpResendSeconds((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [otpResendSeconds]);
 
   // Handle Change Password Form Submission
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -79,37 +91,52 @@ export default function SecurityPage() {
   };
 
   // 2FA Enable via Email OTP Flow
-  const handleStart2FAFlow = () => {
+  const handleStart2FAFlow = async () => {
+    setOtpError(null);
     if (profile.twoFactorEnabled) {
-      // Disable 2FA
-      toggleTwoFactor();
+      try {
+        await disableTwoFactor();
+      } catch (error: any) {
+        setOtpError(error?.message || 'Could not update 2FA. Please try again.');
+      }
     } else {
-      // Open OTP Modal to Enable
       setOtpStep('REQUEST');
       setEnteredOtp('');
       setOtpError(null);
+      setOtpMaskedEmail('');
+      setOtpResendSeconds(0);
       setShowOtpModal(true);
     }
   };
 
-  const handleSendOtp = () => {
-    setOtpStep('ENTER_OTP');
+  const handleSendOtp = async (resend = false) => {
+    setOtpError(null);
+    setIsSendingOtp(true);
+    try {
+      const result = await sendTwoFactorOtp(resend);
+      setOtpMaskedEmail(result.maskedEmail);
+      setOtpResendSeconds(result.resendAfterSeconds);
+      setOtpStep('ENTER_OTP');
+    } catch (error: any) {
+      setOtpError(error?.message || 'Could not send the code. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setOtpError(null);
-
-    if (enteredOtp.trim() !== '123456' && enteredOtp.trim().length !== 6) {
-      setOtpError('Invalid OTP code. Please enter the 6-digit OTP (Try demo OTP: 123456).');
-      return;
+    setIsVerifyingOtp(true);
+    try {
+      await verifyTwoFactorOtp(enteredOtp.trim());
+      setOtpStep('SUCCESS');
+      setTimeout(() => setShowOtpModal(false), 2000);
+    } catch (error: any) {
+      setOtpError(error?.message || 'Could not verify the code. Please try again.');
+    } finally {
+      setIsVerifyingOtp(false);
     }
-
-    setOtpStep('SUCCESS');
-    toggleTwoFactor();
-    setTimeout(() => {
-      setShowOtpModal(false);
-    }, 2000);
   };
 
   return (
@@ -180,6 +207,11 @@ export default function SecurityPage() {
         {/* SECTION 3: TWO-FACTOR AUTHENTICATION (TOGGLE WITH EMAIL OTP FLOW) */}
         <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between">
           <div>
+            {otpError && !showOtpModal && (
+              <div role="alert" className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                {otpError}
+              </div>
+            )}
             <div className="flex items-center justify-between mb-3">
               <div className="w-10 h-10 rounded-2xl bg-tradeflow-green-50 text-green-700 flex items-center justify-center font-bold shadow-xs">
                 <Lock className="w-6 h-6" />
@@ -213,7 +245,7 @@ export default function SecurityPage() {
           <div className="pt-3 border-t border-tradeflow-gray-200 flex items-center justify-between">
             <span className="text-xs font-bold text-gray-700">Toggle 2FA Email OTP Protection</span>
             <button
-              onClick={handleStart2FAFlow}
+              onClick={() => void handleStart2FAFlow()}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 profile.twoFactorEnabled
                   ? 'bg-tradeflow-gray-100 text-tradeflow-navy hover:bg-tradeflow-gray-200'
@@ -370,11 +402,14 @@ export default function SecurityPage() {
                   </p>
                 </div>
                 <button
-                  onClick={handleSendOtp}
-                  className="w-full py-2.5 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all"
+                  type="button"
+                  onClick={() => void handleSendOtp()}
+                  disabled={isSendingOtp}
+                  className="w-full py-2.5 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Send OTP Code
+                  {isSendingOtp ? 'Sending code...' : 'Send OTP Code'}
                 </button>
+                {otpError && <div role="alert" className="rounded-xl bg-red-50 p-2.5 text-center font-bold text-red-700">{otpError}</div>}
               </div>
             )}
 
@@ -385,14 +420,17 @@ export default function SecurityPage() {
                   <input
                     type="text"
                     required
+                    autoFocus
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     maxLength={6}
                     value={enteredOtp}
                     onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter 123456"
+                    placeholder="Enter 6-digit code"
                     className="w-full px-3.5 py-2.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl font-mono text-center text-lg font-black tracking-widest focus:border-tradeflow-green"
                   />
-                  <span className="text-[10px] text-gray-400 mt-1 block text-center">
-                    Check your email inbox. (Demo OTP: <code className="font-bold text-green-700">123456</code>)
+                  <span role="status" className="text-[10px] text-emerald-700 mt-1 block text-center">
+                    Verification code sent to <strong>{otpMaskedEmail}</strong>.
                   </span>
                 </div>
 
@@ -405,16 +443,18 @@ export default function SecurityPage() {
                 <div className="pt-2 flex items-center justify-between">
                   <button
                     type="button"
-                    onClick={() => setOtpStep('REQUEST')}
-                    className="font-bold text-gray-500 hover:text-gray-800"
+                    onClick={() => void handleSendOtp(true)}
+                    disabled={isSendingOtp || otpResendSeconds > 0}
+                    className="font-bold text-gray-500 hover:text-gray-800 disabled:cursor-not-allowed disabled:text-gray-400"
                   >
-                    Resend OTP
+                    {isSendingOtp ? 'Sending...' : otpResendSeconds > 0 ? `Resend code in ${otpResendSeconds}s` : 'Resend code'}
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-status-success text-white font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md"
+                    disabled={isVerifyingOtp || enteredOtp.length !== 6}
+                    className="px-5 py-2.5 bg-status-success text-white font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Verify & Enable 2FA
+                    {isVerifyingOtp ? 'Verifying...' : 'Verify & Enable 2FA'}
                   </button>
                 </div>
               </form>
