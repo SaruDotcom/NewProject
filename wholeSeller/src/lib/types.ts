@@ -62,6 +62,7 @@ export interface Category {
 
 export interface Retailer {
   id: string;
+  retailerId?: string;
   wholesalerId: string;
   businessName: string;
   contactPerson: string;
@@ -82,6 +83,11 @@ export interface Retailer {
   totalOrdersCount: number;
   totalSpent: number;
   joinedDate: string;
+  outstandingAmount?: number;
+  registrationSource?: string;
+  lastLoginAt?: string | null;
+  verificationStatus?: 'NOT_SUBMITTED' | 'SUBMITTED' | 'VERIFIED' | 'REJECTED' | string;
+  documentsSubmitted?: boolean;
 }
 
 export interface OrderItem {
@@ -99,6 +105,8 @@ export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'C
 export interface Order {
   id: string;
   wholesalerId: string;
+  retailerId?: string;
+  retailerBusinessName?: string;
   orderNumber: string;
   retailerName: string;
   retailerCity: string;

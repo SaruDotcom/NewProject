@@ -32,6 +32,8 @@ export default function OrdersPage() {
   // Order Details Modal State
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusUpdateMessage, setStatusUpdateMessage] = useState<string | null>(null);
+  const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Status Badge Renderer matching explicit prompt specs
   const renderStatusBadge = (status: OrderStatus) => {
@@ -76,33 +78,44 @@ export default function OrdersPage() {
     const matchesStatus = activeStatusTab === 'ALL' || o.status === activeStatusTab;
     const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           o.retailerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (o.retailerBusinessName && o.retailerBusinessName.toLowerCase().includes(searchQuery.toLowerCase())) ||
                           o.items.some(i => i.productTitle.toLowerCase().includes(searchQuery.toLowerCase()));
     
     let matchesDate = true;
-    if (dateFilter === 'TODAY') {
-      matchesDate = o.createdAt.includes('2026-03-15');
-    } else if (dateFilter === 'WEEK') {
-      matchesDate = o.createdAt.includes('2026-03-15') || o.createdAt.includes('2026-03-14') || o.createdAt.includes('2026-03-12');
-    } else if (dateFilter === 'MONTH') {
-      matchesDate = o.createdAt.includes('2026-03');
+    if (dateFilter !== 'ALL' && o.createdAt) {
+      const orderDate = new Date(o.createdAt);
+      const now = new Date();
+      if (!isNaN(orderDate.getTime())) {
+        if (dateFilter === 'TODAY') {
+          matchesDate = orderDate.toDateString() === now.toDateString();
+        } else if (dateFilter === 'WEEK') {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          matchesDate = orderDate >= weekAgo;
+        } else if (dateFilter === 'MONTH') {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          matchesDate = orderDate >= monthAgo;
+        }
+      }
     }
 
     return matchesStatus && matchesSearch && matchesDate;
   });
 
-  const handleStatusChangeInModal = (newStatus: OrderStatus) => {
-    if (!selectedOrder) return;
-    
-    const isAutoDeductionTrigger = selectedOrder.status === 'PENDING' && (newStatus === 'CONFIRMED' || newStatus === 'SHIPPED' || newStatus === 'PROCESSING' || newStatus === 'DISPATCHED');
+  const handleStatusChangeInModal = async (newStatus: OrderStatus) => {
+    if (!selectedOrder || isUpdatingStatus || selectedOrder.status === newStatus) return;
 
-    updateOrderStatus(selectedOrder.id, newStatus);
-    
-    // Update local modal state
-    setSelectedOrder({ ...selectedOrder, status: newStatus });
-
-    if (isAutoDeductionTrigger) {
-      setStatusUpdateMessage('Order status updated to "Confirmed"! Automatic inventory stock deduction applied to warehouse products.');
+    setIsUpdatingStatus(true);
+    setStatusUpdateMessage(null);
+    setStatusUpdateError(null);
+    try {
+      await updateOrderStatus(selectedOrder.id, newStatus);
+      setSelectedOrder((current) => current ? { ...current, status: newStatus } : current);
+      setStatusUpdateMessage(`Order status updated to "${newStatus.toLowerCase().replace(/_/g, ' ')}".`);
       setTimeout(() => setStatusUpdateMessage(null), 3500);
+    } catch (error) {
+      setStatusUpdateError(error instanceof Error ? error.message : 'Unable to update order status. Please try again.');
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -287,6 +300,12 @@ export default function OrdersPage() {
                 <span>{statusUpdateMessage}</span>
               </div>
             )}
+            {statusUpdateError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-center gap-2" role="alert">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{statusUpdateError}</span>
+              </div>
+            )}
 
             {/* STATUS UPDATE DROPDOWN SELECTOR */}
             <div className="p-4 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex items-center justify-between">
@@ -300,6 +319,7 @@ export default function OrdersPage() {
                 <select
                   value={selectedOrder.status}
                   onChange={(e) => handleStatusChangeInModal(e.target.value as OrderStatus)}
+                  disabled={isUpdatingStatus}
                   className="px-3 py-1.5 bg-white border border-tradeflow-gray-200 rounded-xl font-bold text-xs focus:outline-none focus:border-tradeflow-green cursor-pointer"
                 >
                   <option value="PENDING">Pending</option>

@@ -6,6 +6,7 @@
 import { Route as rootRouteImport } from "./routes/__root";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as KycRouteImport } from "./routes/kyc";
+import { Route as KycIdRouteImport } from "./routes/kyc.$id";
 import { Route as LoginRouteImport } from "./routes/login";
 import { Route as AdminUsersRouteImport } from "./routes/admin-users";
 import { Route as CategoriesRouteImport } from "./routes/categories";
@@ -26,6 +27,7 @@ import { Route as WholesalersRouteImport } from "./routes/wholesalers";
 import { Route as WholesalerInvitesRouteImport } from "./routes/wholesaler-invites";
 import { Route as ActivityRouteImport } from "./routes/activity";
 import { Route as SettingsRouteImport } from "./routes/settings";
+import { Route as SubscriptionPlanRouteImport } from "./routes/subscription-plan";
 import { Route as OrdersIdRouteImport } from "./routes/orders.$id";
 import { Route as PaymentsIdRouteImport } from "./routes/payments.$id";
 import { Route as ProductsIdRouteImport } from "./routes/products.$id";
@@ -142,15 +144,25 @@ const SettingsRoute = SettingsRouteImport.update({
   path: "/settings",
   getParentRoute: () => rootRouteImport,
 });
+const SubscriptionPlanRoute = SubscriptionPlanRouteImport.update({
+  id: "/subscription-plan",
+  path: "/subscription-plan",
+  getParentRoute: () => rootRouteImport,
+});
+const KycIdRoute = KycIdRouteImport.update({
+  id: "/$id",
+  path: "/$id",
+  getParentRoute: () => KycRoute,
+});
 const OrdersIdRoute = OrdersIdRouteImport.update({
   id: "/$id",
   path: "/$id",
   getParentRoute: () => OrdersRoute,
 });
 const PaymentsIdRoute = PaymentsIdRouteImport.update({
-  id: "/payments/$id",
-  path: "/payments/$id",
-  getParentRoute: () => rootRouteImport,
+  id: "/$id",
+  path: "/$id",
+  getParentRoute: () => PaymentsRoute,
 });
 const ProductsIdRoute = ProductsIdRouteImport.update({
   id: "/$id",
@@ -168,15 +180,25 @@ const RelationshipsIdRoute = RelationshipsIdRouteImport.update({
   getParentRoute: () => RelationshipsRoute,
 });
 const WholesalersIdRoute = WholesalersIdRouteImport.update({
-  id: "/wholesalers/$id",
-  path: "/wholesalers/$id",
-  getParentRoute: () => rootRouteImport,
+  id: "/$id",
+  path: "/$id",
+  getParentRoute: () => WholesalersRoute,
 });
+const KycRouteChildren = {
+  KycIdRoute: KycIdRoute,
+};
+const KycRouteWithChildren =
+  KycRoute._addFileChildren(KycRouteChildren);
 const OrdersRouteChildren = {
   OrdersIdRoute: OrdersIdRoute,
 };
 const OrdersRouteWithChildren =
   OrdersRoute._addFileChildren(OrdersRouteChildren);
+const PaymentsRouteChildren = {
+  PaymentsIdRoute: PaymentsIdRoute,
+};
+const PaymentsRouteWithChildren =
+  PaymentsRoute._addFileChildren(PaymentsRouteChildren);
 const ProductsRouteChildren = {
   ProductsIdRoute: ProductsIdRoute,
 };
@@ -195,10 +217,16 @@ const RelationshipsRouteChildren = {
 const RelationshipsRouteWithChildren = RelationshipsRoute._addFileChildren(
   RelationshipsRouteChildren,
 );
+const WholesalersRouteChildren = {
+  WholesalersIdRoute: WholesalersIdRoute,
+};
+const WholesalersRouteWithChildren = WholesalersRoute._addFileChildren(
+  WholesalersRouteChildren,
+);
 const rootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
-  KycRoute: KycRoute,
+  KycRoute: KycRouteWithChildren,
   AdminUsersRoute: AdminUsersRoute,
   CategoriesRoute: CategoriesRoute,
   CommissionsRoute: CommissionsRoute,
@@ -206,8 +234,7 @@ const rootRouteChildren = {
   CouponsRoute: CouponsRoute,
   NotificationsRoute: NotificationsRoute,
   OrdersRoute: OrdersRouteWithChildren,
-  PaymentsRoute: PaymentsRoute,
-  PaymentsIdRoute: PaymentsIdRoute,
+  PaymentsRoute: PaymentsRouteWithChildren,
   ProductsRoute: ProductsRouteWithChildren,
   RelationshipsRoute: RelationshipsRouteWithChildren,
   ReportsRoute: ReportsRoute,
@@ -215,11 +242,11 @@ const rootRouteChildren = {
   ReviewsRoute: ReviewsRoute,
   SupportRoute: SupportRoute,
   TransactionsRoute: TransactionsRoute,
-  WholesalersRoute: WholesalersRoute,
+  WholesalersRoute: WholesalersRouteWithChildren,
   WholesalerInvitesRoute: WholesalerInvitesRoute,
-  WholesalersIdRoute: WholesalersIdRoute,
   ActivityRoute: ActivityRoute,
   SettingsRoute: SettingsRoute,
+  SubscriptionPlanRoute: SubscriptionPlanRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

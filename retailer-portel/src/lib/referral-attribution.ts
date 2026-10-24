@@ -2,6 +2,7 @@ const REFERRAL_CODE_KEY = "nexora_retailer_referral_code";
 const REFERRAL_TIME_KEY = "nexora_retailer_referral_time";
 const ATTRIBUTION_KEY = "nexora_retailer_referral_attribution";
 const SESSION_ATTRIBUTION_KEY = "nexora_retailer_referral_attribution";
+const REGISTRATION_COMPLETE_KEY = "nexora_retailer_registration_complete";
 const REFERRAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface ReferralAttribution {
@@ -155,6 +156,7 @@ export function saveReferralAttribution(
   attribution: ReferralAttribution,
 ): void {
   if (typeof window === "undefined") return;
+  if (hasCompletedRetailerRegistration()) return;
   const cleanAttribution = {
     ...attribution,
     code: attribution.code.trim().toUpperCase(),
@@ -177,6 +179,25 @@ export function saveReferralAttribution(
       "Could not save referral attribution to session storage",
       error,
     );
+  }
+}
+
+export function hasCompletedRetailerRegistration(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(REGISTRATION_COMPLETE_KEY) === "true";
+  } catch (error) {
+    console.warn("Could not check retailer registration status", error);
+    return false;
+  }
+}
+
+export function markRetailerRegistrationComplete(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(REGISTRATION_COMPLETE_KEY, "true");
+  } catch (error) {
+    console.warn("Could not save retailer registration status", error);
   }
 }
 

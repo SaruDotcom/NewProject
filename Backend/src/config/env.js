@@ -30,6 +30,7 @@ const env = {
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
+  RETAILER_IDENTITY_ENCRYPTION_KEY: process.env.RETAILER_IDENTITY_ENCRYPTION_KEY || '',
 
   LOG_LEVEL: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   
@@ -43,6 +44,8 @@ const env = {
   EMAIL_PROVIDER_API_KEY: process.env.EMAIL_PROVIDER_API_KEY || '',
   EMAIL_FROM: process.env.EMAIL_FROM || '',
   EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || '',
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
 };
 
 env.assertCloudinaryConfigured = () => {

@@ -43,7 +43,7 @@ export type ApiProduct = {
   quantity?: number;
   stock?: number;
   imageUrl?: string;
-  images?: string[];
+  images?: Array<string | { url?: string; publicId?: string }>;
   sizeChart?: {
     unit: 'inch' | 'cm' | string;
     measurements: Array<{ size: string; measurements: Record<string, number> }>;
@@ -54,6 +54,12 @@ export type ApiProduct = {
   pricingTiers?: Array<{ id: string; minQty: number; pricePerUnit: number }>;
   sizes?: string[];
   colors?: string[];
+  colorVariants?: Array<{
+    color?: string;
+    name?: string;
+    sku?: string;
+    images?: Array<string | { url?: string; publicId?: string }>;
+  }>;
   colorVariants?: Array<{ color: string; sku?: string; images?: string[] }>;
   additionalOptions?: Array<{ name: string; value: string }>;
   categoryAttributes?: Record<string, any>;
@@ -123,6 +129,12 @@ export type ApiOrder = {
   }>;
 };
 
+export type ApiOrderListData = {
+  items: ApiOrder[];
+  pagination?: Record<string, unknown>;
+  filters?: Record<string, unknown>;
+};
+
 export type ApiNotification = {
   _id?: string;
   id?: string;
@@ -177,6 +189,7 @@ function invalidateMutation(endpoint: string) {
   else if (path.startsWith('/retailer/orders')) resources = ['orders', 'dashboard'];
   else if (path.startsWith('/retailer/returns')) resources = ['returns', 'orders'];
   else if (path.startsWith('/retailer/profile')) resources = ['profile', 'dashboard'];
+  else if (path.startsWith('/retailer-identity/')) resources = ['profile', 'dashboard'];
   else if (path.startsWith('/retailer/addresses')) resources = ['addresses'];
   else if (path.startsWith('/retailer/notifications')) resources = ['notifications'];
   else if (path.startsWith('/retailer/invitations')) resources = ['wholesaler', 'products', 'categories', 'dashboard'];
@@ -239,7 +252,15 @@ async function request<T = unknown>(endpoint: string, options: RequestInit = {})
     if (response.status === 401) {
       clearAuthToken();
     }
-    const errorMessage = data?.message || `HTTP ${response.status}: ${response.statusText}`;
+    const validationDetails = Array.isArray(data?.errors)
+      ? data.errors
+        .map((item: { field?: string; message?: string }) => [item.field, item.message].filter(Boolean).join(': '))
+        .filter(Boolean)
+        .join('; ')
+      : '';
+    const errorMessage = validationDetails
+      ? `${data?.message || 'Request validation failed'}: ${validationDetails}`
+      : data?.message || `HTTP ${response.status}: ${response.statusText}`;
     throw new ApiError(errorMessage, response.status, data);
   }
 
@@ -259,11 +280,19 @@ export const api = {
 
   logout: () => request('/auth/logout', { method: 'POST' }),
 
-  getReferral: (code: string) =>
-    request<ApiEnvelope<{ wholesaler: { businessName: string; logo: string; city: string; categories?: string[] } }>>(
-      `/referral/${encodeURIComponent(code)}`,
-      { method: 'GET' },
-    ),
+  getReferral: (code: string) => {
+    const normalizedCode = code.trim().toUpperCase();
+    return queryClient.fetchQuery({
+      queryKey: ['public', 'referral', normalizedCode],
+      queryFn: () =>
+        request<ApiEnvelope<{ wholesaler: { businessName: string; logo: string; city: string; categories?: string[] } }>>(
+          `/referral/${encodeURIComponent(normalizedCode)}`,
+          { method: 'GET' },
+        ),
+      staleTime: 0,
+      retry: false,
+    });
+  },
 
   register: (payload: {
     name: string;
@@ -281,18 +310,46 @@ export const api = {
     gstStatus?: string;
     gstin?: string;
     gstNumber?: string;
+    category?: string;
+    panNumber?: string;
+    aadhaarNumber?: string;
+    identityConsent?: boolean;
+    shopPhoto?: File | undefined;
+    panImage?: File | undefined;
+    aadhaarFront?: File | undefined;
+    aadhaarBack?: File | undefined;
     referralCode: string;
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
     utmTerm?: string;
     utmContent?: string;
-    firstLandingAt?: string;
-  }) =>
-    request<ApiEnvelope<{ token?: string; accessToken?: string; user?: RetailerUser }>>('/auth/register', {
+    firstLandingAt?: string | undefined;
+  }) => {
+    const requestPayload = { ...payload, role: payload.role || 'retailer' };
+    const files = [
+      requestPayload.shopPhoto,
+      requestPayload.panImage,
+      requestPayload.aadhaarFront,
+      requestPayload.aadhaarBack,
+    ];
+    if (files.some(Boolean)) {
+      const formData = new FormData();
+      Object.entries(requestPayload).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (value instanceof File) formData.append(key, value);
+        else formData.append(key, String(value));
+      });
+      return request<ApiEnvelope<{ token?: string; accessToken?: string; user?: RetailerUser }>>('/auth/register', {
+        method: 'POST',
+        body: formData,
+      });
+    }
+    return request<ApiEnvelope<{ token?: string; accessToken?: string; user?: RetailerUser }>>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ ...payload, role: payload.role || 'retailer' }),
-    }),
+      body: JSON.stringify(requestPayload),
+    });
+  },
 
   getMe: () => request<ApiEnvelope<RetailerUser>>('/auth/me', { method: 'GET' }),
 
@@ -332,6 +389,57 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+
+  getRetailerIdentityProfile: (retailerId: string) =>
+    request<ApiEnvelope<{
+      pan: { number: string; last4: string; hasImage: boolean };
+      aadhaar: { last4: string; hasFrontImage: boolean; hasBackImage: boolean };
+      shopPhoto: { hasImage: boolean };
+      consent: { accepted: boolean; at: string | null };
+      verificationStatus: string;
+      verificationNote: string;
+      documentsSubmitted: boolean;
+    }>>(`/retailer-identity/${encodeURIComponent(retailerId)}/profile`, { method: 'GET' }),
+
+  updateRetailerIdentity: (retailerId: string, formData: FormData) =>
+    request<ApiEnvelope<{
+      pan: { number: string; last4: string; hasImage: boolean };
+      aadhaar: { last4: string; hasFrontImage: boolean; hasBackImage: boolean };
+      shopPhoto: { hasImage: boolean };
+      consent: { accepted: boolean; at: string | null };
+      verificationStatus: string;
+      verificationNote: string;
+      documentsSubmitted: boolean;
+    }>>(`/retailer-identity/${encodeURIComponent(retailerId)}/profile`, {
+      method: 'PATCH',
+      body: formData,
+    }),
+
+  getRetailerDocument: async (retailerId: string, documentType: string): Promise<Blob> => {
+    const url = `${BASE_URL.replace(/\/+$/, '')}/retailer-identity/${encodeURIComponent(retailerId)}/documents/${encodeURIComponent(documentType)}`;
+    const token = getAuthToken();
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      let message = `Unable to load document (HTTP ${response.status}).`;
+      try {
+        const data = await response.json();
+        message = data?.message || message;
+      } catch {
+        // Keep the status-based error message when the server does not return JSON.
+      }
+      throw new ApiError(message, response.status);
+    }
+    return response.blob();
+  },
+
+  getFullAadhaar: (retailerId: string) =>
+    request<ApiEnvelope<{ number: string }>>(
+      `/retailer-identity/${encodeURIComponent(retailerId)}/aadhaar`,
+      { method: 'GET' },
+    ),
 
   getConnections: () => request<ApiEnvelope<any[]>>('/retailer/connections', { method: 'GET' }),
 
@@ -382,6 +490,7 @@ export const api = {
       addressLine2?: string;
     };
     paymentMethod?: string;
+    couponCode?: string;
     idempotencyKey?: string;
     notes?: string; 
   }) =>
@@ -394,8 +503,24 @@ export const api = {
       }),
     }),
 
+  verifyCheckoutPayment: (payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) =>
+    request<ApiEnvelope<{ order: ApiOrder; payment: unknown }>>('/retailer/checkout/verify', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  failCheckoutPayment: (razorpay_order_id: string) =>
+    request<ApiEnvelope<{ status: string }>>('/retailer/checkout/failure', {
+      method: 'POST',
+      body: JSON.stringify({ razorpay_order_id }),
+    }),
+
   getOrders: (params?: Record<string, string | number | boolean | null | undefined>) =>
-    request<ApiEnvelope<ApiOrder[]> & { meta?: Record<string, unknown> }>(`/retailer/orders${buildQueryString(params)}`, { method: 'GET' }),
+    request<ApiEnvelope<ApiOrder[] | ApiOrderListData>>(`/retailer/orders${buildQueryString(params)}`, { method: 'GET' }),
 
   getReturns: () => request<ApiEnvelope<any[]>>('/retailer/returns', { method: 'GET' }),
 

@@ -1,6 +1,5 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
-import { AdminShell } from "@/components/admin-shell";
 import { PaymentDetailPage } from "@/components/payment-detail-page";
 
 export const Route = createFileRoute("/payments/$id")({
@@ -21,5 +20,5 @@ export const Route = createFileRoute("/payments/$id")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: () => _jsx(AdminShell, { children: _jsx(PaymentDetailPage, {}) }),
+  component: () => _jsx(PaymentDetailPage, {}),
 });

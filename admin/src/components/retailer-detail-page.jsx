@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Ban, Building2, Calendar, CheckCircle2, CircleDollarSign, CreditCard, Edit, Layers, Link as LinkIcon, Pencil, RefreshCw, ShoppingBag, Trash2, User, Users, XCircle } from "lucide-react";
+import { ArrowLeft, Ban, Building2, Calendar, CheckCircle2, CircleDollarSign, CreditCard, Download, Edit, Layers, Link as LinkIcon, Pencil, RefreshCw, RotateCw, ShoppingBag, Trash2, User, Users, XCircle, ZoomIn, ZoomOut } from "lucide-react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
+import { apiDelete, apiGet, apiGetRetailerAadhaar, apiGetRetailerIdentityDocument, apiGetRetailerIdentityProfile, apiPatch, apiPut } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +18,12 @@ export function RetailerDetailPage() {
     const { id } = useParams({ strict: false });
     const [details, setDetails] = useState(null);
     const [wholesalers, setWholesalers] = useState([]);
+    const [identity, setIdentity] = useState(null);
+    const [identityLoading, setIdentityLoading] = useState(true);
+    const [identityError, setIdentityError] = useState("");
+    const [fullAadhaar, setFullAadhaar] = useState("");
+    const [aadhaarLoading, setAadhaarLoading] = useState(false);
+    const [identityDocumentType, setIdentityDocumentType] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -37,20 +43,36 @@ export function RetailerDetailPage() {
         async function load() {
             setLoading(true);
             setError(null);
+            setIdentityLoading(true);
+            setIdentityError("");
+            setFullAadhaar("");
             try {
-                const [response, wholesalersRes] = await Promise.all([
+                const identityPromise = apiGetRetailerIdentityProfile(id)
+                    .then((data) => ({ data }))
+                    .catch((identityLoadError) => ({ error: identityLoadError }));
+                const [response, wholesalersRes, identityResult] = await Promise.all([
                     apiGet(`/admin/retailers/${id}`),
                     apiGet(`/admin/wholesalers?limit=100`).catch(() => ({ items: [] })),
+                    identityPromise,
                 ]);
                 if (!mounted) return;
                 setDetails(response || null);
                 setWholesalers(wholesalersRes?.items || wholesalersRes?.wholesalers || []);
+                if (identityResult.error) {
+                    setIdentity(null);
+                    setIdentityError(identityResult.error.message || "Unable to load retailer identity details");
+                } else {
+                    setIdentity(identityResult.data);
+                }
             } catch (err) {
                 if (!mounted) return;
                 setDetails(null);
                 setError(err.message || "Unable to load retailer details");
             } finally {
-                if (mounted) setLoading(false);
+                if (mounted) {
+                    setLoading(false);
+                    setIdentityLoading(false);
+                }
             }
         }
         load();
@@ -165,6 +187,19 @@ export function RetailerDetailPage() {
 
     const activeWholesalersList = wholesalers.filter((row) => row.status === "active" || row.status === "ACTIVE");
 
+    const revealAadhaar = async () => {
+        setAadhaarLoading(true);
+        setIdentityError("");
+        try {
+            const result = await apiGetRetailerAadhaar(id);
+            setFullAadhaar(result.number);
+        } catch (err) {
+            setIdentityError(err.message || "Unable to reveal Aadhaar number");
+        } finally {
+            setAadhaarLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <PageHeader
@@ -243,6 +278,57 @@ export function RetailerDetailPage() {
                             <p><strong>GSTIN:</strong> {profile.gstin || profile.gstNumber || "—"}</p>
                             <p><strong>Status:</strong> {statusLabels[profile.status] || profile.status || "Active"}</p>
                             <p><strong>Registered Date:</strong> {date(profile.createdAt)}</p>
+                        </div>
+                    </SectionCard>
+                    <SectionCard title="Identity verification" description="Retailer identity details and private documents">
+                        <div className="space-y-4 p-5">
+                            {identityLoading ? (
+                                <p className="text-sm text-muted-foreground">Loading identity details...</p>
+                            ) : identityError ? (
+                                <p role="alert" className="text-sm text-destructive">{identityError}</p>
+                            ) : (
+                                <>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                                        <span className="font-semibold">Verification status:</span>
+                                        <StatusBadge status={identity?.verificationStatus || "NOT_SUBMITTED"} />
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="rounded-lg border p-3 text-sm">
+                                            <p className="text-xs font-semibold text-muted-foreground">PAN number</p>
+                                            <p className="mt-1 font-semibold">{identity?.pan?.number || "Not provided"}</p>
+                                        </div>
+                                        <div className="rounded-lg border p-3 text-sm">
+                                            <p className="text-xs font-semibold text-muted-foreground">Aadhaar number</p>
+                                            <div className="mt-1 flex flex-wrap items-center gap-2 font-semibold">
+                                                <span>{identity?.aadhaar?.last4 ? (fullAadhaar || `•••• •••• ${identity.aadhaar.last4}`) : "Not provided"}</span>
+                                                {identity?.aadhaar?.last4 && !fullAadhaar && (
+                                                    <Button variant="link" size="sm" className="h-auto p-0" disabled={aadhaarLoading} onClick={() => void revealAadhaar()}>
+                                                        {aadhaarLoading ? "Loading..." : "Show full"}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[
+                                            ["shop-photo", "Shop photo", identity?.shopPhoto?.hasImage],
+                                            ["pan", "PAN document", identity?.pan?.hasImage],
+                                            ["aadhaar-front", "Aadhaar front", identity?.aadhaar?.hasFrontImage],
+                                            ["aadhaar-back", "Aadhaar back", identity?.aadhaar?.hasBackImage],
+                                        ].map(([type, label, available]) => (
+                                            <Button
+                                                key={type}
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={!available}
+                                                onClick={() => setIdentityDocumentType(String(type))}
+                                            >
+                                                {available ? `View ${label}` : `${label}: Not provided`}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </SectionCard>
                     <SectionCard title="Registered business address">
@@ -446,6 +532,93 @@ export function RetailerDetailPage() {
                     </div>
                 </div>
             )}
+            {identityDocumentType && (
+                <PrivateRetailerDocumentViewer
+                    retailerId={id}
+                    documentType={identityDocumentType}
+                    onClose={() => setIdentityDocumentType("")}
+                />
+            )}
+        </div>
+    );
+}
+
+function PrivateRetailerDocumentViewer({ retailerId, documentType, onClose }) {
+    const [documentUrl, setDocumentUrl] = useState("");
+    const [mimeType, setMimeType] = useState("");
+    const [error, setError] = useState("");
+    const [zoom, setZoom] = useState(1);
+    const [rotation, setRotation] = useState(0);
+
+    useEffect(() => {
+        let active = true;
+        let objectUrl = "";
+        setDocumentUrl("");
+        setMimeType("");
+        setError("");
+        apiGetRetailerIdentityDocument(retailerId, documentType)
+            .then((blob) => {
+                if (!active) return;
+                objectUrl = URL.createObjectURL(blob);
+                setDocumentUrl(objectUrl);
+                setMimeType(blob.type);
+            })
+            .catch((loadError) => {
+                if (active) setError(loadError.message || "Unable to load this document");
+            });
+        return () => {
+            active = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [retailerId, documentType]);
+
+    const extension = mimeType === "application/pdf"
+        ? "pdf"
+        : mimeType === "image/png"
+            ? "png"
+            : mimeType === "image/webp"
+                ? "webp"
+                : "jpg";
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Private retailer document">
+            <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-card shadow-xl">
+                <div className="flex items-center justify-between border-b p-4">
+                    <h3 className="text-sm font-bold capitalize">{documentType.replace(/-/g, " ")}</h3>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(3, value + 0.25))}><ZoomIn /></Button>
+                        <Button variant="outline" size="sm" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}><ZoomOut /></Button>
+                        <Button variant="outline" size="sm" onClick={() => setRotation((value) => value + 90)}><RotateCw /> Rotate</Button>
+                        {documentUrl && <a href={documentUrl} download={`${documentType}.${extension}`} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium"><Download /> Download</a>}
+                        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+                    </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-auto bg-muted p-4">
+                    {error ? (
+                        <p role="alert" className="py-12 text-center text-sm text-destructive">{error}</p>
+                    ) : !documentUrl ? (
+                        <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading secure document...</p>
+                    ) : mimeType === "application/pdf" ? (
+                        <div className="flex min-h-[70vh] items-center justify-center overflow-auto">
+                            <iframe
+                                title={`${documentType} PDF`}
+                                src={documentUrl}
+                                className="h-[70vh] w-full rounded-lg bg-white transition-transform"
+                                style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }}
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex min-h-[60vh] items-center justify-center overflow-auto">
+                            <img
+                                src={documentUrl}
+                                alt={`${documentType} document`}
+                                className="max-h-[70vh] max-w-full object-contain transition-transform"
+                                style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }}
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const {
   Order,
   Product,
@@ -18,6 +19,7 @@ const {
   PAYMENT_METHOD,
   INVENTORY_TRANSACTION_TYPE,
   AUDIT_ACTION,
+  NOTIFICATION_TYPE,
   ROLES,
 } = require('../../config/constants');
 const {
@@ -31,14 +33,28 @@ const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const WalletService = require('../../services/wallet.service');
 
+const normalizeOrderAddress = (address = {}) => ({
+  street: address.addressLine1 || address.street || '',
+  addressLine2: address.addressLine2 || '',
+  city: address.city || '',
+  state: address.state || '',
+  pincode: address.pincode || address.postalCode || '',
+  country: address.country || 'India',
+  contactName: address.contactName || address.fullName || address.name || '',
+  phone: address.phone || '',
+});
+
 class OrderService {
   /**
    * Retailer creates new B2B order with authoritative price calculation & inventory reservation
    */
-  static async createOrder(retailerUser, orderPayload, req = null) {
+  static async createOrder(retailerUser, orderPayload, req = null, verifiedPayment = null, quoteOnly = false) {
     const retailerId = retailerUser._id;
     const { wholesalerId: requestedWholesalerId, items, shippingAddress, billingAddress, paymentMethod, idempotencyKey, couponCode } =
       orderPayload;
+    if (paymentMethod === 'ONLINE' && !verifiedPayment && !quoteOnly) {
+      throw new BadRequestError('Online orders must be verified through the payment gateway', 'PAYMENT_VERIFICATION_REQUIRED');
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new BadRequestError('Order must contain at least one item', 'EMPTY_ORDER');
@@ -190,7 +206,7 @@ class OrderService {
       }
     }
 
-    const grandTotal = Math.max(0, subtotal + totalTax - discountAmount);
+    const grandTotal = Math.round(Math.max(0, subtotal + totalTax - discountAmount) * 100) / 100;
 
     // Check Wholesaler minimum order value
     const wholesalerProfile = await WholesalerProfile.findOne({ userId: wholesalerId });
@@ -199,6 +215,37 @@ class OrderService {
         `Minimum order value for this wholesaler is ₹${wholesalerProfile.minOrderValue}. Your total: ₹${grandTotal}.`,
         'MIN_ORDER_VALUE_NOT_MET'
       );
+    }
+
+    const quote = {
+      wholesalerId: String(wholesalerId),
+      items: calculatedOrderItems.map((item) => ({
+        ...item,
+        productId: String(item.productId),
+      })),
+      subtotal,
+      discount: discountAmount,
+      couponCode: appliedCoupon ? appliedCoupon.code : (couponCode || ''),
+      couponId: appliedCoupon ? String(appliedCoupon._id) : null,
+      tax: totalTax,
+      grandTotal,
+    };
+    const quoteHash = crypto.createHash('sha256').update(JSON.stringify(quote)).digest('hex');
+
+    if (orderPayload.expectedQuoteHash && orderPayload.expectedQuoteHash !== quoteHash) {
+      throw new BadRequestError('Order pricing changed. Please retry checkout.', 'CHECKOUT_QUOTE_CHANGED');
+    }
+    if (quoteOnly) {
+      for (const deduction of stockDeductions) {
+        const inventory = await Inventory.findOne({ productId: deduction.product._id });
+        if (!inventory || inventory.available < deduction.quantity) {
+          throw new BadRequestError(
+            `Insufficient stock available for '${deduction.product.name}'. Available: ${inventory?.available || 0}, Requested: ${deduction.quantity}`,
+            'INSUFFICIENT_STOCK'
+          );
+        }
+      }
+      return { wholesalerId, amount: grandTotal, quoteHash };
     }
 
     // Check Credit Policy if requested
@@ -244,8 +291,9 @@ class OrderService {
       await relationship.save();
     }
 
-    // 3. Atomically check and reserve stock for all products
+    // 3. Check availability for every product before reserving stock
     const orderNumber = generateReference('ORD');
+    const stockReservations = [];
 
     for (const deduction of stockDeductions) {
       const inventory = await Inventory.findOne({ productId: deduction.product._id });
@@ -255,22 +303,26 @@ class OrderService {
           'INSUFFICIENT_STOCK'
         );
       }
+      stockReservations.push({ ...deduction, inventory });
+    }
 
+    for (const reservation of stockReservations) {
+      const { product, quantity, inventory } = reservation;
       const prevAvailable = inventory.available;
-      inventory.available -= deduction.quantity;
-      inventory.reserved += deduction.quantity;
+      inventory.available -= quantity;
+      inventory.reserved += quantity;
       await inventory.save();
 
       // Update product stock display
-      deduction.product.stock = inventory.available;
-      await deduction.product.save();
+      product.stock = inventory.available;
+      await product.save();
 
       await InventoryTransaction.create({
         inventoryId: inventory._id,
-        productId: deduction.product._id,
+        productId: product._id,
         wholesalerId,
         type: INVENTORY_TRANSACTION_TYPE.RESERVE,
-        quantity: deduction.quantity,
+        quantity,
         previousAvailable: prevAvailable,
         newAvailable: inventory.available,
         referenceType: 'ORDER',
@@ -294,14 +346,14 @@ class OrderService {
       shipping: 0,
       grandTotal,
       orderStatus: ORDER_STATUS.PENDING,
-      paymentStatus: PAYMENT_STATUS.PENDING,
+      paymentStatus: verifiedPayment ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.PENDING,
       paymentMethod: paymentMethod || PAYMENT_METHOD.BANK_TRANSFER,
       isCreditOrder,
       creditDueDate,
       creditPeriodDays,
       creditPaymentStatus,
-      shippingAddress: shippingAddress || {},
-      billingAddress: billingAddress || shippingAddress || {},
+      shippingAddress: normalizeOrderAddress(shippingAddress),
+      billingAddress: normalizeOrderAddress(billingAddress || shippingAddress),
       statusTimeline: [
         {
           status: ORDER_STATUS.PENDING,
@@ -325,9 +377,14 @@ class OrderService {
       wholesalerId,
       amount: grandTotal,
       currency: 'INR',
-      status: PAYMENT_STATUS.PENDING,
+      status: verifiedPayment ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.PENDING,
       paymentMethod: paymentMethod || PAYMENT_METHOD.BANK_TRANSFER,
-      transactionReference: generateReference('PAY'),
+      transactionReference: verifiedPayment?.razorpayPaymentId || generateReference('PAY'),
+      gatewayResponse: verifiedPayment ? {
+        razorpayOrderId: verifiedPayment.razorpayOrderId,
+        razorpayPaymentId: verifiedPayment.razorpayPaymentId,
+      } : {},
+      paidAt: verifiedPayment ? new Date() : undefined,
     });
 
     // 6. Update Retailer Profile metrics
@@ -385,6 +442,10 @@ class OrderService {
     });
 
     return { order, payment };
+  }
+
+  static async quoteOrder(retailerUser, orderPayload) {
+    return this.createOrder(retailerUser, orderPayload, null, null, true);
   }
 
   /**
@@ -596,21 +657,33 @@ class OrderService {
       throw new ForbiddenError('You can only update orders for your store');
     }
 
+    const requestedStatus = typeof status === 'string'
+      ? status.trim().toUpperCase().replace(/[\s-]+/g, '_')
+      : '';
+    const normalizedStatus = requestedStatus === 'DISPATCHED' ? ORDER_STATUS.SHIPPED : requestedStatus;
+    if (!Object.values(ORDER_STATUS).includes(normalizedStatus)) {
+      throw new BadRequestError('Invalid order status', 'INVALID_ORDER_STATUS');
+    }
+
     const previousStatus = order.orderStatus;
-    order.orderStatus = status;
-    if (status === ORDER_STATUS.CANCELLED && cancellationReason) {
+    if (previousStatus === normalizedStatus) {
+      return order;
+    }
+
+    order.orderStatus = normalizedStatus;
+    if (normalizedStatus === ORDER_STATUS.CANCELLED && cancellationReason) {
       order.cancellationReason = cancellationReason;
       order.cancellationNote = cancellationNote || '';
     }
     order.statusTimeline.push({
-      status,
+      status: normalizedStatus,
       timestamp: new Date(),
-      note: note || `Order status updated to ${status}`,
+      note: note || `Order status updated to ${normalizedStatus}`,
       updatedBy: user._id,
     });
 
     // If order is DELIVERED, settle financial earnings and update inventory sold count
-    if (status === ORDER_STATUS.DELIVERED && previousStatus !== ORDER_STATUS.DELIVERED) {
+    if (normalizedStatus === ORDER_STATUS.DELIVERED && previousStatus !== ORDER_STATUS.DELIVERED) {
       order.paymentStatus = PAYMENT_STATUS.PAID;
       await Payment.findOneAndUpdate(
         { orderId: order._id },
@@ -676,7 +749,7 @@ class OrderService {
     }
 
     // If order is CANCELLED, release reserved stock back to available
-    if (status === ORDER_STATUS.CANCELLED && previousStatus !== ORDER_STATUS.CANCELLED) {
+    if (normalizedStatus === ORDER_STATUS.CANCELLED && previousStatus !== ORDER_STATUS.CANCELLED) {
       for (const item of order.items) {
         const inventory = await Inventory.findOne({ productId: item.productId });
         if (inventory) {
@@ -705,7 +778,7 @@ class OrderService {
     }
 
     // If order is RETURNED, restore stock from sold to available
-    if (status === ORDER_STATUS.RETURNED && previousStatus !== ORDER_STATUS.RETURNED) {
+    if (normalizedStatus === ORDER_STATUS.RETURNED && previousStatus !== ORDER_STATUS.RETURNED) {
       for (const item of order.items) {
         const inventory = await Inventory.findOne({ productId: item.productId });
         if (inventory) {
@@ -742,36 +815,36 @@ class OrderService {
       entityType: 'Order',
       entityId: order._id,
       before: { orderStatus: previousStatus },
-      after: { orderStatus: status, note },
+      after: { orderStatus: normalizedStatus, note },
       req,
     });
 
     await NotificationService.notify({
       recipientId: order.retailerId,
       title: 'Order Status Update',
-      message: `Your order ${order.orderNumber} status changed to ${status}.`,
-      data: { orderId: order._id, status },
+      message: `Your order ${order.orderNumber} status changed to ${normalizedStatus}.`,
+      data: { orderId: order._id, status: normalizedStatus },
     });
 
     await NotificationService.notify({
       recipientId: order.wholesalerId,
-      title: status === ORDER_STATUS.CONFIRMED ? 'Order Confirmed' : 'Order Status Updated',
-      message: `Order ${order.orderNumber} is now ${status.toLowerCase().replace(/_/g, ' ')}.`,
-      data: { orderId: order._id, status },
+      title: normalizedStatus === ORDER_STATUS.CONFIRMED ? 'Order Confirmed' : 'Order Status Updated',
+      message: `Order ${order.orderNumber} is now ${normalizedStatus.toLowerCase().replace(/_/g, ' ')}.`,
+      data: { orderId: order._id, status: normalizedStatus },
     });
 
     const wholesalerUser = await User.findById(order.wholesalerId).lean();
     const wholesalerName = wholesalerUser?.businessName || wholesalerUser?.name || 'Wholesaler';
 
     await NotificationService.notifyAdmins({
-      title: status === ORDER_STATUS.DELIVERED ? `Order Delivered & Payment Done: #${order.orderNumber}` : `Order Status Updated: #${order.orderNumber}`,
-      message: `Wholesaler "${wholesalerName}" - Order #${order.orderNumber} is now ${status}. Payment status: ${order.paymentStatus || 'PAID'}.`,
-      type: status === ORDER_STATUS.DELIVERED ? NOTIFICATION_TYPE.PAYMENT_UPDATE : NOTIFICATION_TYPE.ORDER_UPDATE,
+      title: normalizedStatus === ORDER_STATUS.DELIVERED ? `Order Delivered & Payment Done: #${order.orderNumber}` : `Order Status Updated: #${order.orderNumber}`,
+      message: `Wholesaler "${wholesalerName}" - Order #${order.orderNumber} is now ${normalizedStatus}. Payment status: ${order.paymentStatus || 'PAID'}.`,
+      type: normalizedStatus === ORDER_STATUS.DELIVERED ? NOTIFICATION_TYPE.PAYMENT_UPDATE : NOTIFICATION_TYPE.ORDER_UPDATE,
       data: {
-        type: status === ORDER_STATUS.DELIVERED ? 'PAYMENT_COMPLETED' : 'ORDER_UPDATED',
+        type: normalizedStatus === ORDER_STATUS.DELIVERED ? 'PAYMENT_COMPLETED' : 'ORDER_UPDATED',
         orderId: order._id,
         orderNumber: order.orderNumber,
-        status,
+        status: normalizedStatus,
         wholesalerId: order.wholesalerId,
         wholesalerName,
         amount: order.grandTotal,

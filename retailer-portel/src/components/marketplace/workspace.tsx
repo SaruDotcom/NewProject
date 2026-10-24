@@ -1,13 +1,30 @@
 import { Link, useNavigate } from "@/lib/router";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { Component, type ErrorInfo, type ReactNode, useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronRight, Favorite, FavoriteBorder, LocationOn, Inventory2, ShoppingCartOutlined, Verified, VerifiedUser, Lock, LocalShipping, Notifications } from "@mui/icons-material";
+import {
+  Store,
+  MapPin,
+  Lock as LockIcon,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  AlertCircle,
+  ArrowRight,
+  RefreshCw,
+  FileText,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Percent,
+  Receipt,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { type RetailerProfile } from "@/state/store";
-import { useStore, getCategoryHierarchy, mapOrder } from "@/state/store";
+import { useStore, getApiOrderItems, getCategoryHierarchy, mapOrder } from "@/state/store";
 import { ApiError, api, setAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { retailerQueryKeys } from "@/lib/query-client";
@@ -16,10 +33,40 @@ import {
   createReferralAttribution,
   getReferralAttributionFromUrl,
   getStoredReferralAttribution,
+  markRetailerRegistrationComplete,
   saveReferralAttribution,
   type ReferralAttribution,
 } from "@/lib/referral-attribution";
 import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, money } from "./primitives";
+
+type RazorpayPaymentResponse = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayCheckoutInstance = {
+  open: () => void;
+  on: (event: string, callback: (response: { error?: { description?: string } }) => void) => void;
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckoutInstance;
+  }
+}
+
+function loadRazorpay(): Promise<void> {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error("Unable to load Razorpay checkout. Please try again.")), { once: true });
+    document.body.appendChild(script);
+  });
+}
 
 export function DashboardPage() {
   const { currentUser, wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
@@ -150,7 +197,9 @@ export function OrdersPage() {
     queryFn: () => api.getOrders({ limit: 200 }),
     enabled: Boolean(currentUser?.id),
     refetchInterval: 30000,
-    select: (response) => Array.isArray(response?.data) ? response.data.map(mapOrder) : [],
+    select: (response) => getApiOrderItems(response).map(mapOrder),
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const [activeTab, setActiveTab] = useState("All orders");
   const [search, setSearch] = useState("");
@@ -160,7 +209,7 @@ export function OrdersPage() {
     void refreshOrders();
   }, [refreshOrders]);
 
-  const visibleOrders = ordersQuery.data ?? orders;
+  const visibleOrders = (ordersQuery.data && ordersQuery.data.length > 0) ? ordersQuery.data : orders;
   const supplierName = linkedWholesaler?.name || linkedWholesaler?.businessName || "Connected wholesaler";
 
   const filteredOrders = useMemo(() => {
@@ -172,7 +221,7 @@ export function OrdersPage() {
 
         if (!search.trim()) return true;
         const q = search.toLowerCase();
-        const matchesId = String(o.id).toLowerCase().includes(q);
+        const matchesId = String(o.id).toLowerCase().includes(q) || (o.orderNumber ? o.orderNumber.toLowerCase().includes(q) : false);
         const matchesWholesaler = supplierName.toLowerCase().includes(q);
         const matchesProducts = o.items.some((item) => {
           const prod = products.find((p) => p.id === item.productId);
@@ -298,7 +347,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
     enabled: Boolean(currentUser?.id && orderId),
     refetchInterval: 30000,
   });
-  const order = orderQuery.data ?? orders.find((candidate) => String(candidate.id) === String(orderId));
+  const order = orderQuery.data ?? orders.find((candidate) => String(candidate.id) === String(orderId) || String(candidate.orderNumber) === String(orderId));
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnReason, setReturnReason] = useState("");
   const [returnNote, setReturnNote] = useState("");
@@ -398,7 +447,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
       </Link>
       <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs text-muted-foreground">Order {order.id} · {order.date}</p>
+          <p className="text-xs text-muted-foreground">Order {order.orderNumber || order.id} · {order.date}</p>
           <h1 className="mt-2 text-3xl font-extrabold text-ink">{wholesalerName}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -880,8 +929,10 @@ export function CartPage() {
 }
 
 export function CheckoutPage() {
-  const { currentUser, cart, retailerProfile, placeOrder, products } = useStore();
+  const { currentUser, cart, retailerProfile, placeOrder, products, refreshData } = useStore();
   const [placed, setPlaced] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<RazorpayPaymentResponse | null>(null);
   const [paymentMode, setPaymentMode] = useState<"ONLINE" | "CREDIT">("ONLINE");
   const creditQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
@@ -964,8 +1015,96 @@ export function CheckoutPage() {
       toast.error("You are not eligible for credit on this order.");
       return;
     }
-    await placeOrder(paymentMode, appliedCoupon?.code);
-    setPlaced(true);
+    setSubmitting(true);
+    try {
+      if (pendingPayment) {
+        await api.verifyCheckoutPayment(pendingPayment);
+        setPendingPayment(null);
+        await refreshData(true);
+        toast.success("Payment verified and order placed successfully.");
+        setPlaced(true);
+        return;
+      }
+      if (paymentMode === "CREDIT") {
+        await placeOrder("CREDIT", appliedCoupon?.code);
+      } else {
+        const checkoutResponse = await api.checkout({
+          items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+          shippingAddress: {
+            addressLine1: retailerProfile.address || "Main Market Road",
+            city: retailerProfile.city || "New Delhi",
+            state: retailerProfile.state || "Delhi",
+            postalCode: retailerProfile.pincode || "110001",
+            pincode: retailerProfile.pincode || "110001",
+            country: "India",
+            contactName: retailerProfile.ownerName || "Retailer contact",
+            phone: retailerProfile.phone || "",
+          },
+          paymentMethod: "ONLINE",
+          couponCode: appliedCoupon?.code,
+        });
+        const paymentOrder = checkoutResponse.data as {
+          configured?: boolean;
+          keyId?: string;
+          order?: { id: string; amount: number; currency: string };
+        };
+        const order = paymentOrder.order;
+        if (!paymentOrder.configured || !paymentOrder.keyId || !order) {
+          throw new Error("Online payment is not configured.");
+        }
+
+        await loadRazorpay();
+        const Razorpay = window.Razorpay;
+        if (!Razorpay) throw new Error("Razorpay checkout is unavailable. Please try again.");
+        let paymentWasCancelled = false;
+        const payment = await new Promise<RazorpayPaymentResponse>((resolve, reject) => {
+          const checkout = new Razorpay({
+            key: paymentOrder.keyId,
+            amount: order.amount,
+            currency: order.currency,
+            name: "TradeFlow",
+            description: "Retailer order payment",
+            order_id: order.id,
+            prefill: {
+              name: retailerProfile.ownerName,
+              email: retailerProfile.email,
+              contact: retailerProfile.phone,
+            },
+            theme: { color: "#20A66A" },
+            handler: (response: RazorpayPaymentResponse) => resolve(response),
+            modal: {
+              ondismiss: () => {
+                paymentWasCancelled = true;
+                reject(new Error("Payment was cancelled."));
+              },
+            },
+          });
+          checkout.on("payment.failed", (response) => {
+            paymentWasCancelled = true;
+            reject(new Error(response.error?.description || "Payment failed. Please try again."));
+          });
+          checkout.open();
+        }).catch(async (error) => {
+          if (paymentWasCancelled) {
+            await api.failCheckoutPayment(order.id).catch((failureError) => {
+              console.error("Unable to update failed checkout payment", failureError);
+            });
+          }
+          throw error;
+        });
+
+        setPendingPayment(payment);
+        await api.verifyCheckoutPayment(payment);
+        setPendingPayment(null);
+        await refreshData(true);
+        toast.success("Payment verified and order placed successfully.");
+      }
+      setPlaced(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to complete checkout.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (placed) {
@@ -1190,8 +1329,13 @@ export function CheckoutPage() {
             </span>
           </label>
 
-          <Button className="w-full rounded-xl font-extrabold" size="lg" onClick={handlePlaceOrder}>
-            {paymentMode === "CREDIT" ? "Place Credit Order" : "Place Order"}
+          {pendingPayment && (
+            <p role="status" className="text-xs font-semibold text-amber-700">
+              Payment was submitted, but confirmation is pending. Retry verification before starting another payment.
+            </p>
+          )}
+          <Button className="w-full rounded-xl font-extrabold" size="lg" onClick={handlePlaceOrder} disabled={submitting}>
+            {submitting ? "Processing..." : pendingPayment ? "Retry Payment Verification" : paymentMode === "CREDIT" ? "Place Credit Order" : "Pay and Place Order"}
           </Button>
         </aside>
       </div>
@@ -1331,9 +1475,26 @@ export function NotificationsPage() {
 }
 
 export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
-  const { retailerProfile, saveProfile, linkedWholesaler } = useStore();
+  const { retailerProfile, saveProfile, linkedWholesaler, currentUser } = useStore();
   const navigate = useNavigate();
   const [form, setForm] = useState<RetailerProfile>(retailerProfile);
+  const [identity, setIdentity] = useState<{
+    pan: { number: string; last4: string; hasImage: boolean };
+    aadhaar: { last4: string; hasFrontImage: boolean; hasBackImage: boolean };
+    shopPhoto: { hasImage: boolean };
+    consent: { accepted: boolean; at: string | null };
+    verificationStatus: string;
+    verificationNote: string;
+    documentsSubmitted: boolean;
+  } | null>(null);
+  const [panDraft, setPanDraft] = useState("");
+  const [aadhaarDraft, setAadhaarDraft] = useState("");
+  const [identityConsent, setIdentityConsent] = useState(false);
+  const [shopPhotoFile, setShopPhotoFile] = useState<File>();
+  const [panImageFile, setPanImageFile] = useState<File>();
+  const [aadhaarFrontFile, setAadhaarFrontFile] = useState<File>();
+  const [aadhaarBackFile, setAadhaarBackFile] = useState<File>();
+  const [identitySaving, setIdentitySaving] = useState(false);
   const setupBlankProfile = (profile: RetailerProfile): RetailerProfile => ({
     ...profile,
     businessName: "",
@@ -1354,6 +1515,110 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
   useEffect(() => {
     setForm(isTemporaryProfile ? setupBlankProfile(retailerProfile) : retailerProfile);
   }, [retailerProfile, isTemporaryProfile]);
+
+  useEffect(() => {
+    const retailerId = currentUser?.id;
+    if (!retailerId) return;
+    let active = true;
+    void api.getRetailerIdentityProfile(retailerId)
+      .then((response) => {
+        if (!active) return;
+        setIdentity(response.data);
+        setIdentityConsent(response.data.consent.accepted);
+        setPanDraft(response.data.pan.number || "");
+      })
+      .catch((error: unknown) => {
+        if (active) toast.error(error instanceof Error ? error.message : "Unable to load identity details.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id]);
+
+  const selectIdentityFile = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    update: (file: File | undefined) => void,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      update(undefined);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      event.target.value = "";
+      update(undefined);
+      toast.error("Each file must be 5 MB or smaller.");
+      return;
+    }
+    update(file);
+  };
+
+  const saveIdentityDetails = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (
+      (panDraft ||
+        aadhaarDraft ||
+        shopPhotoFile ||
+        panImageFile ||
+        aadhaarFrontFile ||
+        aadhaarBackFile) &&
+      !identityConsent
+    ) {
+      toast.error("Please accept the consent to save shop or identity documents.");
+      return;
+    }
+    if (!currentUser?.id) {
+      toast.error("Your retailer session is unavailable. Please sign in again.");
+      return;
+    }
+    const data = new FormData();
+    data.append("identityConsent", String(identityConsent));
+    if (panDraft.trim()) data.append("panNumber", panDraft.trim().toUpperCase());
+    if (aadhaarDraft.trim()) data.append("aadhaarNumber", aadhaarDraft.trim());
+    if (shopPhotoFile) data.append("shopPhoto", shopPhotoFile);
+    if (panImageFile) data.append("panImage", panImageFile);
+    if (aadhaarFrontFile) data.append("aadhaarFront", aadhaarFrontFile);
+    if (aadhaarBackFile) data.append("aadhaarBack", aadhaarBackFile);
+
+    setIdentitySaving(true);
+    try {
+      const response = await api.updateRetailerIdentity(currentUser.id, data);
+      setIdentity(response.data);
+      setPanDraft("");
+      setAadhaarDraft("");
+      setShopPhotoFile(undefined);
+      setPanImageFile(undefined);
+      setAadhaarFrontFile(undefined);
+      setAadhaarBackFile(undefined);
+      toast.success("Identity details saved securely.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Unable to save identity details.");
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
+
+  const completionItems = [
+    ["Business name", Boolean(form.businessName)],
+    ["Owner name", Boolean(form.ownerName)],
+    ["Mobile number", Boolean(form.phone)],
+    ["Email address", Boolean(form.email)],
+    ["Shop address", Boolean(form.address)],
+    ["City", Boolean(form.city)],
+    ["State", Boolean(form.state)],
+    ["Pincode", Boolean(form.pincode)],
+    ["Business type (optional)", Boolean(form.businessType)],
+    ["GSTIN (optional)", Boolean(form.gstNumber)],
+    ["Shop photo (optional)", Boolean(identity?.shopPhoto.hasImage)],
+    ["PAN number (optional)", Boolean(identity?.pan.last4)],
+    ["PAN card image (optional)", Boolean(identity?.pan.hasImage)],
+    ["Aadhaar number (optional)", Boolean(identity?.aadhaar.last4)],
+    ["Aadhaar front (optional)", Boolean(identity?.aadhaar.hasFrontImage)],
+    ["Aadhaar back (optional)", Boolean(identity?.aadhaar.hasBackImage)],
+  ] as const;
+  const completedItems = completionItems.filter(([, complete]) => complete).length;
+  const completionPercent = Math.round((completedItems / completionItems.length) * 100);
+  const missingItems = completionItems.filter(([, complete]) => !complete).map(([label]) => label);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1411,7 +1676,6 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
               Category
               <select
                 className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                required
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
               >
@@ -1423,7 +1687,6 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
               Business type
               <select
                 className="mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                required
                 value={form.businessType}
                 onChange={(e) => setForm({ ...form, businessType: e.target.value })}
               >
@@ -1501,6 +1764,53 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
             </div>
           </form>
         </section>
+        <section className="border bg-card p-6">
+          <div>
+            <h2 className="text-xl font-bold">Identity details</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Optional, you can add this later.</p>
+          </div>
+          <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={saveIdentityDetails}>
+            <label className="text-sm font-semibold">
+              PAN number
+              <Input className="mt-2 uppercase" maxLength={10} pattern="[A-Za-z]{5}[0-9]{4}[A-Za-z]" value={panDraft} onChange={(event) => setPanDraft(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))} placeholder={identity?.pan.last4 ? `On file ending ${identity.pan.last4}` : "ABCDE1234F"} />
+            </label>
+            <label className="text-sm font-semibold">
+              PAN card image
+              <input className="mt-2 block w-full text-sm font-normal" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => selectIdentityFile(event, setPanImageFile)} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{identity?.pan.hasImage ? "A PAN document is already on file." : "Not provided."}</span>
+            </label>
+            <label className="text-sm font-semibold">
+              Aadhaar number
+              <Input className="mt-2" inputMode="numeric" maxLength={12} pattern="[0-9]{12}" value={aadhaarDraft} onChange={(event) => setAadhaarDraft(event.target.value.replace(/\D/g, "").slice(0, 12))} placeholder={identity?.aadhaar.last4 ? `On file ending ${identity.aadhaar.last4}` : "12 digits"} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">Only the last 4 digits are shown to your wholesaler.</span>
+            </label>
+            <div className="grid gap-4">
+              <label className="text-sm font-semibold">
+                Aadhaar front
+                <input className="mt-2 block w-full text-sm font-normal" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => selectIdentityFile(event, setAadhaarFrontFile)} />
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">{identity?.aadhaar.hasFrontImage ? "Front document is on file." : "Not provided."}</span>
+              </label>
+              <label className="text-sm font-semibold">
+                Aadhaar back
+                <input className="mt-2 block w-full text-sm font-normal" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => selectIdentityFile(event, setAadhaarBackFile)} />
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">{identity?.aadhaar.hasBackImage ? "Back document is on file." : "Not provided."}</span>
+              </label>
+            </div>
+            <label className="text-sm font-semibold sm:col-span-2">
+              Shop photo
+              <input className="mt-2 block w-full text-sm font-normal" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectIdentityFile(event, setShopPhotoFile)} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{identity?.shopPhoto.hasImage ? "A shop photo is already on file." : "Not provided."}</span>
+            </label>
+            <label className="flex items-start gap-2 text-sm font-medium leading-6 sm:col-span-2">
+              <input className="mt-1" type="checkbox" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} />
+              <span>I allow my wholesaler to view these details for verification.</span>
+            </label>
+            <p className="text-xs text-muted-foreground sm:col-span-2">JPG, JPEG, PNG, WEBP, or PDF; max 5 MB per file. Documents are saved only when this consent is ticked.</p>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={identitySaving}>{identitySaving ? "Saving..." : "Save identity details"}</Button>
+            </div>
+          </form>
+        </section>
         <aside className="border bg-card p-6">
           <VerifiedUser className="size-7 text-success" />
           <h2 className="mt-4 font-bold">{setupMode ? "Setup checklist" : "Verified retailer account"}</h2>
@@ -1508,6 +1818,20 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
             {setupMode ? "Complete these details once to unlock your connected wholesale store." : "Your business information is ready to share with connected wholesalers."}
           </p>
           <div className="mt-5 space-y-3 text-sm">
+            <div>
+              <div className="mb-2 flex items-center justify-between text-xs font-bold">
+                <span>Profile completion</span>
+                <span>{completionPercent}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completionPercent}%` }} />
+              </div>
+              {missingItems.length > 0 && (
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  Still missing: {missingItems.join(", ")}.
+                </p>
+              )}
+            </div>
             {[
               ["Business identity", Boolean(form.businessName && form.ownerName && form.phone)],
               ["Trade category", Boolean(form.category && form.businessType)],
@@ -1598,6 +1922,32 @@ export function SettingsPage() {
   );
 }
 
+class OptionalIdentityFieldsBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  override state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Optional retailer identity fields failed to render", error, info);
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <p role="status" className="rounded-xl border bg-muted/20 p-4 text-xs text-muted-foreground">
+          Optional identity details are unavailable right now. You can add them later from Profile.
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "forgot" }) {
   const { login, isLoggedIn } = useStore();
 
@@ -1608,6 +1958,19 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
   const [loginId, setLoginId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
+  const [businessType, setBusinessType] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [panNumber, setPanNumber] = useState("");
+  const [aadhaarNumber, setAadhaarNumber] = useState("");
+  const [identityConsent, setIdentityConsent] = useState(false);
+  const [shopPhoto, setShopPhoto] = useState<File>();
+  const [panImage, setPanImage] = useState<File>();
+  const [aadhaarFront, setAadhaarFront] = useState<File>();
+  const [aadhaarBack, setAadhaarBack] = useState<File>();
   const [referralAttribution, setReferralAttribution] = useState<ReferralAttribution | null>(() => {
     if (typeof window === "undefined") return null;
     return isLoggedIn
@@ -1615,7 +1978,10 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
       : getReferralAttributionFromUrl(new URL(window.location.href)) || getStoredReferralAttribution();
   });
   const [referralCode, setReferralCode] = useState(referralAttribution?.code || "");
-  const [manualReferralCode, setManualReferralCode] = useState("");
+  const [referralStatus, setReferralStatus] = useState<"idle" | "checking" | "valid" | "invalid" | "error">(
+    () => initialMode === "register" && Boolean(referralAttribution?.code) ? "checking" : "idle",
+  );
+  const [referralRetryCount, setReferralRetryCount] = useState(0);
   const [referralWholesaler, setReferralWholesaler] = useState<{
     code: string;
     businessName: string;
@@ -1624,43 +1990,57 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
   } | null>(null);
   const activeReferralWholesaler =
     referralWholesaler?.code === referralCode.toUpperCase() ? referralWholesaler : null;
+  const canShowRegisterForm = Boolean(activeReferralWholesaler) && referralStatus === "valid";
   const [referralError, setReferralError] = useState("");
-  const [isLookingUpReferral, setIsLookingUpReferral] = useState(false);
+  const [isLookingUpReferral, setIsLookingUpReferral] = useState(
+    () => initialMode === "register" && Boolean(referralAttribution?.code),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showOptionalDocs, setShowOptionalDocs] = useState(false);
 
   useEffect(() => {
     setMode(initialMode);
   }, [initialMode]);
 
   useEffect(() => {
-    const code = referralAttribution?.code.trim().toUpperCase() || "";
+    const attribution = referralAttribution;
+    const code = attribution?.code.trim().toUpperCase() || "";
     setReferralCode(code);
     setReferralWholesaler(null);
-    if (mode !== "register" || !code) {
+    if (mode !== "register" || !attribution || !code) {
       setIsLookingUpReferral(false);
+      setReferralStatus("idle");
       return;
     }
 
     let isCurrentLookup = true;
     setReferralError("");
+    setReferralStatus("checking");
     setIsLookingUpReferral(true);
     void api.getReferral(code)
       .then((response) => {
         if (!isCurrentLookup) return;
-        const savedAttribution = { ...referralAttribution, code };
+        if (!response?.data?.wholesaler?.businessName) {
+          setReferralStatus("invalid");
+          setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
+          return;
+        }
+        const savedAttribution = { ...attribution, code };
         saveReferralAttribution(savedAttribution);
         setReferralWholesaler({ ...response.data.wholesaler, code });
+        setReferralStatus("valid");
       })
       .catch((error: unknown) => {
         if (!isCurrentLookup) return;
         const status = error instanceof ApiError ? error.status : undefined;
         if (status === 403 || status === 404) {
           if (getStoredReferralAttribution()?.code === code) clearStoredReferralAttribution();
-          setReferralAttribution(null);
-          setReferralCode("");
-          setReferralError("This link is no longer valid. Ask your wholesaler for a new link.");
+          setReferralStatus("invalid");
+          setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
         } else {
-          setReferralError("Unable to verify this invite link. Please try again.");
+          setReferralStatus("error");
+          setReferralError("Could not verify the link. Please try again");
         }
       })
       .finally(() => {
@@ -1670,27 +2050,15 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
     return () => {
       isCurrentLookup = false;
     };
-  }, [mode, referralAttribution]);
-
-  const handleManualReferralSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    const code = manualReferralCode.trim().toUpperCase();
-    if (!/^[A-Z0-9]{6}$/.test(code)) {
-      setReferralError("Enter a valid 6-character wholesaler code.");
-      return;
-    }
-    setReferralError("");
-    setReferralCode(code);
-    setReferralAttribution(createReferralAttribution(code, new URL(window.location.href)));
-  };
+  }, [mode, referralAttribution, referralRetryCount]);
 
   const clearReferral = () => {
     clearStoredReferralAttribution();
     setReferralAttribution(null);
     setReferralWholesaler(null);
     setReferralCode("");
-    setManualReferralCode("");
     setReferralError("");
+    setReferralStatus("idle");
   };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -1699,15 +2067,20 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
     try {
       if (mode === "login") {
         await login(email, password);
+        markRetailerRegistrationComplete();
         toast.success("Login successful!");
         window.location.href = "/dashboard";
       } else if (mode === "register") {
         if (!activeReferralWholesaler) {
-          setReferralError("This invite link is invalid or inactive. Ask your wholesaler for a new invite link.");
+          setReferralError(
+            referralStatus === "invalid"
+              ? "This link is not valid. Please ask your wholesaler for a new link."
+              : "Could not verify the link. Please try again",
+          );
           return;
         }
-        if (!phone || !/^\d{10}$/.test(phone.trim())) {
-          toast.error("Please enter a valid 10-digit mobile number.");
+        if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+          toast.error("Enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.");
           setIsSubmitting(false);
           return;
         }
@@ -1716,11 +2089,53 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
           setIsSubmitting(false);
           return;
         }
+        if (gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)) {
+          toast.error("Enter a valid 15-character GSTIN.");
+          setIsSubmitting(false);
+          return;
+        }
+        if (panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNumber)) {
+          toast.error("Enter a valid PAN number (for example, ABCDE1234F).");
+          setIsSubmitting(false);
+          return;
+        }
+        if (aadhaarNumber && !/^\d{12}$/.test(aadhaarNumber)) {
+          toast.error("Enter a valid 12-digit Aadhaar number.");
+          setIsSubmitting(false);
+          return;
+        }
+        if (
+          (panNumber ||
+            aadhaarNumber ||
+            shopPhoto ||
+            panImage ||
+            aadhaarFront ||
+            aadhaarBack) &&
+          !identityConsent
+        ) {
+          toast.error("Please accept the consent to save shop or identity documents.");
+          setIsSubmitting(false);
+          return;
+        }
 
         const res = await api.register({
           name: name.trim(),
           loginId: loginId.trim().toUpperCase(),
           businessName: businessName.trim(),
+          businessType: businessType.trim(),
+          address: address.trim(),
+          city: city.trim(),
+          state: state.trim(),
+          pincode: pincode.trim(),
+          gstin: gstin.trim().toUpperCase(),
+          gstStatus: gstin ? "REGISTERED" : "UNREGISTERED",
+          panNumber: panNumber.trim().toUpperCase(),
+          aadhaarNumber: aadhaarNumber.trim(),
+          identityConsent,
+          shopPhoto,
+          panImage,
+          aadhaarFront,
+          aadhaarBack,
           phone: phone.trim(),
           email: email.trim(),
           password,
@@ -1734,6 +2149,7 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
         });
 
         const token = res.data.token || res.data.accessToken;
+        markRetailerRegistrationComplete();
         if (token) {
           setAuthToken(token);
           toast.success("Account created successfully! Welcome to NEXORA.");
@@ -1758,209 +2174,745 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
   const title = mode === "login" ? "Retailer Sign In" : mode === "register" ? "Retailer Registration" : "Reset Password";
 
   return (
-    <main className="grid min-h-[calc(100vh-120px)] place-items-center bg-canvas px-4 py-12">
-      <section className="w-full max-w-md border bg-card p-7 shadow-sm rounded-2xl">
-        <div className="text-center">
-          <TradeFlowMark className="mx-auto size-12 rounded-xl shadow-sm" />
-          <h1 className="mt-4 text-2xl font-extrabold text-ink">{title}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {mode === "forgot"
-              ? "We'll send a reset link to your account email."
-              : mode === "register"
-              ? "Create your account using your wholesaler's invite link."
-              : "Sign in with your retailer ID or email and password."}
-          </p>
-        </div>
+    <main className="relative min-h-[calc(100vh-80px)] overflow-hidden bg-[#F4F7F8] px-4 py-8 sm:py-12 flex items-center justify-center">
+      {/* Ambient background decoration */}
+      <div className="pointer-events-none absolute -top-40 -left-40 size-[520px] rounded-full bg-[#20A66A]/10 blur-[110px]" />
+      <div className="pointer-events-none absolute -bottom-40 -right-40 size-[520px] rounded-full bg-[#12304A]/10 blur-[110px]" />
 
-        {mode === "register" && !activeReferralWholesaler && (
-          <div className="mt-6 space-y-3">
-            {isLookingUpReferral ? (
-              <div className="space-y-2 text-center" role="status">
-                <p className="text-sm text-muted-foreground">Checking your wholesaler invite...</p>
-                <Input value={referralCode} readOnly aria-label="Wholesaler invite code" className="text-center font-mono uppercase" />
+      <div className="relative w-full max-w-5xl rounded-3xl border border-[#D8E1E5]/80 bg-white shadow-[0_24px_60px_-12px_rgba(18,48,74,0.15)] overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+        {/* Left Column: Brand Showcase & Wholesaler Trust Badge */}
+        <section className="bg-gradient-to-br from-[#12304A] via-[#0E273D] to-[#0A1D2E] text-white p-7 sm:p-10 flex flex-col justify-between relative overflow-hidden lg:col-span-5">
+          {/* Decorative radial lighting */}
+          <div className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-emerald-500/15 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-24 size-64 rounded-full bg-sky-500/10 blur-2xl" />
+
+          <div className="relative z-10">
+            {/* Platform Brand */}
+            <div className="flex items-center gap-3">
+              <TradeFlowMark className="size-11 rounded-xl shadow-lg ring-1 ring-white/20" />
+              <div>
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                  <Sparkles className="size-3 text-emerald-400" /> B2B Trade Network
+                </span>
+                <p className="text-xs font-semibold text-slate-300 mt-0.5">Verified Retailer Access</p>
               </div>
-            ) : (
-              <form className="grid gap-3" onSubmit={handleManualReferralSubmit}>
-                {referralError && <p role="alert" className="text-xs font-semibold text-red-600">{referralError}</p>}
-                <label className="text-xs font-bold text-ink">
-                  6-Character Wholesaler Code
+            </div>
+
+            {/* Hero Copy */}
+            <div className="mt-8">
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                {mode === "register"
+                  ? "Direct Wholesale, Zero Middlemen."
+                  : mode === "login"
+                    ? "Welcome Back to Your Store."
+                    : "Secure Account Recovery."}
+              </h2>
+              <p className="mt-2.5 text-xs sm:text-sm leading-relaxed text-slate-300">
+                {mode === "register"
+                  ? "Connect directly with authorized distributors for transparent wholesale rates, priority dispatch, and formal GST tax credits."
+                  : mode === "login"
+                    ? "Sign in to view your live distributor pricing, order history, credit lines, and real-time delivery status."
+                    : "Reset your password securely to regain access to your retailer dashboard and supplier orders."}
+              </p>
+            </div>
+
+            {/* Wholesaler Invite Highlight (When Link Is Valid) */}
+            {activeReferralWholesaler && (
+              <div className="mt-6 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-white/12 to-white/5 p-4.5 backdrop-blur-md shadow-xl">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">
+                    <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Invited by Distributor
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-300">
+                    <Verified fontSize="inherit" className="!size-3" />
+                    Verified
+                  </span>
+                </div>
+                <div className="mt-3.5 flex items-center gap-3.5">
+                  {activeReferralWholesaler.logo ? (
+                    <img
+                      src={activeReferralWholesaler.logo}
+                      alt={activeReferralWholesaler.businessName}
+                      className="size-12 rounded-xl object-cover ring-2 ring-emerald-400/40 shadow-sm"
+                    />
+                  ) : (
+                    <div className="flex size-12 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 font-black text-lg text-white shadow-md">
+                      {activeReferralWholesaler.businessName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium text-slate-300">You are joining:</p>
+                    <p className="truncate text-base font-extrabold text-white">
+                      {activeReferralWholesaler.businessName}
+                    </p>
+                    {activeReferralWholesaler.city && (
+                      <p className="flex items-center gap-1 text-xs text-slate-300/90 mt-0.5">
+                        <LocationOn className="!size-3.5 text-emerald-400" />
+                        {activeReferralWholesaler.city}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {mode === "register" && (
+                  <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-300">Not your wholesaler?</span>
+                    <button
+                      type="button"
+                      onClick={clearReferral}
+                      className="text-[11px] font-bold text-emerald-300 hover:text-emerald-200 underline underline-offset-2 cursor-pointer transition-colors"
+                    >
+                      Clear & switch
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Exclusive Gateway Notice (When Registering without Link) */}
+            {mode === "register" && !activeReferralWholesaler && (
+              <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-5 text-amber-300" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                    Exclusive Invitation Gate
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-slate-300">
+                  To prevent unauthorized retail leakage and protect wholesale distributor margins, retailer registrations require an authorized wholesaler link.
+                </p>
+              </div>
+            )}
+
+            {/* 3 Core B2B Pillars */}
+            <div className="mt-6 space-y-2.5">
+              <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 border border-white/5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
+                  <Percent className="size-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white">Direct Wholesale Rates</p>
+                  <p className="text-[11px] text-slate-300 truncate">Tier-1 distributor pricing with zero broker commission.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 border border-white/5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
+                  <LocalShipping className="!size-3.5 text-emerald-300" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white">Store Doorstep Delivery</p>
+                  <p className="text-[11px] text-slate-300 truncate">Fast order dispatch directly to your shop with live tracking.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 border border-white/5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
+                  <Receipt className="size-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white">100% Tax Compliant (ITC)</p>
+                  <p className="text-[11px] text-slate-300 truncate">Automated GST tax invoices ready for monthly input credit.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Trust Badge */}
+          <div className="relative z-10 mt-8 pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <VerifiedUser className="!size-3.5 text-emerald-400" />
+              256-Bit SSL Encrypted
+            </span>
+            <span>Official Retailer Portal</span>
+          </div>
+        </section>
+
+        {/* Right Column: Dynamic Form & Status View */}
+        <section className="bg-white p-7 sm:p-10 flex flex-col justify-between lg:col-span-7">
+          <div>
+            {/* Top Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
+                  {mode === "register" ? "Retailer Onboarding" : mode === "login" ? "Retailer Portal" : "Security"}
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-black text-[#12304A] tracking-tight mt-0.5">
+                  {title}
+                </h1>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {mode === "forgot"
+                    ? "We'll send a reset link to your account email."
+                    : mode === "register"
+                      ? canShowRegisterForm
+                        ? "Fill in your store details to activate your wholesale buying account."
+                        : "Create your account using your wholesaler's invite link."
+                      : "Sign in with your retailer ID or email and password."}
+                </p>
+              </div>
+              {mode === "login" && activeReferralWholesaler && (
+                <button
+                  type="button"
+                  onClick={() => setMode("register")}
+                  className="text-xs font-extrabold text-emerald-700 hover:text-emerald-800 underline underline-offset-4 cursor-pointer"
+                >
+                  Register New Shop →
+                </button>
+              )}
+              {mode === "register" && (
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="text-xs font-extrabold text-emerald-700 hover:text-emerald-800 underline underline-offset-4 cursor-pointer"
+                >
+                  Sign In →
+                </button>
+              )}
+            </div>
+
+            {/* State: Verifying link */}
+            {mode === "register" && isLookingUpReferral && (
+              <div role="status" aria-label="Verifying wholesaler invite" className="my-12 flex flex-col items-center justify-center gap-4 py-8 text-center">
+                <div className="relative">
+                  <div className="size-14 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <ShieldCheck className="size-6 text-emerald-600" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-base font-bold text-[#12304A]">Verifying Wholesaler Invitation</p>
+                  <span className="text-xs font-semibold text-muted-foreground">Verifying wholesaler link...</span>
+                </div>
+              </div>
+            )}
+
+            {/* State: Invitation Gate / Link Status */}
+            {mode === "register" && !isLookingUpReferral && !canShowRegisterForm && (
+              <div className="my-8 rounded-2xl border border-gray-200/80 bg-gradient-to-b from-[#F9FBFC] to-white p-6 sm:p-8 text-center shadow-xs">
+                {referralStatus === "invalid" ? (
+                  <div className="space-y-4">
+                    <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-8 ring-red-50/50">
+                      <AlertCircle className="size-7" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-extrabold text-[#12304A]">Invitation Link Invalid</h2>
+                      <p role="alert" className="mt-2 text-sm font-semibold leading-relaxed text-red-600">
+                        This link is not valid. Please ask your wholesaler for a new link.
+                      </p>
+                      <p className="mt-2 text-xs text-muted-foreground max-w-md mx-auto">
+                        Wholesaler invite links are single-use or unique. Please ask your distributor for an updated registration link.
+                      </p>
+                    </div>
+                  </div>
+                ) : referralStatus === "error" ? (
+                  <div className="space-y-4">
+                    <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-8 ring-amber-50/50">
+                      <RefreshCw className="size-7" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-extrabold text-[#12304A]">Connection Timeout</h2>
+                      <div role="alert" className="mt-2 flex flex-wrap items-center justify-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <span>Could not verify the link. Please try again</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReferralRetryCount((count) => count + 1)}
+                        >
+                          Retry
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/50">
+                      <LockIcon className="size-7" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-extrabold text-[#12304A]">Distributor Invitation Required</h2>
+                      <p className="mt-2 text-sm font-semibold leading-relaxed text-muted-foreground">
+                        Please open the registration link sent by your wholesaler.
+                      </p>
+                      <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-4 text-left text-xs text-muted-foreground space-y-2.5">
+                        <p className="font-bold text-[#12304A]">How to join your distributor:</p>
+                        <div className="flex items-start gap-2.5">
+                          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">1</span>
+                          <span>Request an invite link from your authorized FMCG or product wholesaler.</span>
+                        </div>
+                        <div className="flex items-start gap-2.5">
+                          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">2</span>
+                          <span>Click the link received on WhatsApp or SMS to auto-verify your retailer account.</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                  <Link
+                    to="/login"
+                    className="inline-flex items-center justify-center rounded-xl bg-[#12304A] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#1B4261] transition-colors"
+                  >
+                    Login
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* State: Registration Form */}
+            {mode === "register" && canShowRegisterForm && (
+              <form className="mt-6 space-y-6" onSubmit={handleAuthSubmit}>
+                {/* Section 1: Store & Owner Identity */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <Store className="size-4 text-emerald-600" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#12304A]">
+                      1. Store & Owner Identity
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Owner / Contact Name */}
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      Owner / Contact Name <span className="text-red-500">*</span>
+                      <Input
+                        className="mt-1.5"
+                        type="text"
+                        placeholder="e.g. Rajesh Kumar"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                      />
+                    </label>
+
+                    {/* Retailer Login ID */}
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      Retailer Login ID (Username) <span className="text-red-500">*</span>
+                      <Input
+                        className="mt-1.5 uppercase font-mono tracking-wide"
+                        type="text"
+                        autoComplete="username"
+                        minLength={4}
+                        maxLength={32}
+                        pattern="[A-Za-z0-9_-]{4,32}"
+                        placeholder="e.g. SARITA123 or FASHION_STORE"
+                        value={loginId}
+                        onChange={(e) => setLoginId(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32))}
+                        required
+                      />
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                        Letters, numbers, and dashes only (no @ or dots). This is your login username.
+                      </span>
+                    </label>
+
+                    {/* Business / Store Name */}
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      Business / Store Name <span className="text-red-500">*</span>
+                      <Input
+                        className="mt-1.5"
+                        type="text"
+                        placeholder="e.g. Kumar General Store"
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        required
+                      />
+                    </label>
+
+                    {/* Business Type */}
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      Business type (optional)
+                      <Input
+                        className="mt-1.5"
+                        value={businessType}
+                        onChange={(event) => setBusinessType(event.target.value)}
+                        placeholder="e.g. General store"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Section 2: Contact & Store Location */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <MapPin className="size-4 text-emerald-600" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#12304A]">
+                      2. Contact & Store Location
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Mobile Number */}
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      10-Digit Mobile Number <span className="text-red-500">*</span>
+                      <Input
+                        className="mt-1.5"
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
+                        pattern="[6-9][0-9]{9}"
+                        title="Enter a 10-digit Indian mobile number starting with 6, 7, 8, or 9."
+                        placeholder="e.g. 9876543210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        required
+                      />
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">Use a 10-digit Indian number starting with 6, 7, 8, or 9.</span>
+                    </label>
+
+                    {/* Email */}
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      Email Address (Gmail / Email ID) <span className="text-red-500">*</span>
+                      <Input
+                        className="mt-1.5"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="e.g. sarita@gmail.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                        Enter your Gmail / Email address here (e.g. yourname@gmail.com).
+                      </span>
+                    </label>
+
+                    {/* Shop address */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-[#12304A]">
+                        Shop address <span className="text-red-500">*</span>
+                        <Input
+                          className="mt-1.5"
+                          value={address}
+                          onChange={(event) => setAddress(event.target.value)}
+                          placeholder="Shop No., Market / Area, Street"
+                          required
+                        />
+                      </label>
+                    </div>
+
+                    {/* City, State, Pincode */}
+                    <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <label className="block text-xs font-bold text-[#12304A]">
+                        City <span className="text-red-500">*</span>
+                        <Input className="mt-1.5" value={city} onChange={(event) => setCity(event.target.value)} required />
+                      </label>
+                      <label className="block text-xs font-bold text-[#12304A]">
+                        State <span className="text-red-500">*</span>
+                        <Input className="mt-1.5" value={state} onChange={(event) => setState(event.target.value)} required />
+                      </label>
+                      <label className="block text-xs font-bold text-[#12304A]">
+                        Pincode <span className="text-red-500">*</span>
+                        <Input
+                          className="mt-1.5"
+                          inputMode="numeric"
+                          maxLength={6}
+                          pattern="[0-9]{6}"
+                          value={pincode}
+                          onChange={(event) => setPincode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                          required
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Account Security */}
+                <div className="space-y-3.5">
+                  <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <LockIcon className="size-4 text-emerald-600" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#12304A]">
+                      3. Account Security
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#12304A]">
+                      Password <span className="text-red-500">*</span>
+                      <div className="relative mt-1.5 flex items-center">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder="Create a strong password (min 6 chars)"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          className="absolute right-3.5 z-10 flex items-center text-muted-foreground hover:text-ink cursor-pointer transition-colors p-1"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                        Minimum 6 characters. You will use this with your Retailer ID to sign in.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Section 4: Optional Verification & Documents */}
+                <div className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4 transition-all">
+                  <button
+                    type="button"
+                    onClick={() => setShowOptionalDocs((prev) => !prev)}
+                    className="flex w-full items-center justify-between text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                        <FileText className="size-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-[#12304A]">
+                          Verification & Tax Documents <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Add GSTIN, PAN or Shop photo now or anytime later from Profile
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+                      <span>{showOptionalDocs ? "Hide" : "Add details"}</span>
+                      {showOptionalDocs ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                    </div>
+                  </button>
+
+                  {showOptionalDocs && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* GSTIN */}
+                        <label className="block text-xs font-bold text-[#12304A]">
+                          GSTIN (optional)
+                          <Input
+                            className="mt-1.5 uppercase font-mono"
+                            value={gstin}
+                            onChange={(event) => setGstin(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15))}
+                            maxLength={15}
+                            pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]"
+                            placeholder="15-character GSTIN"
+                          />
+                          <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                            Required only if you claim GST input tax credit.
+                          </span>
+                        </label>
+
+                        {/* Shop photo */}
+                        <label className="block text-xs font-bold text-[#12304A]">
+                          Shop photo (optional)
+                          <input
+                            className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={(event) => setShopPhoto(event.target.files?.[0])}
+                          />
+                          <span className="mt-1 block text-[11px] font-normal text-muted-foreground">JPG, PNG, or WEBP; max 5 MB.</span>
+                        </label>
+                      </div>
+
+                      <OptionalIdentityFieldsBoundary>
+                        <section className="grid gap-3 rounded-xl border bg-white p-4">
+                          <div>
+                            <h2 className="font-bold text-ink">Identity details</h2>
+                            <p className="mt-1 text-xs font-normal text-muted-foreground">Optional, you can add this later.</p>
+                          </div>
+                          <label className="text-xs font-bold text-ink">
+                            PAN number
+                            <Input className="mt-1.5 uppercase font-mono" maxLength={10} pattern="[A-Za-z]{5}[0-9]{4}[A-Za-z]" value={panNumber} onChange={(event) => setPanNumber(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))} placeholder="ABCDE1234F" />
+                          </label>
+                          <label className="text-xs font-bold text-ink">
+                            PAN card image
+                            <input className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setPanImage(event.target.files?.[0])} />
+                          </label>
+                          <label className="text-xs font-bold text-ink">
+                            Aadhaar number
+                            <Input className="mt-1.5 font-mono" inputMode="numeric" maxLength={12} pattern="[0-9]{12}" value={aadhaarNumber} onChange={(event) => setAadhaarNumber(event.target.value.replace(/\D/g, "").slice(0, 12))} />
+                            <span className="mt-1 block text-[11px] font-normal text-muted-foreground">Only the last 4 digits are shown to your wholesaler.</span>
+                          </label>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="text-xs font-bold text-ink">
+                              Aadhaar front
+                              <input className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAadhaarFront(event.target.files?.[0])} />
+                            </label>
+                            <label className="text-xs font-bold text-ink">
+                              Aadhaar back
+                              <input className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAadhaarBack(event.target.files?.[0])} />
+                            </label>
+                          </div>
+                          <label className="flex items-start gap-2 text-xs font-semibold leading-5 text-ink cursor-pointer">
+                            <input className="mt-1" type="checkbox" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} />
+                            <span>
+                              I allow my wholesaler to view these details for verification.
+                            </span>
+                          </label>
+                          <p className="text-[11px] font-normal text-muted-foreground">JPG, JPEG, PNG, WEBP, or PDF; max 5 MB per file. Identity documents and shop photos are saved only when you accept this consent.</p>
+                        </section>
+                      </OptionalIdentityFieldsBoundary>
+                    </div>
+                  )}
+                </div>
+
+                {/* Submit Button */}
+                <div className="pt-2">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={isSubmitting || !activeReferralWholesaler}
+                    className="w-full rounded-2xl py-4 text-base font-extrabold bg-[#12304A] hover:bg-[#1B4261] text-white shadow-xl shadow-[#12304A]/15 cursor-pointer transition-all active:scale-[0.99]"
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        Creating Account...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        Register & Connect to {activeReferralWholesaler?.businessName || "Wholesaler"}
+                        <ArrowRight className="size-4" />
+                      </span>
+                    )}
+                  </Button>
+                  <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
+                    By registering, you agree to NEXORA's B2B Terms of Service and Privacy Policy.
+                  </p>
+                </div>
+              </form>
+            )}
+
+            {/* State: Login Form */}
+            {mode === "login" && (
+              <form className="mt-6 space-y-4" onSubmit={handleAuthSubmit}>
+                <label className="block text-xs font-bold text-[#12304A]">
+                  Retailer ID / Email Address <span className="text-red-500">*</span>
                   <Input
-                    className="mt-1.5 uppercase font-mono tracking-wider font-bold"
+                    className="mt-1.5"
                     type="text"
-                    maxLength={6}
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    placeholder="e.g. WS1234"
-                    value={manualReferralCode}
-                    onChange={(event) => setManualReferralCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                    autoComplete="username"
+                    placeholder="Enter retailer ID or email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value.toUpperCase().replace(/[^A-Z0-9@._-]/g, ""))}
                     required
                   />
                 </label>
-                <Button type="submit" size="lg" disabled={manualReferralCode.length !== 6} className="rounded-xl font-extrabold">
-                  Verify code & continue
-                </Button>
+
+                <label className="block text-xs font-bold text-[#12304A]">
+                  <div className="flex items-center justify-between">
+                    <span>Password <span className="text-red-500">*</span></span>
+                    <Link to="/forgot-password" className="text-xs font-bold text-emerald-700 hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative mt-1.5 flex items-center">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3.5 z-10 flex items-center text-muted-foreground hover:text-ink cursor-pointer transition-colors p-1"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </label>
+
+                <div className="pt-2">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={isSubmitting}
+                    className="w-full rounded-2xl py-3.5 text-base font-extrabold bg-[#12304A] hover:bg-[#1B4261] text-white shadow-lg shadow-[#12304A]/10 cursor-pointer"
+                  >
+                    {isSubmitting ? "Signing in..." : "Sign In to Store"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* State: Forgot Password Form */}
+            {mode === "forgot" && (
+              <form className="mt-6 space-y-4" onSubmit={handleAuthSubmit}>
+                <label className="block text-xs font-bold text-[#12304A]">
+                  Registered Email Address <span className="text-red-500">*</span>
+                  <Input
+                    className="mt-1.5"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="Enter your registered account email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                  <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                    We'll send password reset instructions to this email.
+                  </span>
+                </label>
+
+                <div className="pt-2 space-y-3">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={isSubmitting}
+                    className="w-full rounded-2xl py-3.5 text-base font-extrabold bg-[#12304A] hover:bg-[#1B4261] text-white cursor-pointer"
+                  >
+                    {isSubmitting ? "Sending..." : "Send Reset Link"}
+                  </Button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setMode("login")}
+                      className="text-xs font-bold text-emerald-700 hover:underline cursor-pointer"
+                    >
+                      ← Back to Sign In
+                    </button>
+                  </div>
+                </div>
               </form>
             )}
           </div>
-        )}
 
-        {(mode !== "register" || activeReferralWholesaler) && (
-        <form className="mt-6 grid gap-4" onSubmit={handleAuthSubmit}>
-          {mode === "register" && (
-              <div className="grid gap-3">
-                <label className="text-xs font-bold text-ink">
-                  Wholesaler Invite Code
-                  <Input
-                    className="mt-1.5 uppercase font-mono tracking-wider font-bold"
-                    type="text"
-                    value={referralCode}
-                    readOnly
-                  />
-                </label>
-              {activeReferralWholesaler && (
-                <>
-                  <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                    {activeReferralWholesaler.logo ? (
-                      <img src={activeReferralWholesaler.logo} alt="" className="size-12 rounded-lg object-cover" />
-                    ) : (
-                      <div className="flex size-12 items-center justify-center rounded-lg bg-white text-primary">
-                        <VerifiedUser className="size-6" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground">You are joining:</p>
-                      <p className="truncate font-bold text-ink">
-                        {activeReferralWholesaler.businessName}{activeReferralWholesaler.city ? `, ${activeReferralWholesaler.city}` : ""}
-                      </p>
-                    </div>
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-emerald-700">
-                      <Verified fontSize="small" />
-                      Verified
-                    </span>
+          {/* Bottom Footer Switcher */}
+          <div className="mt-8 pt-4 border-t border-slate-100 text-center text-xs text-muted-foreground">
+            {mode === "login" ? (
+              <>
+                {activeReferralWholesaler ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 text-center">
+                    <p className="font-medium text-[#12304A]">New shop joining {activeReferralWholesaler.businessName}?</p>
+                    <button
+                      type="button"
+                      onClick={() => setMode("register")}
+                      className="mt-1.5 font-bold text-emerald-700 hover:underline cursor-pointer inline-flex items-center gap-1"
+                    >
+                      Register Free & Connect <ArrowRight className="size-3.5" />
+                    </button>
                   </div>
-                  <button type="button" onClick={clearReferral} className="justify-self-start text-xs font-semibold text-muted-foreground underline underline-offset-2 hover:text-ink">
-                    Not your wholesaler?
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {(mode === "login" || mode === "forgot" || (mode === "register" && activeReferralWholesaler)) && mode === "register" && (
-            <>
-              <label className="text-xs font-bold text-ink">
-                Owner / Contact Name *
-                <Input
-                  className="mt-1.5"
-                  type="text"
-                  placeholder="e.g. Rajesh Kumar"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="text-xs font-bold text-ink">
-                Retailer Login ID (Username) *
-                <Input
-                  className="mt-1.5 uppercase font-mono"
-                  type="text"
-                  autoComplete="username"
-                  minLength={4}
-                  maxLength={32}
-                  pattern="[A-Za-z0-9_-]{4,32}"
-                  placeholder="e.g. SARITA123 or FASHION_STORE"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32))}
-                  required
-                />
-                <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                  Letters, numbers, and dashes only (no @ or dots). This is your login username.
-                </span>
-              </label>
-              <label className="text-xs font-bold text-ink">
-                Business / Store Name *
-                <Input
-                  className="mt-1.5"
-                  type="text"
-                  placeholder="e.g. Kumar General Store"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="text-xs font-bold text-ink">
-                10-Digit Mobile Number *
-                <Input
-                  className="mt-1.5"
-                  type="tel"
-                  maxLength={10}
-                  placeholder="e.g. 9876543210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                  required
-                />
-              </label>
-            </>
-          )}
-
-          {(mode === "login" || mode === "forgot" || (mode === "register" && activeReferralWholesaler)) && (
-            <label className="text-xs font-bold text-ink">
-              {mode === "register" ? "Email Address (Gmail / Email ID) *" : "Retailer ID / Email"}
-              <Input
-                className="mt-1.5"
-                type={mode === "register" || mode === "forgot" ? "email" : "text"}
-                autoComplete="off"
-                placeholder={mode === "register" ? "e.g. sarita@gmail.com" : "Enter retailer ID or email"}
-                value={email}
-                onChange={(e) => setEmail(mode === "login" ? e.target.value.toUpperCase().replace(/[^A-Z0-9@._-]/g, "") : e.target.value)}
-                required
-              />
-              {mode === "register" && (
-                <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                  Enter your Gmail / Email address here (e.g. yourname@gmail.com).
-                </span>
-              )}
-            </label>
-          )}
-
-          {(mode === "login" || (mode === "register" && activeReferralWholesaler)) && (
-            <label className="text-xs font-bold text-ink">
-              Password *
-              <Input
-                className="mt-1.5"
-                type="password"
-                autoComplete={mode === "register" ? "new-password" : "current-password"}
-                placeholder={mode === "register" ? "Create a strong password (min 6 chars)" : "Enter your password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </label>
-          )}
-
-          {(mode === "login" || mode === "forgot" || (mode === "register" && activeReferralWholesaler)) && (
-            <Button type="submit" size="lg" disabled={isSubmitting} className="mt-2 rounded-xl font-extrabold">
-            {isSubmitting
-              ? mode === "login" ? "Signing in..." : "Creating Account..."
-              : mode === "login" ? "Sign In" : mode === "register" ? "Register & Connect" : "Send Reset Link"}
-            </Button>
-          )}
-        </form>
-        )}
-
-        <div className="mt-6 text-center text-xs text-muted-foreground">
-          {mode === "login" ? (
-            <>
-              <Link className="text-primary hover:underline font-bold" to="/forgot-password">Forgot password?</Link>
-              <p className="mt-2">New here? Ask your wholesaler for an invite link to register.</p>
-            </>
-          ) : (
-            mode === "register" && (
-              <Link className="text-primary hover:underline font-bold" to="/login">Already have an account? Sign in</Link>
-            )
-          )}
-        </div>
-      </section>
+                ) : (
+                  <p>New here? Please open the registration link your wholesaler sent you.</p>
+                )}
+              </>
+            ) : (
+              mode === "register" && canShowRegisterForm && (
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="text-primary hover:underline font-bold cursor-pointer"
+                >
+                  Already have an account? Sign in
+                </button>
+              )
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

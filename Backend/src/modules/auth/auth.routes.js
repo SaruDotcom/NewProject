@@ -4,7 +4,11 @@ const authController = require('./auth.controller');
 const validate = require('../../middleware/validate');
 const authenticate = require('../../middleware/authenticate');
 const authorize = require('../../middleware/authorize');
-const { authRateLimiter } = require('../../middleware/rateLimiter');
+const {
+  authRateLimiter,
+  registrationRateLimiter,
+  identityUploadRateLimiter,
+} = require('../../middleware/rateLimiter');
 const asyncHandler = require('../../utils/asyncHandler');
 const ReferralService = require('../referrals/referrals.service');
 const { ROLES } = require('../../config/constants');
@@ -20,6 +24,7 @@ const {
   loginOtpSchema,
   resendLoginOtpSchema,
 } = require('./auth.validation');
+const { identityUpload } = require('../../services/retailerIdentity.service');
 
 const validateRetailerInvite = asyncHandler(async (req, res, next) => {
   const role = String(req.body?.role || ROLES.RETAILER).trim().toUpperCase();
@@ -39,7 +44,16 @@ router.post('/2fa/enable/send', authenticate, authorize(ROLES.WHOLESALER), authC
 router.post('/2fa/enable/resend', authenticate, authorize(ROLES.WHOLESALER), authController.resendTwoFactorCode);
 router.post('/2fa/enable/verify', authenticate, authorize(ROLES.WHOLESALER), validate(otpCodeSchema), authController.verifyTwoFactorCode);
 router.post('/2fa/disable', authenticate, authorize(ROLES.WHOLESALER), authController.disableTwoFactor);
-router.post('/register', authRateLimiter, validateRetailerInvite, validate(registerSchema), registrationMiddleware, authController.register);
+router.post(
+  '/register',
+  registrationRateLimiter,
+  identityUploadRateLimiter,
+  identityUpload,
+  validateRetailerInvite,
+  validate(registerSchema),
+  registrationMiddleware,
+  authController.register
+);
 router.post('/refresh', validate(refreshTokenSchema), authController.refresh);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);

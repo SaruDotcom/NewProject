@@ -16,7 +16,6 @@ import SubscriptionPage from './app/dashboard/subscription/page';
 import SecurityPage from './app/dashboard/security/page';
 import WalletPage from './app/dashboard/wallet/page';
 import WholesalerProfilePage from './app/dashboard/profile/page';
-import KycPage from './app/dashboard/kyc/page';
 import BannerSlidesPage from './app/dashboard/banner-slides/page';
 import CreditPolicyPage from './app/dashboard/credit-policy/page';
 import CouponsPage from './app/dashboard/coupons/page';
@@ -46,7 +45,7 @@ export function App() {
         <Route path="coupons" element={<CouponsPage />} />
         <Route path="wallet" element={<WalletPage />} />
         <Route path="profile" element={<WholesalerProfilePage />} />
-        <Route path="kyc" element={<KycPage />} />
+        <Route path="kyc" element={<Navigate to="/dashboard/profile?tab=kyc" replace />} />
         <Route path="subscription" element={<SubscriptionPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="support" element={<SupportPage />} />

@@ -7,15 +7,26 @@ const errorHandler = (err, req, res, next) => {
   let message = err.message || 'Internal Server Error';
   let code = err.code || 'INTERNAL_SERVER_ERROR';
   let errors = err.errors || [];
+  const validationDetails = err.name === 'ValidationError'
+    ? Object.values(err.errors || {}).map((error) => ({ field: error.path, message: error.message }))
+    : Array.isArray(err.errors)
+      ? err.errors.map((error) => ({ field: error.field, message: error.message }))
+      : [];
+  const logStatusCode = err.name === 'ValidationError' ? 422 : statusCode;
+  const logCode = err.name === 'ValidationError' ? 'VALIDATION_ERROR' : code;
 
   // Log error
-  if (statusCode >= 500) {
+  if (logStatusCode >= 500) {
+    const body = { ...(req.body || {}) };
+    delete body.razorpay_signature;
     logger.error(`[${req.method}] ${req.originalUrl} - 500 Internal Error: ${err.message}`, {
       stack: err.stack,
-      body: req.body,
+      body,
     });
   } else {
-    logger.warn(`[${req.method}] ${req.originalUrl} - ${statusCode} ${code}: ${err.message}`);
+    logger.warn(`[${req.method}] ${req.originalUrl} - ${logStatusCode} ${logCode}: ${err.message}`, {
+      errors: validationDetails,
+    });
   }
 
   // Handle Mongoose CastError (invalid ObjectId)

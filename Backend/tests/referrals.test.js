@@ -77,7 +77,7 @@ describe('Wholesaler referral-only retailer registration', () => {
 
     expect(missingCode.status).toBe(403);
     expect(invalidCode.status).toBe(403);
-    expect(invalidCode.body.message).toBe('This invite link is not valid or active. Please ask your wholesaler for a new invite link.');
+    expect(invalidCode.body.message).toBe('This link is not valid. Please ask your wholesaler for a new link.');
     expect(await User.countDocuments({ role: ROLES.RETAILER })).toBe(0);
   });
 
@@ -162,6 +162,11 @@ describe('Wholesaler referral-only retailer registration', () => {
     const payload = {
       name: 'Retailer Owner',
       loginId: 'RETAILER01',
+      businessName: 'Retailer Store',
+      city: 'Jaipur',
+      state: 'Rajasthan',
+      address: '123 Main Road',
+      pincode: '302001',
       email: 'retailer@example.test',
       phone: '9123456789',
       password: 'Password@123',

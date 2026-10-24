@@ -23,6 +23,7 @@ const NotificationService = require('../../services/notification.service');
 const EmailOtpService = require('../../services/emailOtp.service');
 const ReferralService = require('../referrals/referrals.service');
 const WholesalerInvitesService = require('../wholesaler-invites/wholesalerInvites.service');
+const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
 
 class AuthService {
   /**
@@ -181,6 +182,7 @@ class AuthService {
       pincode,
       gstin,
       pan,
+      gstNumber,
       isGstRegistered,
       streetAddress,
       sameAsBusinessAddress,
@@ -189,6 +191,10 @@ class AuthService {
       pickupState,
       pickupPincode,
       gstStatus,
+      category,
+      panNumber,
+      aadhaarNumber,
+      identityConsent,
       referralCode,
       inviteToken,
       ref,
@@ -273,6 +279,7 @@ class AuthService {
       ? await WholesalerInvitesService.claim(inviteToken)
       : null;
     let inviteCompleted = false;
+    let uncommittedIdentityAssets = [];
     try {
     const passwordHash = await User.hashPassword(password);
 
@@ -285,6 +292,17 @@ class AuthService {
       role,
       status: USER_STATUS.ACTIVE,
     });
+
+    let retailerIdentity = {};
+    if (role === ROLES.RETAILER) {
+      const prepared = await RetailerIdentityService.prepareRegistrationIdentity(
+        { panNumber, aadhaarNumber, identityConsent },
+        req?.files || {},
+        user._id
+      );
+      retailerIdentity = prepared.identity;
+      uncommittedIdentityAssets = prepared.uploaded;
+    }
 
     try {
       await user.save();
@@ -366,8 +384,17 @@ class AuthService {
         userId: user._id,
         ownerName: name,
         businessName: businessName || `${name}'s Store`,
-        gstin: gstin || undefined,
+        businessType: businessType || 'Independent retailer',
+        category: category || '',
+        gstin: gstin || gstNumber || undefined,
         gstStatus: gstStatus || 'UNREGISTERED',
+        profileComplete: Boolean(
+          businessName &&
+          address &&
+          city &&
+          state &&
+          pincode
+        ),
         address: {
           street: address || '',
           city: city || '',
@@ -381,6 +408,7 @@ class AuthService {
         utmTerm: String(utmTerm || '').slice(0, 100).trim(),
         utmContent: String(utmContent || '').slice(0, 100).trim(),
         firstLandingAt: firstLandingAt ? new Date(firstLandingAt) : undefined,
+        ...retailerIdentity,
       });
 
       user.retailerProfile = retailerProfile._id;
@@ -454,6 +482,7 @@ class AuthService {
       user: fullUser.toJSON(),
     };
     } catch (error) {
+      await RetailerIdentityService.deleteUploadedFiles(uncommittedIdentityAssets);
       if (inviteClaim && !inviteCompleted) {
         try {
           await WholesalerInvitesService.releaseClaim(inviteClaim.claimId);

@@ -3,7 +3,7 @@ const { User, WholesalerProfile, WholesalerRetailerRelationship } = require('../
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../../config/constants');
 const { BadRequestError, ForbiddenError, ConflictError } = require('../../utils/errors');
 
-const INVALID_REFERRAL_MESSAGE = 'This invite link is not valid or active. Please ask your wholesaler for a new invite link.';
+const INVALID_REFERRAL_MESSAGE = 'This link is not valid. Please ask your wholesaler for a new link.';
 const REFERRAL_CODE_CHARACTERS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 const generateReferralCode = () => Array.from(

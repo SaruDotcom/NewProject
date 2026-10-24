@@ -152,7 +152,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const token = getAuthToken();
   const authenticated = isLoggedIn && Boolean(token);
   const isLanding = path === "/" && !authenticated;
-  const auth = isLanding || ["/login", "/register", "/forgot-password"].includes(path);
+  const auth = isLanding || !authenticated || ["/login", "/register", "/forgot-password"].includes(path);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const safeRetailerProfile = retailerProfile ?? null;

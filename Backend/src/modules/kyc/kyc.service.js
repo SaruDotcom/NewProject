@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const {
   KycApplication,
   KycDocument,
@@ -19,6 +20,11 @@ const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
+
+const maskAccountNumber = (accountNumber) => {
+  const value = String(accountNumber || '');
+  return value ? `•••• ${value.slice(-4)}` : '';
+};
 
 class KycService {
   /**
@@ -216,8 +222,9 @@ class KycService {
 
     const [applications, total] = await Promise.all([
       KycApplication.find(filter)
+        .select('_id businessName ownerName pan gstin status submittedAt wholesalerId documents')
         .populate('wholesalerId', 'name email phone status')
-        .populate('documents')
+        .populate('documents', 'documentType originalName mimeType fileSize createdAt')
         .populate('reviewedBy', 'name email')
         .sort(sort)
         .skip(skip)
@@ -241,9 +248,13 @@ class KycService {
    * Super Admin gets single KYC application details with full wholesaler profile and activity
    */
   static async getKycById(kycId, requestingUser = null, req = null) {
+    if (!mongoose.Types.ObjectId.isValid(kycId)) {
+      throw new NotFoundError('KYC Application not found');
+    }
+
     const application = await KycApplication.findById(kycId)
       .populate('wholesalerId', 'name email phone status lastLoginAt createdAt')
-      .populate('documents')
+      .populate('documents', 'documentType originalName mimeType fileSize createdAt updatedAt')
       .populate('reviewedBy', 'name email')
       .populate('history.changedBy', 'name email role');
 
@@ -254,15 +265,23 @@ class KycService {
     const wholesalerUserId = application.wholesalerId?._id || application.wholesalerId;
 
     const [wholesalerProfile, linkedRetailersCount, productsCount, ordersCount, auditLogs] = await Promise.all([
-      WholesalerProfile.findOne({ userId: wholesalerUserId }).lean(),
+      WholesalerProfile.findOne({ userId: wholesalerUserId })
+        .select('businessName businessType address pickupAddress bankDetails registrationSource adminReferralCode retailerReferralCode hasGst gstin pan kycStatus isVerified createdAt')
+        .lean(),
       WholesalerRetailerRelationship.countDocuments({ wholesalerId: wholesalerUserId }),
       Product.countDocuments({ wholesalerId: wholesalerUserId, isDeleted: { $ne: true } }),
       Order.countDocuments({ wholesalerId: wholesalerUserId }),
       AuditLog.find({
-        $or: [
-          { entityId: String(application._id) },
-          { entityId: String(wholesalerUserId) },
-        ],
+        entityId: String(application._id),
+        action: {
+          $in: [
+            AUDIT_ACTION.CREATE,
+            AUDIT_ACTION.KYC_APPROVED,
+            AUDIT_ACTION.KYC_REJECTED,
+            AUDIT_ACTION.KYC_RESUBMISSION_REQUESTED,
+            AUDIT_ACTION.KYC_VIEWED,
+          ],
+        },
       })
         .sort({ createdAt: -1 })
         .limit(20)
@@ -293,6 +312,16 @@ class KycService {
       ordersCount: ordersCount || 0,
     };
     responseData.auditLogs = auditLogs || [];
+    if (responseData.bankDetails) {
+      responseData.bankDetails.accountNumber = maskAccountNumber(
+        responseData.bankDetails.accountNumber
+      );
+    }
+    if (responseData.profile.bankDetails) {
+      responseData.profile.bankDetails.accountNumber = maskAccountNumber(
+        responseData.profile.bankDetails.accountNumber
+      );
+    }
 
     if (responseData.wholesalerId && typeof responseData.wholesalerId === 'object') {
       delete responseData.wholesalerId.passwordHash;

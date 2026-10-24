@@ -3,7 +3,7 @@ import {
   Fragment as _Fragment,
   jsxs as _jsxs,
 } from "react/jsx-runtime";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
@@ -70,15 +70,16 @@ const notifications = [];
 
 const nav = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Wholesalers", href: "/wholesalers", icon: Building2 },
-  { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
+  // { label: "Wholesalers", href: "/wholesalers", icon: Building2 },
+  // { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
   { label: "KYC Review", href: "/kyc", icon: FileCheck2 },
-  { label: "Retailers", href: "/retailers", icon: Store },
-  { label: "Relationships", href: "/relationships", icon: Waypoints },
-  { label: "Products", href: "/products", icon: PackageSearch },
-  { label: "Categories", href: "/categories", icon: Boxes },
-  { label: "Orders", href: "/orders", icon: ClipboardList },
+  // { label: "Retailers", href: "/retailers", icon: Store },
+  // { label: "Relationships", href: "/relationships", icon: Waypoints },
+  // { label: "Products", href: "/products", icon: PackageSearch },
+  // { label: "Categories", href: "/categories", icon: Boxes },
+  // { label: "Orders", href: "/orders", icon: ClipboardList },
   { label: "Payments", href: "/payments", icon: CreditCard },
+  { label: "Subscription Plan", href: "/subscription-plan", icon: CreditCard },
   { label: "Transactions", href: "/transactions", icon: CircleDollarSign },
   { label: "Reports & Analytics", href: "/reports", icon: FileBarChart },
   { label: "Notifications", href: "/notifications", icon: Bell },
@@ -89,8 +90,23 @@ const nav = [
   // { label: "Activity Log", href: "/activity", icon: Activity },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
+
+export const AdminShellContext = createContext({
+  breadcrumbTitle: "",
+  setBreadcrumbTitle: () => {},
+});
+
+export function useAdminBreadcrumb(title) {
+  const { setBreadcrumbTitle } = useContext(AdminShellContext);
+  useEffect(() => {
+    if (title) setBreadcrumbTitle(title);
+    return () => setBreadcrumbTitle("");
+  }, [title, setBreadcrumbTitle]);
+}
+
 export function AdminShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [breadcrumbTitle, setBreadcrumbTitle] = useState("");
   const [mobile, setMobile] = useState(false);
   const [adminUser, setAdminUser] = useState(() => getAdminUser());
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -225,8 +241,10 @@ export function AdminShell({ children }) {
       .join("")
       .toUpperCase() || "AD";
 
-  return _jsxs("div", {
-    className: "min-h-screen bg-background text-foreground",
+  return _jsx(AdminShellContext.Provider, {
+    value: { breadcrumbTitle, setBreadcrumbTitle },
+    children: _jsxs("div", {
+      className: "min-h-screen bg-background text-foreground",
     children: [
       _jsxs("aside", {
         className: cn(
@@ -305,18 +323,50 @@ export function AdminShell({ children }) {
                 onClick: () => setMobile(true),
                 children: _jsx(Menu, {}),
               }),
-              _jsxs("div", {
-                className: "hidden min-w-40 sm:block",
-                children: [
-                  _jsx("p", {
-                    className: "text-xs text-gray/65",
-                    children: "SUPER ADMIN",
-                  }),
-                  _jsx("p", {
-                    className: "text-sm font-bold",
-                    children: current?.label ?? "Marketplace",
-                  }),
-                ],
+              _jsx("div", {
+                className: "hidden shrink-0 sm:block",
+                children: pathname.startsWith("/kyc/") && pathname !== "/kyc"
+                  ? _jsxs("nav", {
+                      "aria-label": "breadcrumb",
+                      className: "flex items-center gap-1.5 text-xs whitespace-nowrap",
+                      children: [
+                        _jsx("span", {
+                          className: "text-muted-foreground font-medium",
+                          children: "Super Admin",
+                        }),
+                        _jsx("span", {
+                          className: "text-muted-foreground/50",
+                          children: "/",
+                        }),
+                        _jsx(Link, {
+                          to: "/kyc",
+                          className:
+                            "text-muted-foreground font-medium hover:text-primary transition-colors",
+                          children: "KYC Review",
+                        }),
+                        _jsx("span", {
+                          className: "text-muted-foreground/50",
+                          children: "/",
+                        }),
+                        _jsx("span", {
+                          className:
+                            "font-bold text-foreground truncate max-w-[320px]",
+                          children: breadcrumbTitle || "Application",
+                        }),
+                      ],
+                    })
+                  : _jsxs(_Fragment, {
+                      children: [
+                        _jsx("p", {
+                          className: "text-xs text-gray/65",
+                          children: "SUPER ADMIN",
+                        }),
+                        _jsx("p", {
+                          className: "text-sm font-bold",
+                          children: current?.label ?? "Marketplace",
+                        }),
+                      ],
+                    }),
               }),
               _jsxs("div", {
                 className: "relative mx-auto w-full max-w-xl",
@@ -593,7 +643,8 @@ export function AdminShell({ children }) {
         ],
       }),
     ],
-  });
+  }),
+});
 }
 function Brand({ compact = false }) {
   return _jsxs("div", {

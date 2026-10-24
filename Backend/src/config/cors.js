@@ -23,6 +23,7 @@ const corsOptions = {
 
     const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
     const isVercel = /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin);
+    const normalizedOrigin = parseOrigin(origin);
 
     if (
       env.NODE_ENV === 'development' ||

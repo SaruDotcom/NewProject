@@ -31,6 +31,7 @@ import {
   createReferralAttribution,
   getReferralAttributionFromUrl,
   getStoredReferralAttribution,
+  markRetailerRegistrationComplete,
   saveReferralAttribution,
   type ReferralAttribution,
 } from "@/lib/referral-attribution";
@@ -42,8 +43,6 @@ export interface WholesalerPublicInfo {
   categories?: string[];
   code: string;
 }
-
-const STORAGE_POPUP_DISMISSED = "nexora_popup_dismissed_at";
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -61,8 +60,7 @@ export function LandingPage() {
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"welcome" | "register" | "login" | "enter_code">("welcome");
-  const [manualCodeInput, setManualCodeInput] = useState("");
+  const [modalMode, setModalMode] = useState<"welcome" | "register" | "login">("welcome");
 
   // Register Form State
   const [regName, setRegName] = useState("");
@@ -96,7 +94,6 @@ export function LandingPage() {
   const verifyCode = useCallback(async (
     code: string,
     attribution = createReferralAttribution(code, new URL(window.location.href)),
-    openRegistration = false,
   ): Promise<boolean> => {
     const cleanCode = code.trim().toUpperCase();
     if (!cleanCode) return false;
@@ -121,10 +118,6 @@ export function LandingPage() {
         setReferralAttribution(savedAttribution);
         saveReferralAttribution(savedAttribution);
         setReferralError("");
-        if (openRegistration) {
-          setModalMode("register");
-          setModalOpen(true);
-        }
         return true;
       } else {
         setSupplier(null);
@@ -133,7 +126,7 @@ export function LandingPage() {
           setReferralAttribution(null);
           setReferralCode("");
         }
-        setReferralError("This link is no longer valid. Ask your wholesaler for a new link.");
+        setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
         return false;
       }
     } catch (err) {
@@ -145,7 +138,7 @@ export function LandingPage() {
           setReferralAttribution(null);
           setReferralCode("");
         }
-        setReferralError("This link is no longer valid. Ask your wholesaler for a new link.");
+        setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
       } else {
         setReferralError("Unable to verify this invite link. Please try again.");
       }
@@ -154,45 +147,6 @@ export function LandingPage() {
       setIsVerifyingCode(false);
     }
   }, []);
-
-  // Verify incoming links before saving them; a valid later link replaces the prior one.
-  useEffect(() => {
-    if (isLoggedIn) return;
-    const fromUrl = getReferralAttributionFromUrl(new URL(window.location.href));
-    const attribution = fromUrl || getStoredReferralAttribution();
-    if (!attribution) return;
-
-    setReferralCode(attribution.code);
-    setManualCodeInput(attribution.code);
-    void verifyCode(attribution.code, attribution, Boolean(fromUrl));
-  }, [isLoggedIn, verifyCode]);
-
-  // Auto-open popup ~3 seconds after landing for logged-out visitors
-  useEffect(() => {
-    if (isLoggedIn) return;
-
-    let hasBeenDismissedRecently = false;
-    try {
-      const dismissedAt = localStorage.getItem(STORAGE_POPUP_DISMISSED);
-      if (dismissedAt) {
-        const diff = Date.now() - Number(dismissedAt);
-        if (diff < 24 * 60 * 60 * 1000) {
-          hasBeenDismissedRecently = true;
-        }
-      }
-    } catch {
-      hasBeenDismissedRecently = false;
-    }
-
-    if (hasBeenDismissedRecently) return;
-
-    const timer = window.setTimeout(() => {
-      setModalMode(supplier ? "register" : "enter_code");
-      setModalOpen(true);
-    }, 3000);
-
-    return () => window.clearTimeout(timer);
-  }, [isLoggedIn, supplier]);
 
   // Focus trap and ESC close
   useEffect(() => {
@@ -208,31 +162,24 @@ export function LandingPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [modalOpen]);
 
-  const openModal = (mode?: "welcome" | "register" | "login" | "enter_code") => {
-    if (mode) {
-      setModalMode(mode);
-    } else {
-      setModalMode(supplier ? "register" : "enter_code");
+  const openModal = (mode?: "welcome" | "register" | "login") => {
+    if (mode === "login") {
+      navigate({ to: "/login" });
+      return;
     }
-    setModalOpen(true);
+    const code =
+      supplier?.code ||
+      getReferralAttributionFromUrl(new URL(window.location.href))?.code ||
+      getStoredReferralAttribution()?.code;
+    if (code) {
+      navigate({ to: "/", search: { ref: code } });
+    } else {
+      navigate({ to: "/register" });
+    }
   };
 
   const closeModal = () => {
     setModalOpen(false);
-    try {
-      localStorage.setItem(STORAGE_POPUP_DISMISSED, String(Date.now()));
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleManualCodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const attribution = createReferralAttribution(manualCodeInput, new URL(window.location.href));
-    const success = await verifyCode(manualCodeInput, attribution);
-    if (success) {
-      setModalMode("register");
-    }
   };
 
   const clearReferral = () => {
@@ -240,16 +187,16 @@ export function LandingPage() {
     setReferralAttribution(null);
     setReferralCode("");
     setSupplier(null);
-    setManualCodeInput("");
     setReferralError("");
-    setModalMode("enter_code");
+    closeModal();
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!referralCode || !supplier) {
-      setReferralError("A valid referral code is required to register.");
-      setModalMode("enter_code");
+      setReferralError("Please open the registration link your wholesaler sent you.");
+      closeModal();
+      navigate({ to: "/register" });
       return;
     }
     if (!/^\d{10}$/.test(regPhone.trim())) {
@@ -280,6 +227,7 @@ export function LandingPage() {
       });
 
       const token = res.data?.token || res.data?.accessToken;
+      markRetailerRegistrationComplete();
       if (token) {
         setAuthToken(token);
         toast.success(`Registration Successful. You are now connected to ${supplier.businessName}`);
@@ -308,6 +256,7 @@ export function LandingPage() {
       const token = res.data?.token || res.data?.accessToken;
       if (token) {
         setAuthToken(token);
+        markRetailerRegistrationComplete();
         toast.success("Login successful!");
         closeModal();
         window.location.href = "/";
@@ -372,7 +321,7 @@ export function LandingPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => openModal(supplier ? "register" : "enter_code")}
+                  onClick={() => openModal("register")}
                   className="px-5 py-2.5 bg-[#20A66A] hover:bg-[#198957] text-white text-sm font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>Register Free</span>
@@ -444,7 +393,7 @@ export function LandingPage() {
                     type="button"
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      openModal(supplier ? "register" : "enter_code");
+                      openModal("register");
                     }}
                     className="w-full py-2.5 bg-[#20A66A] text-white text-sm font-bold rounded-xl text-center cursor-pointer"
                   >
@@ -536,7 +485,7 @@ export function LandingPage() {
                   <>
                     <button
                       type="button"
-                      onClick={() => openModal(supplier ? "register" : "enter_code")}
+                      onClick={() => openModal("register")}
                       className="px-8 py-3.5 bg-[#20A66A] hover:bg-[#198957] text-white text-base font-bold rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                     >
                       <span>Register Free</span>
@@ -753,7 +702,7 @@ export function LandingPage() {
                 Open your wholesaler&apos;s link
               </h3>
               <p className="text-xs text-[#647782] mt-2 leading-relaxed">
-                Click your supplier&apos;s WhatsApp invite link or enter their 6-letter referral code.
+                Click your supplier&apos;s WhatsApp invite link to register and connect directly.
               </p>
             </div>
 
@@ -1074,7 +1023,7 @@ export function LandingPage() {
             ) : (
               <button
                 type="button"
-                onClick={() => openModal(supplier ? "register" : "enter_code")}
+                onClick={() => openModal("register")}
                 className="px-8 py-3.5 bg-[#20A66A] hover:bg-[#198957] text-white text-base font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer"
               >
                 <span>Register Free</span>
@@ -1186,7 +1135,7 @@ export function LandingPage() {
                 <div className="flex flex-col gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setModalMode("register")}
+                    onClick={() => openModal("register")}
                     className="w-full py-3.5 bg-[#20A66A] hover:bg-[#198957] text-white text-sm font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Register Free</span>
@@ -1203,63 +1152,6 @@ export function LandingPage() {
               </div>
             )}
 
-            {/* MODAL VIEW 2: ENTER CODE (When no valid referral exists) */}
-            {modalMode === "enter_code" && (
-              <div className="flex flex-col gap-6">
-                <div>
-                  <h2 id="modal-title" className="font-heading text-2xl font-extrabold text-[#12304A]">
-                    Enter your wholesaler&apos;s referral code
-                  </h2>
-                  <p className="text-xs text-[#647782] mt-1">
-                    Ask your wholesaler for their link or code to unlock wholesale catalogs.
-                  </p>
-                </div>
-
-                {referralError && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl">
-                    {referralError}
-                  </div>
-                )}
-
-                <form onSubmit={handleManualCodeSubmit} className="flex flex-col gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#12304A] mb-1.5">
-                      6-Character Referral Code
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={manualCodeInput}
-                      onChange={(e) => setManualCodeInput(e.target.value.toUpperCase())}
-                      placeholder="e.g. WS1234"
-                      className="w-full px-4 py-3 bg-[#F4F7F8] border border-[#D8E1E5] rounded-xl text-base font-mono font-bold tracking-widest text-[#12304A] uppercase focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#20A66A]"
-                      required
-                    />
-                    <span className="text-[11px] text-[#647782] mt-1.5 block">
-                      Ask your wholesale supplier for their invite link or code.
-                    </span>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isVerifyingCode || !manualCodeInput.trim()}
-                    className="w-full py-3 bg-[#20A66A] hover:bg-[#198957] disabled:opacity-50 text-white text-sm font-bold rounded-xl shadow-md transition-all cursor-pointer"
-                  >
-                    {isVerifyingCode ? "Verifying code..." : "Verify Code & Proceed"}
-                  </button>
-                </form>
-
-                <div className="text-center pt-2 border-t border-[#D8E1E5]">
-                  <button
-                    type="button"
-                    onClick={() => setModalMode("login")}
-                    className="text-xs font-bold text-[#20A66A] hover:underline cursor-pointer"
-                  >
-                    Already have a retailer account? Login
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* MODAL VIEW 3: REGISTER TAB */}
             {modalMode === "register" && supplier && (
@@ -1309,19 +1201,6 @@ export function LandingPage() {
                 </button>
 
                 <form onSubmit={handleRegisterSubmit} className="flex flex-col gap-3">
-                  {/* Referral Code (Pre-filled and Read-Only) */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#647782] mb-1">
-                      Wholesaler Referral Code (Locked)
-                    </label>
-                    <input
-                      type="text"
-                      value={referralCode}
-                      readOnly
-                      className="w-full px-3 py-2 bg-[#EAF0F2] border border-[#D8E1E5] rounded-lg text-xs font-mono font-bold text-[#12304A] cursor-not-allowed"
-                    />
-                  </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-bold text-[#12304A] mb-1">
@@ -1483,7 +1362,7 @@ export function LandingPage() {
                 <div className="text-center pt-2 border-t border-[#D8E1E5] flex flex-col gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setModalMode(supplier ? "register" : "enter_code")}
+                    onClick={() => openModal("register")}
                     className="text-xs font-bold text-[#20A66A] hover:underline cursor-pointer"
                   >
                     New shop? Register Free

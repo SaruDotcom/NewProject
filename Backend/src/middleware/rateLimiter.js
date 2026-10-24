@@ -29,7 +29,49 @@ const authRateLimiter = rateLimit({
   skip: isTest,
 });
 
+const registrationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: env.AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many registration attempts. Please try again in 15 minutes.',
+    code: 'REGISTRATION_RATE_LIMIT_EXCEEDED',
+  },
+  skip: isTest,
+});
+
+const referralLookupRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: env.AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many referral link checks. Please try again in 15 minutes.',
+    code: 'REFERRAL_LOOKUP_RATE_LIMIT_EXCEEDED',
+  },
+  skip: isTest,
+});
+
+const identityUploadRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many document uploads. Please try again in 15 minutes.',
+    code: 'IDENTITY_UPLOAD_RATE_LIMIT_EXCEEDED',
+  },
+  skip: isTest,
+});
+
 module.exports = {
   apiRateLimiter,
   authRateLimiter,
+  registrationRateLimiter,
+  referralLookupRateLimiter,
+  identityUploadRateLimiter,
 };

@@ -27,6 +27,7 @@ const wholesalerPortalController = require('../modules/wholesalers/wholesalerPor
 const wholesalerPortalRoutes = require('../modules/wholesalers/wholesalerPortal.routes');
 const supportRoutes = require('../modules/support/support.routes');
 const wholesalerInviteRoutes = require('../modules/wholesaler-invites/wholesalerInvites.routes');
+const subscriptionRoutes = require('../modules/subscriptions/subscriptions.routes');
 
 // Health Check
 router.get('/health', (req, res) => {
@@ -45,6 +46,9 @@ router.use('/support', supportRoutes.router);
 // Mount this before the general /admin router to enforce SUPER_ADMIN-only access.
 router.use('/admin/support', supportRoutes.adminRouter);
 router.use('/admin/wholesaler-invites', wholesalerInviteRoutes.adminRouter);
+router.use('/admin/subscription-plan', subscriptionRoutes.adminRoutes);
+router.use('/subscription-plan', subscriptionRoutes.publicRoutes);
+router.use('/wholesaler/subscription', subscriptionRoutes.wholesalerRoutes);
 
 // Auth module
 router.use('/auth', authRoutes);
@@ -81,9 +85,11 @@ router.get(
 router.use('/wholesaler', wholesalerPortalRoutes);
 
 const retailerPortalRoutes = require('../modules/retailers/retailerPortal.routes');
+const retailerIdentityRoutes = require('../modules/retailers/retailerIdentity.routes');
 
 // Retailer Portal Routes
 router.use('/retailer', retailerPortalRoutes);
+router.use('/retailer-identity', retailerIdentityRoutes);
 
 // General & Shared Modules
 const wholesalerAdminController = require('../modules/wholesalers/wholesalers.controller');

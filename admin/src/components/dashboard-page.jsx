@@ -287,7 +287,7 @@ export function DashboardPage() {
                 navigate({ to: "/wholesalers", search: { status: "Active" } })
               }
             />
-            <StatCard
+            {/* <StatCard
               label="Pending Orders"
               value={formatNumber(stats.pendingOrders)}
               icon={TrendingUp}
@@ -297,8 +297,8 @@ export function DashboardPage() {
               onClick={() =>
                 navigate({ to: "/orders", search: { status: "Pending" } })
               }
-            />
-            <StatCard
+            /> */}
+            {/* <StatCard
               label="Total Retailers"
               value={formatNumber(stats.totalRetailers)}
               icon={Store}
@@ -320,7 +320,7 @@ export function DashboardPage() {
               icon={PackageSearch}
               tone="info"
               onClick={() => navigate({ to: "/products" })}
-            />
+            /> */}
             <StatCard
               label="Total Orders"
               value={formatNumber(stats.totalOrders)}
@@ -339,7 +339,7 @@ export function DashboardPage() {
               change={percentChange(salesTrend.map((row) => row.revenue))}
               onClick={() => navigate({ to: "/reports" })}
             />
-            <StatCard
+            {/* <StatCard
               label="Total Users"
               value={formatNumber(stats.totalUsers)}
               icon={Users}
@@ -352,7 +352,7 @@ export function DashboardPage() {
               icon={Users}
               tone="success"
               onClick={() => navigate({ to: "/admin-users" })}
-            />
+            /> */}
           </>
         )}
       </div>
@@ -387,7 +387,7 @@ export function DashboardPage() {
             }
             onClick={() => navigate({ to: "/support" })}
           />
-          <AttentionItem
+          {/* <AttentionItem
             icon={CircleAlert}
             label="Low-stock alerts"
             count={lowStockCount}
@@ -397,7 +397,7 @@ export function DashboardPage() {
                 : "No recent alerts"
             }
             onClick={() => navigate({ to: "/products" })}
-          />
+          /> */}
         </div>
       </SectionCard>
 
@@ -635,7 +635,7 @@ export function DashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard
+        {/* <SectionCard
           title="Top Wholesalers"
           description={`${range} · by sales volume`}
         >
@@ -673,7 +673,7 @@ export function DashboardPage() {
               />
             ))
           )}
-        </SectionCard>
+        </SectionCard> */}
 
         <SectionCard
           title="Orders Distribution"

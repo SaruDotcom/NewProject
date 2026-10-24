@@ -142,17 +142,23 @@ const orderSchema = new mongoose.Schema(
     },
     billingAddress: {
       street: { type: String, default: '' },
+      addressLine2: { type: String, default: '' },
       city: { type: String, default: '' },
       state: { type: String, default: '' },
       pincode: { type: String, default: '' },
       country: { type: String, default: 'India' },
+      contactName: { type: String, default: '' },
+      phone: { type: String, default: '' },
     },
     shippingAddress: {
       street: { type: String, default: '' },
+      addressLine2: { type: String, default: '' },
       city: { type: String, default: '' },
       state: { type: String, default: '' },
       pincode: { type: String, default: '' },
       country: { type: String, default: 'India' },
+      contactName: { type: String, default: '' },
+      phone: { type: String, default: '' },
     },
     statusTimeline: [statusTimelineSchema],
     cancellationReason: {

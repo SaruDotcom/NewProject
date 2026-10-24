@@ -35,7 +35,6 @@ function isBusinessSetupComplete(profile: ReturnType<typeof useStore>["retailerP
   return Boolean(
     profile.businessName?.trim() &&
     profile.ownerName?.trim() &&
-    profile.category?.trim() &&
     profile.address?.trim() &&
     profile.city?.trim() &&
     profile.state?.trim() &&
@@ -74,6 +73,11 @@ function RouterView() {
 
   // Public Landing Page: logged-out visitors who open "/" see a landing page, not the store
   if (path === "/" && !authenticated) {
+    const searchParams = new URLSearchParams(url.search);
+    const hasRef = searchParams.has("ref");
+    if (hasRef) {
+      return <AuthPage key={`${path}${url.search}`} mode="register" />;
+    }
     return <LandingPage />;
   }
   if (path === "/landing") {
@@ -94,9 +98,7 @@ function RouterView() {
     return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} />;
   }
   if (isRefPath) {
-    return authenticated
-      ? <HomePage />
-      : <AuthPage key={`${path}${url.search}`} mode="register" />;
+    return <AuthPage key={`${path}${url.search}`} mode="register" />;
   }
   if (path === "/forgot-password") return <AuthPage key={`${path}${url.search}`} mode="forgot" />;
 

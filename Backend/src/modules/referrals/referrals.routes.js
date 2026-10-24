@@ -2,11 +2,11 @@ const express = require('express');
 const controller = require('./referrals.controller');
 const authenticate = require('../../middleware/authenticate');
 const authorize = require('../../middleware/authorize');
-const { authRateLimiter } = require('../../middleware/rateLimiter');
+const { referralLookupRateLimiter } = require('../../middleware/rateLimiter');
 const { ROLES } = require('../../config/constants');
 
 const publicRoutes = express.Router();
-publicRoutes.get('/:code', authRateLimiter, controller.lookup);
+publicRoutes.get('/:code', referralLookupRateLimiter, controller.lookup);
 
 const wholesalerRoutes = express.Router();
 wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));

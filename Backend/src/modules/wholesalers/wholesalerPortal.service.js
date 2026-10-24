@@ -9,6 +9,7 @@ const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const WholesalerReportsService = require('../../services/wholesalerReports.service');
 const SupportService = require('../support/support.service');
+const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
 
 class WholesalerPortalService {
   static formatRetailerRelationship(row) {
@@ -27,7 +28,7 @@ class WholesalerPortalService {
       businessName: profile.businessName || retailer.name || '',
       businessType: profile.businessType || 'Independent retailer',
       category: profile.category || '',
-      gstin: profile.gstin || 'NON-GST',
+      gstin: profile.gstin || '',
       gstStatus: profile.gstStatus || 'UNREGISTERED',
       address: address.street || address.addressLine1 || '',
       city: address.city || '',
@@ -40,6 +41,17 @@ class WholesalerPortalService {
       discountPercent: row.discountPercent || 5,
       totalOrdersCount: profile.totalOrdersCount || 0,
       totalSpent: profile.totalPurchaseAmount || 0,
+      outstandingAmount: row.currentOutstandingAmount || 0,
+      registrationSource: profile.registrationSource || 'DIRECT',
+      lastLoginAt: retailer.lastLoginAt || null,
+      verificationStatus: profile.verificationStatus || 'NOT_SUBMITTED',
+      documentsSubmitted: Boolean(
+        profile.pan?.numberEncrypted ||
+        profile.pan?.publicId ||
+        profile.aadhaar?.numberEncrypted ||
+        profile.aadhaar?.frontImage?.publicId ||
+        profile.aadhaar?.backImage?.publicId
+      ),
       joinedAt: row.joinedAt || row.createdAt,
       createdAt: row.createdAt,
     };
@@ -83,7 +95,8 @@ class WholesalerPortalService {
 
   static async listRetailers(userId, query) {
     const { page, limit, skip, sort } = parsePagination(query);
-    const filter = { wholesalerId: userId, status: query.status || RELATIONSHIP_STATUS.ACTIVE };
+    const wholesalerObjectId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+    const filter = { wholesalerId: wholesalerObjectId, status: query.status || RELATIONSHIP_STATUS.ACTIVE };
     const pipeline = [
       { $match: filter },
       { $lookup: { from: 'users', localField: 'retailerId', foreignField: '_id', as: 'retailer' } },
@@ -110,26 +123,68 @@ class WholesalerPortalService {
 
   static async getRetailerDetails(userId, relationshipId) {
     if (!mongoose.isValidObjectId(relationshipId)) throw new BadRequestError('Invalid retailer relationship id');
-    const relationship = await WholesalerRetailerRelationship.findOne({ _id: relationshipId, wholesalerId: userId })
+    const wholesalerObjectId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      _id: relationshipId,
+      wholesalerId: wholesalerObjectId,
+      status: RELATIONSHIP_STATUS.ACTIVE,
+    })
       .populate('retailerId', 'name email phone status createdAt')
       .lean();
     if (!relationship) throw new NotFoundError('Retailer relationship not found');
 
+    const retailerUserId = relationship.retailerId?._id || relationship.retailerId;
     const [profile, orders] = await Promise.all([
-      RetailerProfile.findOne({ userId: relationship.retailerId._id }).lean(),
-      Order.find({ wholesalerId: userId, retailerId: relationship.retailerId._id })
+      RetailerProfile.findOne({ userId: retailerUserId, isDeleted: false }).lean(),
+      Order.find({ wholesalerId: wholesalerObjectId, retailerId: retailerUserId })
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
     ]);
+    const [wholesalerProfile, retailerUser] = await Promise.all([
+      WholesalerProfile.findOne({ userId: wholesalerObjectId }).select('creditPolicy').lean(),
+      User.findById(retailerUserId).select('lastLoginAt').lean(),
+    ]);
+    const identity = profile ? RetailerIdentityService.formatIdentity(profile, { includePan: true }) : null;
+    const safeProfile = profile ? {
+      businessName: profile.businessName || '',
+      ownerName: profile.ownerName || '',
+      businessType: profile.businessType || '',
+      category: profile.category || '',
+      gstin: profile.gstin || '',
+      gstStatus: profile.gstStatus || '',
+      address: profile.address || {},
+      profileComplete: Boolean(profile.profileComplete),
+      registrationSource: profile.registrationSource || 'DIRECT',
+      createdAt: profile.createdAt || relationship.createdAt,
+      pan: identity?.pan,
+      aadhaar: identity?.aadhaar,
+      shopPhoto: identity?.shopPhoto,
+      consent: identity?.consent,
+      verificationStatus: identity?.verificationStatus || 'NOT_SUBMITTED',
+      verificationNote: identity?.verificationNote || '',
+      documentsSubmitted: Boolean(identity?.documentsSubmitted),
+    } : null;
+    const creditLimit = relationship.customCreditLimit !== null && relationship.customCreditLimit !== undefined
+      ? relationship.customCreditLimit
+      : (wholesalerProfile?.creditPolicy?.defaultCreditLimit || 0);
 
     return {
       ...this.formatRetailerRelationship({
         ...relationship,
         retailer: relationship.retailerId,
-        profile,
+        profile: safeProfile,
       }),
-      profile,
+      retailerId: String(relationship.retailerId._id),
+      phone: relationship.retailerId.phone || '',
+      email: relationship.retailerId.email || '',
+      lastLoginAt: retailerUser?.lastLoginAt || null,
+      creditLimit,
+      outstandingAmount: relationship.currentOutstandingAmount || 0,
+      totalOrdersCount: profile?.totalOrdersCount || 0,
+      totalSpent: profile?.totalPurchaseAmount || 0,
+      registrationSource: profile?.registrationSource || 'DIRECT',
+      profile: safeProfile,
       orders,
     };
   }

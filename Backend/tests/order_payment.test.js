@@ -1,5 +1,7 @@
 const request = require('supertest');
+const crypto = require('crypto');
 const app = require('../src/app');
+const env = require('../src/config/env');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
   User,
@@ -10,6 +12,7 @@ const {
   Product,
   Inventory,
   Order,
+  Payment,
   Wallet,
   Earning,
 } = require('../src/models');
@@ -140,11 +143,73 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(order.tax).toBe(360);
     expect(order.grandTotal).toBe(2360);
     expect(order.orderStatus).toBe(ORDER_STATUS.PENDING);
+    expect(order.shippingAddress.street).toBe('10 Main Road');
+    expect(order.shippingAddress.pincode).toBe('560001');
 
     // Verify Inventory: 10 units reserved, 90 available
     const inv = await Inventory.findOne({ productId: product._id });
     expect(inv.available).toBe(90);
     expect(inv.reserved).toBe(10);
+  });
+
+  test('wholesaler status updates persist canonically and are returned to the retailer', async () => {
+    const createRes = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ items: [{ productId: product._id, quantity: 10 }] });
+    const orderId = createRes.body.data.order._id;
+
+    const confirmRes = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: 'Confirmed' });
+
+    expect(confirmRes.status).toBe(200);
+    expect(confirmRes.body.data.orderStatus).toBe(ORDER_STATUS.CONFIRMED);
+    expect((await Order.findById(orderId)).orderStatus).toBe(ORDER_STATUS.CONFIRMED);
+
+    await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: ORDER_STATUS.CONFIRMED })
+      .expect(200);
+    expect((await Order.findById(orderId)).statusTimeline).toHaveLength(2);
+
+    const inventoryAfterConfirmation = await Inventory.findOne({ productId: product._id });
+    expect(inventoryAfterConfirmation.available).toBe(90);
+    expect(inventoryAfterConfirmation.reserved).toBe(10);
+
+    const shipRes = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: ORDER_STATUS.SHIPPED });
+    expect(shipRes.status).toBe(200);
+    expect(shipRes.body.data.orderStatus).toBe(ORDER_STATUS.SHIPPED);
+
+    const retailerOrdersRes = await request(app)
+      .get('/api/v1/orders')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(retailerOrdersRes.status).toBe(200);
+    expect(retailerOrdersRes.body.data.items).toHaveLength(1);
+    expect(retailerOrdersRes.body.data.items[0]._id).toBe(orderId);
+    expect(retailerOrdersRes.body.data.items[0].orderStatus).toBe(ORDER_STATUS.SHIPPED);
+  });
+
+  test('invalid wholesaler order status is rejected without changing the saved status', async () => {
+    const createRes = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ items: [{ productId: product._id, quantity: 10 }] });
+    const orderId = createRes.body.data.order._id;
+
+    const statusRes = await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: 'NOT_A_STATUS' });
+
+    expect(statusRes.status).toBe(400);
+    expect(statusRes.body.code).toBe('INVALID_ORDER_STATUS');
+    expect((await Order.findById(orderId)).orderStatus).toBe(ORDER_STATUS.PENDING);
   });
 
   test('2. MOQ of 10 rejects direct API orders below the minimum', async () => {
@@ -168,6 +233,99 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       });
 
     expect(res.status).toBe(400);
+  });
+
+  test('retailer checkout returns field-level validation details for incomplete addresses', async () => {
+    const res = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'ONLINE',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road' },
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.message).toBe('Validation error in request parameters');
+    expect(res.body.errors.map((error) => error.field)).toEqual(
+      expect.arrayContaining(['shippingAddress.city', 'shippingAddress.state']),
+    );
+  });
+
+  test('Razorpay checkout creates no order until captured payment is verified', async () => {
+    const previousKeyId = env.RAZORPAY_KEY_ID;
+    const previousKeySecret = env.RAZORPAY_KEY_SECRET;
+    const originalFetch = global.fetch;
+    env.RAZORPAY_KEY_ID = 'rzp_test_key';
+    env.RAZORPAY_KEY_SECRET = 'test_secret';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'rzp-checkout-order', amount: 236000, currency: 'INR' }),
+    });
+
+    try {
+      const checkout = await request(app)
+        .post('/api/v1/retailer/checkout')
+        .set('Authorization', `Bearer ${retailerToken}`)
+        .send({
+          paymentMethod: 'ONLINE',
+          items: [{ productId: product._id, quantity: 10 }],
+          shippingAddress: {
+            addressLine1: '10 Main Road',
+            city: 'Bengaluru',
+            state: 'Karnataka',
+            postalCode: '560001',
+            contactName: 'Rohan',
+            phone: '9876543210',
+          },
+        });
+
+      expect(checkout.status).toBe(200);
+      expect(checkout.body.data.order.id).toBe('rzp-checkout-order');
+      expect(await Order.countDocuments()).toBe(0);
+
+      const paymentId = 'rzp-captured-payment';
+      const signature = crypto.createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+        .update(`rzp-checkout-order|${paymentId}`)
+        .digest('hex');
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          order_id: 'rzp-checkout-order',
+          amount: 236000,
+          currency: 'INR',
+          status: 'captured',
+        }),
+      });
+
+      const verification = await request(app)
+        .post('/api/v1/retailer/checkout/verify')
+        .set('Authorization', `Bearer ${retailerToken}`)
+        .send({
+          razorpay_order_id: 'rzp-checkout-order',
+          razorpay_payment_id: paymentId,
+          razorpay_signature: signature,
+        });
+
+      expect(verification.status).toBe(200);
+      expect(verification.body.data.order.paymentStatus).toBe(PAYMENT_STATUS.PAID);
+      expect(verification.body.data.order.shippingAddress).toMatchObject({
+        street: '10 Main Road',
+        city: 'Bengaluru',
+        pincode: '560001',
+        contactName: 'Rohan',
+        phone: '9876543210',
+      });
+      expect(await Order.countDocuments()).toBe(1);
+      expect(await Payment.findOne({ orderId: verification.body.data.order._id })).toMatchObject({
+        status: PAYMENT_STATUS.PAID,
+        transactionReference: paymentId,
+      });
+    } finally {
+      env.RAZORPAY_KEY_ID = previousKeyId;
+      env.RAZORPAY_KEY_SECRET = previousKeySecret;
+      global.fetch = originalFetch;
+    }
   });
 
   test('3. Insufficient stock rejected', async () => {

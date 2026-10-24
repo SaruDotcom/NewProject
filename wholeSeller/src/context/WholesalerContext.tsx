@@ -8,6 +8,19 @@ import {
 import api, { setAuthToken, clearAuthToken, getAuthToken } from '@/lib/api';
 import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 
+const productImageUrl = (image: unknown): string => {
+  if (typeof image === 'string') return image.trim();
+  if (image && typeof image === 'object' && 'url' in image && typeof image.url === 'string') {
+    return image.url.trim();
+  }
+  return '';
+};
+
+const productImageUrls = (images: unknown, imageUrl?: unknown): string[] => {
+  const imageList = Array.isArray(images) ? images : images ? [images] : [];
+  return [...new Set([productImageUrl(imageUrl), ...imageList.map(productImageUrl)].filter(Boolean))];
+};
+
 export interface WholesalerProfile {
   id: string;
   businessName: string;
@@ -111,7 +124,7 @@ interface WholesalerContextType {
   updateOrderStatus: (id: string, status: OrderStatus, tracking?: string) => Promise<void>;
 
   generateNewApiKey: () => void;
-  updateSubscription: (plan: 'MONTHLY' | 'ANNUAL') => void;
+  updateSubscription: (plan: 'MONTHLY' | 'ANNUAL', renewalDate?: string) => void;
   terminateSession: (sessionId: string) => void;
   addAuditLog: (action: string, status?: 'Success' | 'Warning' | 'Failed') => void;
 }
@@ -316,11 +329,21 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             minOrderQty: moq,
             unit: p.unit || '',
             isLowStock: st <= moq,
-            imageUrl: p.imageUrl || (p.images && p.images[0]) || '',
+            imageUrl: productImageUrls(p.images, p.imageUrl)[0] || '',
+            images: productImageUrls(p.images, p.imageUrl),
             pricingTiers: p.bulkPricingTiers || p.pricingTiers || [],
             description: p.description || '',
             sizes: p.sizes || [],
             colors: p.colors || [],
+            colorVariants: Array.isArray(p.colorVariants)
+              ? p.colorVariants
+                  .map((variant: any) => ({
+                    color: String(variant.color || variant.name || '').trim(),
+                    ...(variant.sku ? { sku: String(variant.sku) } : {}),
+                    images: productImageUrls(variant.images),
+                  }))
+                  .filter((variant: { color: string }) => variant.color)
+              : [],
           };
         });
         setRawProducts(apiProds);
@@ -334,6 +357,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (retRes?.data && Array.isArray(retRes.data)) {
         const apiRets: Retailer[] = retRes.data.map((r: any) => ({
           id: r._id || r.id,
+          retailerId: r.retailerId || '',
           wholesalerId: profile.id,
           businessName: r.businessName || '',
           contactPerson: r.contactPerson || r.name || '',
@@ -351,6 +375,11 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           discountPercent: Number(r.discountPercent ?? 0),
           totalOrdersCount: Number(r.totalOrdersCount ?? 0),
           totalSpent: Number(r.totalSpent ?? 0),
+          outstandingAmount: Number(r.outstandingAmount ?? 0),
+          registrationSource: r.registrationSource || 'DIRECT',
+          lastLoginAt: r.lastLoginAt || null,
+          verificationStatus: r.verificationStatus || 'NOT_SUBMITTED',
+          documentsSubmitted: Boolean(r.documentsSubmitted),
           joinedDate: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : '',
         }));
         setRawRetailers(apiRets);
@@ -369,11 +398,16 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (orderRes?.data) {
         const apiOrders: Order[] = orderItems.map((o: any) => {
           const tot = Number(o.totalAmount ?? o.grandTotal ?? o.total ?? 0);
+          const rId = typeof o.retailerId === 'object' ? String(o.retailerId?._id || '') : String(o.retailerId || o.retailer?.id || '');
+          const rBiz = (typeof o.retailerId === 'object' && o.retailerId?.businessName) || o.retailer?.businessName || o.retailerBusinessName || '';
+          const rName = typeof o.retailerId === 'object' ? (o.retailerId?.name || o.retailerId?.businessName || '') : (o.retailerName || o.retailer?.name || '');
           return {
             id: o._id || o.id,
             orderNumber: o.orderNo || o.orderNumber || '',
             wholesalerId: profile.id,
-            retailerName: typeof o.retailerId === 'object' ? (o.retailerId?.name || o.retailerId?.businessName || '') : (o.retailerName || ''),
+            retailerId: rId,
+            retailerBusinessName: rBiz,
+            retailerName: rName,
             retailerCity: typeof o.retailerId === 'object' ? (o.retailerId?.city || o.retailerId?.address?.city || '') : (o.retailerCity || ''),
             status: (o.orderStatus || o.status || 'PENDING').toUpperCase() as OrderStatus,
             cancellationReason: o.cancellationReason || '',
@@ -629,6 +663,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         additionalOptions: prod.additionalOptions,
         categoryAttributes: prod.categoryAttributes,
         imageUrl: prod.imageUrl,
+        images: prod.images,
+        colorVariants: prod.colorVariants,
         sku: prod.sku,
       });
       if (res?.data) {
@@ -662,6 +698,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ...(updated.additionalOptions && { additionalOptions: updated.additionalOptions }),
         ...(updated.categoryAttributes && { categoryAttributes: updated.categoryAttributes }),
         ...(updated.imageUrl !== undefined && { imageUrl: updated.imageUrl }),
+        ...(updated.images !== undefined && { images: updated.images }),
+        ...(updated.colorVariants !== undefined && { colorVariants: updated.colorVariants }),
         ...(updated.sku !== undefined && { sku: updated.sku }),
       });
       invalidateResources('products', 'inventory', 'analytics');
@@ -761,9 +799,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateOrderStatus = async (id: string, status: OrderStatus, tracking?: string) => {
-    const formatStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
     try {
-      await api.updateOrderStatus(id, formatStatus);
+      await api.updateOrderStatus(id, status);
       invalidateResources('orders', 'analytics');
       await refreshData(true);
     } catch (err: any) {
@@ -791,9 +828,14 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addAuditLog(`Generated new ERP integration API Key`);
   };
 
-  const updateSubscription = (plan: 'MONTHLY' | 'ANNUAL') => {
-    setProfile((prev) => ({ ...prev, subscriptionPlan: plan, subscriptionStatus: 'ACTIVE' }));
-    addAuditLog(`Upgraded subscription plan to ${plan} (₹${plan === 'MONTHLY' ? '300/mo' : '3000/yr'})`);
+  const updateSubscription = (plan: 'MONTHLY' | 'ANNUAL', renewalDate?: string) => {
+    setProfile((prev) => ({
+      ...prev,
+      subscriptionPlan: plan,
+      subscriptionStatus: 'ACTIVE',
+      nextBillingDate: renewalDate ? new Date(renewalDate).toLocaleDateString('en-IN') : prev.nextBillingDate,
+    }));
+    addAuditLog(`Verified subscription payment for ${plan} plan`);
   };
 
   const terminateSession = (sessionId: string) => {

@@ -1,8 +1,15 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
-const { User, WholesalerProfile, Category, Product, Inventory } = require('../src/models');
-const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
+const {
+  User,
+  WholesalerProfile,
+  WholesalerRetailerRelationship,
+  Category,
+  Product,
+  Inventory,
+} = require('../src/models');
+const { ROLES, USER_STATUS, KYC_STATUS, RELATIONSHIP_STATUS } = require('../src/config/constants');
 
 setupTestDB();
 
@@ -94,6 +101,102 @@ describe('Product update validation and persistence', () => {
     expect(reloaded.wholesalePrice).toBe(120);
     expect(reloaded.stock).toBe(14);
     expect((await Inventory.findOne({ productId: product._id })).available).toBe(14);
+  });
+
+  test('product edits and retailer catalog preserve every product and color image', async () => {
+    const retailer = await User.create({
+      name: 'Catalog Retailer',
+      email: 'catalog-retailer@test.com',
+      passwordHash: await User.hashPassword('Retailer123'),
+      role: ROLES.RETAILER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerRetailerRelationship.create({
+      wholesalerId: wholesaler._id,
+      retailerId: retailer._id,
+      status: RELATIONSHIP_STATUS.ACTIVE,
+    });
+    const retailerLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'catalog-retailer@test.com',
+      password: 'Retailer123',
+    });
+    const retailerToken = retailerLogin.body.data.token;
+    const productUrl = `/api/v1/wholesaler/products/${product._id}`;
+    const singleImage = 'https://images.example.com/legacy-product.jpg';
+
+    const legacyImageUpdate = await request(app)
+      .put(productUrl)
+      .set('Authorization', ['Bearer', token].join(' '))
+      .send({ imageUrl: singleImage, images: [singleImage] });
+    expect(legacyImageUpdate.status).toBe(200);
+    expect(legacyImageUpdate.body.data.images).toEqual([singleImage]);
+    const legacyRetailerCatalog = await request(app)
+      .get('/api/v1/retailer/products')
+      .set('Authorization', ['Bearer', retailerToken].join(' '));
+    expect(legacyRetailerCatalog.body.data[0].images).toEqual([singleImage]);
+
+    const images = [
+      'https://images.example.com/product-1.jpg',
+      'https://images.example.com/product-2.jpg',
+      'https://images.example.com/product-3.jpg',
+      'https://images.example.com/product-4.jpg',
+      'https://images.example.com/product-5.jpg',
+    ];
+    const colorVariants = [
+      { color: 'Black', sku: 'CHANIYA-BLK', images: [images[0], images[1]] },
+      { color: 'Blue', sku: 'CHANIYA-BLU', images: [images[2]] },
+    ];
+    const updateResponse = await request(app)
+      .put(productUrl)
+      .set('Authorization', ['Bearer', token].join(' '))
+      .send({ imageUrl: images[0], images, colors: ['Black', 'Blue'], colorVariants });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.images).toEqual(images);
+    expect(updateResponse.body.data.colorVariants.map((variant) => variant.images)).toEqual([
+      [images[0], images[1]],
+      [images[2]],
+    ]);
+
+    const createResponse = await request(app)
+      .post('/api/v1/wholesaler/products')
+      .set('Authorization', ['Bearer', token].join(' '))
+      .send({
+        name: 'New multi-image chaniya choli',
+        sku: 'CHANIYA-02',
+        categoryId: String(category._id),
+        wholesalePrice: 100,
+        sellingPrice: 100,
+        mrp: 150,
+        stock: 10,
+        imageUrl: images[0],
+        images,
+        sizes: ['Free Size'],
+        colors: ['Black', 'Blue'],
+        colorVariants,
+      });
+    expect(createResponse.status).toBe(201);
+      expect(createResponse.body.data.product.images).toEqual(images);
+      expect(createResponse.body.data.product.colorVariants.map((variant) => variant.images)).toEqual([
+      [images[0], images[1]],
+      [images[2]],
+    ]);
+
+    const retailerProducts = await request(app)
+      .get('/api/v1/retailer/products')
+      .set('Authorization', ['Bearer', retailerToken].join(' '));
+    expect(retailerProducts.status).toBe(200);
+    const listedUpdatedProduct = retailerProducts.body.data.find((item) => String(item._id) === String(product._id));
+    const listedCreatedProduct = retailerProducts.body.data.find((item) => String(item._id) === String(createResponse.body.data.product._id));
+    expect(listedUpdatedProduct.images).toEqual(images);
+    expect(listedUpdatedProduct.colorVariants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ color: 'Black', sku: 'CHANIYA-BLK', images: [images[0], images[1]] }),
+        expect.objectContaining({ color: 'Blue', sku: 'CHANIYA-BLU', images: [images[2]] }),
+      ])
+    );
+    expect(listedCreatedProduct.images).toEqual(images);
+    expect(listedCreatedProduct.colorVariants).toEqual(listedUpdatedProduct.colorVariants);
   });
 
   test('rejects a negative price with a field-specific validation error', async () => {

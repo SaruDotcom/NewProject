@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -11,7 +11,6 @@ import {
   TrendingUp,
   CreditCard,
   ShieldCheck,
-  FileCheck2,
   LogOut,
   Building2,
   Sparkles,
@@ -24,7 +23,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
-import { clearAuthToken } from '@/lib/api';
+import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
 import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
@@ -32,7 +31,6 @@ const NAV_ITEMS = [
   { name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Products', path: '/dashboard/products', icon: Package },
   { name: 'Categories', path: '/dashboard/categories', icon: FolderTree },
-  { name: 'KYC Verification', path: '/dashboard/kyc', icon: FileCheck2 },
   { name: 'Inventory', path: '/dashboard/inventory', icon: Boxes },
   { name: 'Retailers', path: '/dashboard/retailers', icon: Users },
   { name: 'Credit Policy', path: '/dashboard/credit-policy', icon: HandCoins, badge: 'Credit' },
@@ -42,7 +40,7 @@ const NAV_ITEMS = [
   { name: 'Business Analytics', path: '/dashboard/analytics', icon: TrendingUp },
   { name: 'Reports', path: '/dashboard/reports', icon: FileText, badge: 'Export' },
   { name: 'Wallet & Earnings', path: '/dashboard/wallet', icon: CreditCard, badge: 'New' },
-  { name: 'Subscription', path: '/dashboard/subscription', icon: CreditCard, badge: '₹300/mo' },
+  { name: 'Subscription', path: '/dashboard/subscription', icon: CreditCard },
   { name: 'Security', path: '/dashboard/security', icon: ShieldCheck },
   { name: 'Help & Support', path: '/dashboard/support', icon: Headphones },
 ];
@@ -55,6 +53,25 @@ export const Sidebar: React.FC = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [subscription, setSubscription] = useState<WholesalerSubscription | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadSubscription = async () => {
+      try {
+        const response = await api.getWholesalerSubscription();
+        if (active) setSubscription(response.data.subscription);
+      } catch (error) {
+        console.warn('Unable to load subscription details for the sidebar.', error);
+      }
+    };
+    void loadSubscription();
+    window.addEventListener('wholesaler-subscription-updated', loadSubscription);
+    return () => {
+      active = false;
+      window.removeEventListener('wholesaler-subscription-updated', loadSubscription);
+    };
+  }, []);
 
   const handleLogout = () => {
     clearAuthToken();
@@ -86,10 +103,15 @@ export const Sidebar: React.FC = () => {
           <Sparkles className="w-4 h-4 text-tradeflow-green" />
           <div>
             <div className="text-xs font-semibold text-white">
-              {profile.subscriptionPlan === 'ANNUAL' ? 'Annual Pro Plan' : 'Monthly Plan'}
+              {subscription?.planName || 'Subscription'}
             </div>
+            {subscription && (
+              <div className="text-[11px] text-tradeflow-gray-200 font-medium">
+                ₹{subscription.amount.toLocaleString('en-IN')} / {subscription.billingPeriod === 'YEARLY' ? 'year' : 'month'}
+              </div>
+            )}
             <div className="text-[11px] text-tradeflow-gray-200 font-medium">
-              Status: {profile.subscriptionStatus}
+              Status: {subscription?.status || profile.subscriptionStatus || 'Not subscribed'}
             </div>
           </div>
         </div>

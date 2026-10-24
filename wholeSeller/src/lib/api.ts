@@ -128,6 +128,30 @@ export interface BulkProductUploadRow {
   data: Record<string, string | number | null>;
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  billingPeriod: 'MONTHLY' | 'YEARLY';
+  description: string;
+  taxNote: string;
+  isActive: boolean;
+  order: number;
+  recommended: boolean;
+  features: Array<{ id: string; title: string; enabled: boolean; order: number }>;
+}
+
+export interface WholesalerSubscription {
+  planId: string;
+  planName: string;
+  status: 'ACTIVE' | 'EXPIRED';
+  amount: number;
+  currency: string;
+  billingPeriod: 'MONTHLY' | 'YEARLY';
+  startedAt: string;
+  renewalDate: string;
+}
+
 export interface BulkProductPreviewRow {
   rowNumber: number;
   valid: boolean;
@@ -303,6 +327,41 @@ export const api = {
   getMe: () =>
     request<{ success: boolean; data: any }>('/auth/me', { method: 'GET' }),
 
+  getPublicSubscriptionPlan: () =>
+    request<{ success: boolean; data: { plans: SubscriptionPlan[] } }>('/subscription-plan', { method: 'GET' }),
+
+  getWholesalerSubscription: () =>
+    request<{
+      success: boolean;
+      data: {
+        plans: SubscriptionPlan[];
+        subscription: WholesalerSubscription | null;
+        payment: { configured: boolean };
+      };
+    }>('/wholesaler/subscription', { method: 'GET' }),
+
+  createSubscriptionOrder: (planId: string) =>
+    request<{
+      success: boolean;
+      message?: string;
+      data: {
+        configured: boolean;
+        keyId?: string;
+        order?: { id: string; amount: number; currency: string };
+        plan?: SubscriptionPlan;
+      };
+    }>('/wholesaler/subscription/orders', { method: 'POST', body: JSON.stringify({ planId }) }),
+
+  verifySubscriptionPayment: (payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) =>
+    request<{ success: boolean; data: { subscription: WholesalerSubscription } }>(
+      '/wholesaler/subscription/verify',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+
   getMyKyc: () =>
     request<{ success: boolean; data: any }>('/wholesaler/kyc', { method: 'GET' }),
 
@@ -352,6 +411,44 @@ export const api = {
 
   getRetailerDetails: (relationshipId: string) =>
     request<{ success: boolean; data: any }>(`/wholesaler/retailers/${relationshipId}`, { method: 'GET' }),
+
+  getRetailerIdentityProfile: (retailerId: string) =>
+    request<{ success: boolean; data: any }>(
+      `/retailer-identity/${encodeURIComponent(retailerId)}/profile`,
+      { method: 'GET' },
+    ),
+
+  getFullRetailerAadhaar: (retailerId: string) =>
+    request<{ success: boolean; data: { number: string } }>(
+      `/retailer-identity/${encodeURIComponent(retailerId)}/aadhaar`,
+      { method: 'GET' },
+    ),
+
+  updateRetailerVerification: (retailerId: string, status: 'VERIFIED' | 'REJECTED', note = '') =>
+    request<{ success: boolean; data: { verificationStatus: string; verificationNote: string } }>(
+      `/retailer-identity/${encodeURIComponent(retailerId)}/verification`,
+      { method: 'PATCH', body: JSON.stringify({ status, note }) },
+    ),
+
+  getRetailerDocument: async (retailerId: string, documentType: string): Promise<Blob> => {
+    const url = buildApiUrl(`/retailer-identity/${encodeURIComponent(retailerId)}/documents/${encodeURIComponent(documentType)}`);
+    const token = getAuthToken();
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      let message = `Unable to load retailer document (HTTP ${response.status}).`;
+      try {
+        const data = await response.json();
+        message = data?.message || message;
+      } catch {
+        // Keep the status-based error message when the server does not return JSON.
+      }
+      throw new ApiError(message, response.status);
+    }
+    return response.blob();
+  },
 
   // Categories
   getCategories: () =>

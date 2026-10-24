@@ -90,7 +90,18 @@ JWT_REFRESH_EXPIRES=7d
 
 # CORS
 CLIENT_URL=http://localhost:3000,http://localhost:5173,http://localhost:3001
+
+# Retailer identity documents and PAN/Aadhaar encryption
+RETAILER_IDENTITY_ENCRYPTION_KEY=<64-hex-character AES-256-GCM key>
+
+# Wholesaler subscriptions (use Razorpay test-mode credentials in development)
+RAZORPAY_KEY_ID=rzp_test_...
+RAZORPAY_KEY_SECRET=...
 ```
+
+Generate the encryption key with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and store it as a secret in `Backend/.env`. Keep the same key available for decryption; changing it requires re-encrypting saved retailer identity numbers.
+
+The Super Admin-managed wholesaler plan catalog is initialized with Monthly Plan (₹300/month), Annual Pro Plan (₹3,000/year), and the existing Wholesaler Plan (₹499/month). Super Admins can add, edit, deactivate, reorder, and delete plans and features. Plan and price details are snapshotted when an order is created, so catalog changes do not alter an existing subscription. Razorpay credentials are required to create and verify subscription payments; without them, the wholesaler portal displays “Online payment is not configured”.
 
 ---
 

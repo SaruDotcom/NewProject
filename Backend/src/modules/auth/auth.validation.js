@@ -36,13 +36,38 @@ const registerSchema = Joi.object({
     .default(ROLES.RETAILER),
   
   // Wholesaler specific
-  businessName: Joi.string().optional().allow('', null),
+  businessName: Joi.string()
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.string().optional().allow('', null),
+      otherwise: Joi.string().trim().required().min(2).max(150),
+    }),
   businessLogoUrl: Joi.string().optional().allow('', null),
   businessType: Joi.string().optional().allow('', null),
-  city: Joi.string().optional().allow('', null),
-  state: Joi.string().optional().allow('', null),
-  address: Joi.string().optional().allow('', null),
-  pincode: Joi.string().optional().allow('', null),
+  city: Joi.string()
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.string().optional().allow('', null),
+      otherwise: Joi.string().trim().required(),
+    }),
+  state: Joi.string()
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.string().optional().allow('', null),
+      otherwise: Joi.string().trim().required(),
+    }),
+  address: Joi.string()
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.string().optional().allow('', null),
+      otherwise: Joi.string().trim().required(),
+    }),
+  pincode: Joi.string()
+    .when('role', {
+      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
+      then: Joi.string().optional().allow('', null),
+      otherwise: Joi.string().trim().pattern(/^\d{6}$/).required(),
+    }),
   gstin: Joi.string().optional().allow('', null),
   pan: Joi.string().optional().allow('', null),
   isGstRegistered: Joi.boolean().optional(),
@@ -55,7 +80,24 @@ const registerSchema = Joi.object({
   
   // Retailer specific
   gstStatus: Joi.string().optional().allow('', null),
-  gstNumber: Joi.string().optional().allow('', null),
+  gstNumber: Joi.string()
+    .trim()
+    .uppercase()
+    .pattern(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/)
+    .optional()
+    .allow('', null),
+  gstin: Joi.string()
+    .trim()
+    .uppercase()
+    .pattern(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/)
+    .optional()
+    .allow('', null),
+  category: Joi.string().optional().allow('', null).max(100),
+  panNumber: Joi.string().trim().uppercase().pattern(/^[A-Z]{5}[0-9]{4}[A-Z]$/).optional().allow('', null),
+  aadhaarNumber: Joi.string().trim().pattern(/^\d{12}$/).optional().allow('', null),
+  identityConsent: Joi.alternatives()
+    .try(Joi.boolean(), Joi.string().valid('true', 'false'))
+    .optional(),
   referralCode: Joi.string().optional().allow('', null).trim().max(32),
   inviteToken: Joi.string().optional().trim().pattern(/^[a-f0-9]{64}$/i),
   ref: Joi.string().optional().trim().max(64).allow('', null),

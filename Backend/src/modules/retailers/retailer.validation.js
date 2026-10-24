@@ -82,8 +82,19 @@ const checkoutSchema = Joi.object({
   paymentMethod: Joi.string()
     .valid('COD', 'CREDIT', 'BANK_TRANSFER', 'UPI', 'CARD', 'WALLET', 'NET_BANKING', 'ONLINE')
     .default('COD'),
+  couponCode: Joi.string().trim().allow('', null).optional(),
   idempotencyKey: Joi.string().trim().optional(),
   notes: Joi.string().trim().allow('', null).optional(),
+});
+
+const verifyCheckoutPaymentSchema = Joi.object({
+  razorpay_order_id: Joi.string().trim().required(),
+  razorpay_payment_id: Joi.string().trim().required(),
+  razorpay_signature: Joi.string().trim().required(),
+});
+
+const failCheckoutPaymentSchema = Joi.object({
+  razorpay_order_id: Joi.string().trim().required(),
 });
 
 const addressSchema = Joi.object({
@@ -212,9 +223,8 @@ const updateBusinessProfileSchema = Joi.object({
   postalCode: Joi.string().trim().allow('', null).optional(),
   country: Joi.string().trim().allow('', null).optional(),
   gstStatus: Joi.string().valid('UNREGISTERED', 'REGISTERED', 'COMPOSITION').optional(),
-  gstNumber: Joi.string().trim().allow('', null).optional(),
-  gstin: Joi.string().trim().allow('', null).optional(),
-  pan: Joi.string().trim().allow('', null).optional(),
+  gstNumber: Joi.string().trim().uppercase().pattern(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/).allow('', null).optional(),
+  gstin: Joi.string().trim().uppercase().pattern(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/).allow('', null).optional(),
   tradeLicenseNumber: Joi.string().trim().allow('', null).optional(),
   address: Joi.alternatives().try(
     Joi.string().trim().allow('', null),
@@ -255,6 +265,8 @@ module.exports = {
   addToCartSchema,
   updateCartItemSchema,
   checkoutSchema,
+  verifyCheckoutPaymentSchema,
+  failCheckoutPaymentSchema,
   addressSchema,
   updateAddressSchema,
   createReturnSchema,

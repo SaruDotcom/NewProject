@@ -418,7 +418,7 @@ export default function CategoriesPage() {
             <p className="mt-0.5 text-gray-600">Current status: {profile.kycStatus || 'DRAFT'}</p>
           </div>
           <Link
-            to="/dashboard/kyc"
+            to="/dashboard/profile?tab=kyc"
             className="inline-flex w-fit items-center rounded-xl bg-tradeflow-green px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-tradeflow-green-hover shadow-2xs transition-colors"
           >
             Complete KYC

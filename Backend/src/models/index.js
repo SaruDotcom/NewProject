@@ -32,6 +32,11 @@ const Review = require('./Review');
 const Coupon = require('./Coupon');
 const WholesalerInvite = require('./WholesalerInvite');
 const EmailOtp = require('./EmailOtp');
+const SubscriptionPlan = require('./SubscriptionPlan');
+const SubscriptionPlanCatalog = require('./SubscriptionPlanCatalog');
+const WholesalerSubscription = require('./WholesalerSubscription');
+const SubscriptionPayment = require('./SubscriptionPayment');
+const RetailerCheckoutPayment = require('./RetailerCheckoutPayment');
 
 module.exports = {
   User,
@@ -68,4 +73,9 @@ module.exports = {
   Coupon,
   WholesalerInvite,
   EmailOtp,
+  SubscriptionPlan,
+  SubscriptionPlanCatalog,
+  WholesalerSubscription,
+  SubscriptionPayment,
+  RetailerCheckoutPayment,
 };

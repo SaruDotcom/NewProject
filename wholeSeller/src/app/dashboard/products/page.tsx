@@ -581,7 +581,7 @@ export default function ProductsPage() {
             <p className="font-bold text-status-warning-foreground">KYC approval is required to add products.</p>
             <p className="mt-1 text-xs text-status-warning-foreground">Current status: {profile.kycStatus || 'DRAFT'}</p>
           </div>
-          <Link to="/dashboard/kyc" className="inline-flex w-fit items-center rounded-md bg-tradeflow-green px-3 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-green-hover">
+          <Link to="/dashboard/profile?tab=kyc" className="inline-flex w-fit items-center rounded-md bg-tradeflow-green px-3 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-green-hover">
             Complete KYC
           </Link>
         </div>

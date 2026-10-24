@@ -31,8 +31,7 @@ import { WholesalerProvider } from '@/context/WholesalerContext';
 import { LoginForm } from '@/app/login/page';
 import { RegisterForm } from '@/app/register/page';
 import { BRAND_NAME } from '@/config/brand';
-import { WHOLESALER_PLAN_PRICING } from '@/config/plans';
-import { clearAuthToken, getAuthToken } from '@/lib/api';
+import { clearAuthToken, getAuthToken, type SubscriptionPlan, default as api } from '@/lib/api';
 
 const landingCopy = {
   hero: {
@@ -220,8 +219,28 @@ function LandingContent() {
   const [modalTab, setModalTab] = useState<'welcome' | 'register' | 'login' | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authStatus, setAuthStatus] = useState<'checking' | 'loggedIn' | 'loggedOut'>(getAuthToken() ? 'checking' : 'loggedOut');
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [subscriptionPlanError, setSubscriptionPlanError] = useState('');
+  const [subscriptionPlanLoading, setSubscriptionPlanLoading] = useState(true);
   const loggedIn = authStatus === 'loggedIn';
   const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
+
+  useEffect(() => {
+    let active = true;
+    void api.getPublicSubscriptionPlan()
+      .then((response) => {
+        if (active) setSubscriptionPlans(response.data.plans);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.error('Unable to load subscription plan for the landing page.', error);
+        setSubscriptionPlanError('Subscription plan details are temporarily unavailable.');
+      })
+      .finally(() => {
+        if (active) setSubscriptionPlanLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -567,21 +586,29 @@ function LandingContent() {
         <div className="landing-reveal mx-auto max-w-2xl text-center">
           <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Plans for your business</p>
           <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Plans for your wholesale business</h2>
-          <p className="mt-3 text-sm leading-5 text-gray-600">See the same monthly and yearly prices shown in your account.</p>
+          <p className="mt-3 text-sm leading-5 text-gray-600">Choose a plan that fits your business and billing preference.</p>
         </div>
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {[
-            ['Monthly Wholesaler Plan', WHOLESALER_PLAN_PRICING.MONTHLY, 'month'],
-            ['Annual Pro Plan', WHOLESALER_PLAN_PRICING.ANNUAL, 'year'],
-          ].map(([name, price, period]) => (
-            <article key={name} className="landing-reveal rounded-2xl border border-tradeflow-gray-200 bg-white p-6 shadow-sm">
+        <div className="mx-auto mt-8 grid max-w-6xl gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {subscriptionPlans.length ? subscriptionPlans.map((subscriptionPlan) => (
+            <article key={subscriptionPlan.id} className={`landing-reveal rounded-2xl border bg-white p-6 shadow-sm ${subscriptionPlan.recommended ? 'border-tradeflow-green ring-2 ring-tradeflow-green/20' : 'border-tradeflow-gray-200'}`}>
+              {subscriptionPlan.recommended && <span className="inline-flex rounded-full bg-tradeflow-green/10 px-3 py-1 text-xs font-bold text-tradeflow-green">Recommended</span>}
               <span className="flex size-10 items-center justify-center rounded-full bg-tradeflow-green/10 text-tradeflow-green"><CreditCard className="size-5" /></span>
-              <h3 className="mt-4 font-heading text-lg font-bold">{name}</h3>
-              <p className="mt-3 text-4xl font-extrabold tracking-tight">₹{Number(price).toLocaleString('en-IN')}<span className="ml-1 text-sm font-medium text-gray-500">/{period}</span></p>
-              <p className="mt-3 text-sm leading-5 text-gray-600">Review plan details and available offers in your account.</p>
+              <h3 className="mt-4 font-heading text-lg font-bold">{subscriptionPlan.name}</h3>
+              <p className="mt-3 text-4xl font-extrabold tracking-tight">₹{subscriptionPlan.price.toLocaleString('en-IN')}<span className="ml-1 text-sm font-medium text-gray-500">/{subscriptionPlan.billingPeriod === 'YEARLY' ? 'year' : 'month'}</span></p>
+              <p className="mt-3 text-sm leading-5 text-gray-600">{subscriptionPlan.description}</p>
+              <ul className="mt-5 space-y-2 text-sm text-gray-700">
+                {subscriptionPlan.features.filter((feature) => feature.enabled).map((feature) => (
+                  <li key={feature.id} className="flex items-center gap-2"><Check className="size-4 text-tradeflow-green" />{feature.title}</li>
+                ))}
+              </ul>
+              <p className="mt-4 text-xs text-gray-500">{subscriptionPlan.taxNote}</p>
               {!loggedIn && <button type="button" onClick={() => showModal('register')} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-4 py-2.5 text-sm font-bold text-tradeflow-navy">Register Free <ArrowRight className="size-4" /></button>}
             </article>
-          ))}
+          )) : (
+            <p role={subscriptionPlanError ? 'alert' : 'status'} className="rounded-xl border border-tradeflow-gray-200 bg-white p-6 text-center text-sm text-gray-600">
+              {subscriptionPlanError || (subscriptionPlanLoading ? 'Loading subscription plans...' : 'No subscription plans are currently available.')}
+            </p>
+          )}
         </div>
       </section>
 

@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@/lib/router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Inventory, CheckCircle, HeadsetMic, CurrencyRupee, Business, Handshake } from "@mui/icons-material";
+import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Inventory, CheckCircle, HeadsetMic, CurrencyRupee, Business, Handshake, ShoppingCart, Favorite, FlashOn } from "@mui/icons-material";
 import { ProductCard, ProductGrid, ProductVisual, SectionHeading, StatusBadge, WholesalerCard, money } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -443,6 +443,10 @@ export function ProductDetailPage({ productId }: { productId: string }) {
   useEffect(() => {
     if (product) setQuantity(product.moq);
   }, [product?.id, product?.moq]);
+  useEffect(() => {
+    setSelectedColor('');
+    setColorError(false);
+  }, [product?.id]);
   
   const navigate = useNavigate();
   
@@ -514,63 +518,110 @@ export function ProductDetailPage({ productId }: { productId: string }) {
   return (
     <main className="shell py-8">
       <nav className="mb-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Link to="/products">Products</Link>
+        <Link to="/products" className="hover:text-ink transition-colors">Products</Link>
         <ChevronRight className="size-3" />
-        <span>{product.category}</span>
+        <span className="hover:text-ink transition-colors">{product.category}</span>
         <ChevronRight className="size-3" />
-        <span className="text-foreground">{product.name}</span>
+        <span className="text-foreground font-medium truncate max-w-xs">{product.name}</span>
       </nav>
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,.95fr)]">
-        <div>
+
+      {/* Main Product Showcase: 12-Column Responsive Layout */}
+      <div className="grid gap-8 lg:grid-cols-12 items-start">
+        {/* Left Column: Image Gallery (5 Cols) - Sticky on Desktop */}
+        <div className="lg:col-span-5 sticky top-24 z-20">
           <ProductImageGallery
             images={galleryImages}
             productName={product.name}
           />
         </div>
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Verified className="size-4 text-primary" />
-            <span className="text-sm font-bold text-primary">{product.brand}</span>
-            <span className="text-sm text-muted-foreground">in {product.category}</span>
-          </div>
-          <h1 className="mt-3 text-3xl font-extrabold text-ink sm:text-4xl">{product.name}</h1>
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-            <span className="flex items-center gap-1 font-bold">
-              <Star className="size-4 fill-warning text-warning" />
-              {product.rating}
-            </span>
-            <span className="text-muted-foreground">Verified retailer catalog</span>
-            <span className={cn("font-semibold", product.stock > 10 ? "text-success" : product.stock > 0 ? "text-warning" : "text-destructive")}>
-              {product.stock > 10 ? "In Stock" : product.stock > 0 ? "Low Stock" : "Out of Stock"}
-            </span>
-          </div>
-          <div className="mt-7 border-y py-6">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <strong className="text-3xl text-ink">{money(product.price)}</strong>
-              <span className="text-sm text-muted-foreground">per unit</span>
-              <span className="text-muted-foreground line-through">MRP {money(product.mrp)}</span>
-              {saving > 0 && <Badge className="bg-success text-success-foreground">Save {saving}%</Badge>}
+
+        {/* Right Column: Details & Purchase Section (7 Cols) - Wider & Compact */}
+        <div className="lg:col-span-7 flex flex-col gap-4">
+          {/* Header Info: Brand, Category, Title, Rating, Stock */}
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-black uppercase tracking-wider">
+                <Verified className="size-3.5 text-emerald-600" />
+                {product.brand}
+              </span>
+              <span className="text-xs text-muted-foreground font-medium">in {product.category}</span>
+              <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-muted/60 text-foreground border border-border/60">
+                <span className={cn("size-2 rounded-full", product.stock > 10 ? "bg-emerald-600 animate-pulse" : product.stock > 0 ? "bg-amber-500" : "bg-rose-500")} />
+                {product.stock > 10 ? "In Stock" : product.stock > 0 ? `Only ${product.stock} left` : "Out of Stock"}
+              </span>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">Wholesale price inclusive of applicable taxes. Final invoice issued by {w.name}.</p>
+
+            <h1 className="mt-2 text-2xl sm:text-3xl font-black text-ink tracking-tight leading-tight">
+              {product.name}
+            </h1>
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1 font-bold text-ink">
+                <Star className="size-3.5 fill-warning text-warning" />
+                {product.rating}
+              </span>
+              <span>·</span>
+              <span>Verified Wholesaler Catalog</span>
+              {activeSku && (
+                <>
+                  <span>·</span>
+                  <span>SKU: <strong className="text-ink">{activeSku}</strong></span>
+                </>
+              )}
+            </div>
           </div>
+
+          {/* Pricing & Bulk Tiers Strip */}
+          <div className="rounded-xl border border-border/70 bg-card p-4 shadow-2xs">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <strong className="text-3xl font-black text-ink">{money(product.price)}</strong>
+              <span className="text-xs font-semibold text-muted-foreground">per unit</span>
+              <span className="text-sm text-muted-foreground line-through">MRP {money(product.mrp)}</span>
+              {saving > 0 && (
+                <Badge className="bg-emerald-600 text-white font-extrabold text-xs px-2 py-0.5 shadow-2xs">
+                  Save {saving}%
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Wholesale trade price inclusive of applicable taxes. Issued by {w.businessName || w.name}.
+            </p>
+
+            {/* Wholesale Pricing Tiers - Compact horizontal strip */}
+            {product.pricingTiers && product.pricingTiers.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-border/60">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Wholesale Volume Tiers:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {product.pricingTiers.map((tier, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800 text-xs shadow-2xs"
+                    >
+                      <span className="font-semibold text-muted-foreground">{tier.minQty}+ units:</span>
+                      <strong className="font-black text-emerald-900 dark:text-emerald-200">{money(tier.pricePerUnit)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Color & Variant Selection */}
           {product.colors && product.colors.length > 0 && (
-            <div className="mt-5">
+            <div className="rounded-xl border border-border/70 bg-card p-4 shadow-2xs">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-ink flex items-center gap-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink flex items-center gap-2">
                   <span>Color:</span>
                   {selectedColor ? (
-                    <span className="text-emerald-700 font-extrabold">{selectedColor}</span>
+                    <span className="text-emerald-700 dark:text-emerald-400 font-extrabold normal-case text-sm">{selectedColor}</span>
                   ) : (
-                    <span className="text-xs font-normal text-muted-foreground">(Select a color option below)</span>
+                    <span className="text-[11px] font-normal text-muted-foreground normal-case">(Choose a color)</span>
                   )}
                 </p>
-                {activeSku && (
-                  <span className="text-xs text-muted-foreground font-medium">
-                    SKU: <strong className="text-ink">{activeSku}</strong>
-                  </span>
-                )}
               </div>
-              <div className="mt-2.5">
+              <div className="mt-2">
                 <ColorSwatches
                   colors={product.colors}
                   colorVariants={product.colorVariants}
@@ -588,115 +639,153 @@ export function ProductDetailPage({ productId }: { productId: string }) {
               </div>
             </div>
           )}
-          
-          {product.pricingTiers && product.pricingTiers.length > 0 && (
-            <div className="mt-5 border bg-canvas p-4 rounded-xl">
-              <h3 className="font-bold text-sm mb-2 text-ink">Bulk Pricing</h3>
-              <div className="grid gap-2">
-                {product.pricingTiers.map((tier, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{tier.minQty}+ units</span>
-                    <strong className="text-ink">{money(tier.pricePerUnit)}</strong>
+
+          {/* Compact, Wider Purchase Section (Requirement 6) */}
+          <div className="rounded-2xl border-2 border-emerald-600/30 bg-slate-50/70 dark:bg-card/70 p-4 sm:p-5 shadow-xs">
+            {/* Row 1: Quantity selector & Quick add chips & Total order value */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border/70">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Order Quantity
+                </label>
+                <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+                  {/* Stepper */}
+                  <div className="flex h-10 items-center border border-border/90 bg-card rounded-lg overflow-hidden shadow-2xs">
+                    <Button
+                      type="button"
+                      aria-label="Decrease quantity"
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-9 text-muted-foreground hover:text-ink cursor-pointer"
+                      onClick={() => setQuantity((q) => Math.max(product.moq, q - 1))}
+                    >
+                      <Remove className="size-4" />
+                    </Button>
+                    <input
+                      type="number"
+                      min={product.moq}
+                      value={quantity}
+                      step={1}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (Number.isInteger(val) && val >= product.moq) {
+                          setQuantity(val);
+                        } else if (e.target.value === "") {
+                          setQuantity(product.moq);
+                        }
+                      }}
+                      className="w-16 text-center font-extrabold text-ink text-sm bg-transparent focus:outline-hidden py-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <Button
+                      type="button"
+                      aria-label="Increase quantity"
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-9 text-muted-foreground hover:text-ink cursor-pointer"
+                      onClick={() => setQuantity((q) => q + 1)}
+                    >
+                      <Add className="size-4" />
+                    </Button>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          <div className="mt-5 grid grid-cols-3 gap-2 text-sm">
-            <div className="border bg-card p-3 rounded-xl">
-              <Inventory2 className="mb-2 size-4 text-primary" />
-              <b className="block">MOQ</b>
-              <span className="text-muted-foreground">{product.moq} × {product.unit || 'units'}</span>
-            </div>
-            <div className="border bg-card p-3 rounded-xl">
-              <Inventory className="mb-2 size-4 text-success" />
-              <b className="block">Availability</b>
-              <span className="text-success">{product.stock > 0 ? "In stock" : "Out of stock"}</span>
-            </div>
-            <div className="border bg-card p-3 rounded-xl">
-              <Schedule className="mb-2 size-4 text-primary" />
-              <b className="block">Dispatch</b>
-              <span className="text-muted-foreground">Within 24h</span>
-            </div>
-          </div>
-          <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <label className="text-sm font-bold">Order quantity</label>
-              <div className="mt-2 flex h-11 w-fit items-center border bg-card rounded-xl overflow-hidden shadow-2xs">
-                <Button aria-label="Decrease quantity" variant="ghost" size="icon" onClick={() => setQuantity((q) => Math.max(product.moq, q - 1))}>
-                  <Remove />
-                </Button>
-                <input
-                  type="number"
-                  min={product.moq}
-                  value={quantity}
-                  step={1}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    if (Number.isInteger(val) && val >= product.moq) {
-                      setQuantity(val);
-                    } else if (e.target.value === "") {
-                      setQuantity(product.moq);
-                    }
-                  }}
-                  className="w-20 text-center font-extrabold text-ink text-base bg-transparent focus:outline-hidden focus:ring-1 focus:ring-primary py-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                <Button aria-label="Increase quantity" variant="ghost" size="icon" onClick={() => setQuantity((q) => q + 1)}>
-                  <Add />
-                </Button>
+                  {/* Inline Quick Add Chips */}
+                  <div className="flex items-center gap-1.5">
+                    {[10, 50, 100].map((inc) => (
+                      <button
+                        key={inc}
+                        type="button"
+                        className="px-2 py-1 text-xs font-bold rounded-md bg-muted/80 hover:bg-emerald-600 hover:text-white transition-all border border-border/60 cursor-pointer"
+                        onClick={() => setQuantity((q) => q + inc)}
+                      >
+                        +{inc}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  MOQ: <strong className="text-ink">{product.moq}</strong> × {product.unit || 'units'}
+                </p>
               </div>
 
-              <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-semibold text-muted-foreground mr-1">Quick Add:</span>
-                {[10, 50, 100, 500].map((inc) => (
-                  <button
-                    key={inc}
-                    type="button"
-                    className="px-2 py-0.5 text-xs font-bold rounded-md bg-muted/80 hover:bg-primary hover:text-white transition-all border border-border/50 cursor-pointer"
-                    onClick={() => setQuantity((q) => q + inc)}
-                  >
-                    +{inc}
-                  </button>
-                ))}
+              {/* Order Value Display */}
+              <div className="text-right">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Total Order Value</p>
+                <strong className="text-2xl font-black text-emerald-700 dark:text-emerald-400">
+                  {money(orderValue)}
+                </strong>
+                <p className="text-[10px] text-muted-foreground">excl. shipping</p>
               </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">Minimum {product.moq} × {product.unit || 'units'}</p>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Order value</p>
-              <strong className="text-xl text-ink">{money(orderValue)}</strong>
+
+            {/* Row 2: Add to Cart, Buy Now, and Wishlist Button side-by-side */}
+            <div className="mt-4 flex items-center gap-3">
+              <Button
+                size="lg"
+                onClick={handleAddToCart}
+                disabled={product.stock <= 0}
+                className="h-12 flex-1 rounded-xl font-black text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                <ShoppingCart className="size-5" />
+                {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
+              </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={handleBuyNow}
+                disabled={product.stock <= 0}
+                className="h-12 flex-1 rounded-xl font-black text-sm border-2 border-foreground/80 hover:bg-foreground hover:text-background text-foreground shadow-sm gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                <FlashOn className="size-5 text-amber-500" />
+                Buy Now
+              </Button>
+
+              {/* Wishlist Square Button */}
+              <button
+                type="button"
+                onClick={() => toggleWishlist(product.id)}
+                aria-label={wishlist.includes(product.id) ? "Remove from wishlist" : "Save to wishlist"}
+                className="size-12 shrink-0 rounded-xl border border-border/90 bg-card hover:bg-muted/70 flex items-center justify-center text-muted-foreground hover:text-rose-600 shadow-2xs transition-all cursor-pointer active:scale-90"
+              >
+                <Favorite className={cn("size-5 transition-colors", wishlist.includes(product.id) ? "fill-rose-600 text-rose-600" : "text-muted-foreground")} />
+              </button>
+            </div>
+
+            {/* Row 3: Compact Key Trust Badges */}
+            <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-border/70 text-center text-xs">
+              <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
+                <Inventory2 className="size-3.5 text-emerald-600" />
+                <span>MOQ: <b>{product.moq}</b></span>
+              </div>
+              <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
+                <Schedule className="size-3.5 text-emerald-600" />
+                <span>Dispatch: <b>24 Hours</b></span>
+              </div>
+              <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
+                <VerifiedUser className="size-3.5 text-emerald-600" />
+                <span>Trade Assurance</span>
+              </div>
             </div>
           </div>
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <Button size="lg" onClick={handleAddToCart} className="rounded-xl font-bold cursor-pointer">
-              Add to cart
-            </Button>
-            <Button size="lg" variant="outline" onClick={handleBuyNow} className="rounded-xl font-bold cursor-pointer">
-              Buy now
-            </Button>
-          </div>
-          <Button variant="ghost" className="mt-2 w-full rounded-xl" onClick={() => toggleWishlist(product.id)}>
-            {wishlist.includes(product.id) ? "Remove from" : "Save to"} wishlist
-          </Button>
-          <div className="mt-5 border bg-canvas p-5 rounded-xl">
-            <div className="flex items-center gap-3">
-              <span className="grid size-12 place-items-center rounded-xl bg-ink font-extrabold text-primary-foreground">{w.initials}</span>
-              <div className="min-w-0 flex-1 font-bold text-ink flex items-center gap-1">
-                {w.businessName || w.name}
-                <Verified className="size-4 text-primary" />
-                <p className="mt-1 text-xs text-muted-foreground">{w.rating} rating · {w.location}</p>
+
+          {/* Seller / Wholesaler Info Card */}
+          <div className="rounded-xl border border-border/70 bg-card p-4 shadow-2xs">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ink font-extrabold text-primary-foreground text-sm shadow-2xs">
+                  {w.initials}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 font-bold text-ink text-sm truncate">
+                    <span>{w.businessName || w.name}</span>
+                    <Verified className="size-3.5 text-primary shrink-0" />
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {w.rating} ★ · {w.location} · {w.delivery}
+                  </p>
+                </div>
               </div>
               <StatusBadge status="Connected" />
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-xs">
-              <span className="flex gap-2">
-                <VerifiedUser className="size-4 text-success" />
-                Verified supplier
-              </span>
-              <span className="flex gap-2">
-                <LocalShipping className="size-4 text-success" />
-                {w.delivery}
-              </span>
             </div>
           </div>
         </div>

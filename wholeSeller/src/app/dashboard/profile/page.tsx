@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { ArrowLeft, Building2, Check, Copy, MapPin } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWholesaler } from '@/context/WholesalerContext';
+import KycPage from '../kyc/page';
 
 export default function WholesalerProfilePage() {
   const { profile } = useWholesaler();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [copied, setCopied] = useState(false);
+  const activeTab = searchParams.get('tab') === 'kyc' ? 'kyc' : 'business';
 
   const copyId = async () => {
     if (!profile.id) return;
@@ -43,6 +46,39 @@ export default function WholesalerProfilePage() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="Profile sections" className="flex gap-2 border-b border-tradeflow-gray-200">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'business'}
+          onClick={() => setSearchParams({})}
+          className={`border-b-2 px-4 py-3 text-sm font-bold transition-colors ${
+            activeTab === 'business'
+              ? 'border-tradeflow-green text-tradeflow-navy'
+              : 'border-transparent text-gray-500 hover:text-tradeflow-navy'
+          }`}
+        >
+          Business Profile
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'kyc'}
+          onClick={() => setSearchParams({ tab: 'kyc' })}
+          className={`border-b-2 px-4 py-3 text-sm font-bold transition-colors ${
+            activeTab === 'kyc'
+              ? 'border-tradeflow-green text-tradeflow-navy'
+              : 'border-transparent text-gray-500 hover:text-tradeflow-navy'
+          }`}
+        >
+          KYC Verification
+        </button>
+      </div>
+
+      {activeTab === 'kyc' ? (
+        <KycPage />
+      ) : (
+        <>
       <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
@@ -94,6 +130,8 @@ export default function WholesalerProfilePage() {
           </dl>
         </section>
       </div>
+        </>
+      )}
     </div>
   );
 }

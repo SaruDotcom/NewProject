@@ -15,6 +15,7 @@ const RetailerRepository = require('../repositories/retailer.repository');
 const ProductRepository = require('../repositories/product.repository');
 const OrderRepository = require('../repositories/order.repository');
 const OrderService = require('../modules/orders/orders.service');
+const RetailerCheckoutService = require('../modules/retailers/retailer-checkout.service');
 const InvitationService = require('../modules/invitations/invitations.service');
 const WalletService = require('./wallet.service');
 const SupportService = require('../modules/support/support.service');
@@ -231,16 +232,12 @@ class RetailerService {
       payload.city ||
       payload.state ||
       payload.pincode ||
-      payload.GSTIN ||
-      payload.PAN ||
       payload.gstin ||
-      payload.pan ||
       payload.gstStatus
     ) {
       await RetailerRepository.updateProfile(retailerId, {
         ...(payload.businessName && { businessName: payload.businessName }),
         ...((payload.GSTIN || payload.gstin) && { gstin: payload.GSTIN || payload.gstin }),
-        ...((payload.PAN || payload.pan) && { pan: payload.PAN || payload.pan }),
         ...(payload.gstStatus && { gstStatus: payload.gstStatus }),
         ...(Object.keys(normalizedAddress).length > 0 && { address: normalizedAddress }),
       });
@@ -257,6 +254,25 @@ class RetailerService {
 
   static async updateBusinessProfile(retailerId, payload) {
     const addressPayload = payload.address && typeof payload.address === 'object' ? payload.address : {};
+    let normalizedPhone;
+    if (payload.phone) {
+      normalizedPhone = String(payload.phone).trim();
+      if (!/^(?:\+?91)?[6-9]\d{9}$/.test(normalizedPhone)) {
+        throw new BadRequestError('Invalid mobile number format. Please provide a valid 10-digit number.', 'INVALID_PHONE');
+      }
+      normalizedPhone = normalizedPhone.replace(/^\+?91(?=[6-9]\d{9}$)/, '');
+      const existingPhone = await User.findOne({
+        _id: { $ne: retailerId },
+        $or: [
+          { phone: normalizedPhone },
+          { phone: `+91${normalizedPhone}` },
+          { phone: `91${normalizedPhone}` },
+        ],
+      }).select('_id').lean();
+      if (existingPhone) {
+        throw new ConflictError('This mobile number is already registered to another account.', 'PHONE_ALREADY_EXISTS');
+      }
+    }
     const profile = await RetailerRepository.updateProfile(retailerId, {
       ...(payload.businessName !== undefined && { businessName: payload.businessName }),
       ...(payload.ownerName !== undefined && { ownerName: payload.ownerName }),
@@ -272,12 +288,19 @@ class RetailerService {
         pincode: payload.pincode || payload.postalCode || addressPayload.pincode || addressPayload.postalCode || '',
         country: payload.country || addressPayload.country || 'India',
       },
-      profileComplete: Boolean(payload.businessName && payload.ownerName && payload.category && (payload.address || payload.street || payload.addressLine1 || addressPayload.street || addressPayload.addressLine1)),
+      profileComplete: Boolean(
+        payload.businessName &&
+        payload.ownerName &&
+        (payload.address || payload.street || payload.addressLine1 || addressPayload.street || addressPayload.addressLine1) &&
+        (payload.city || addressPayload.city) &&
+        (payload.state || addressPayload.state) &&
+        (payload.pincode || payload.postalCode || addressPayload.pincode || addressPayload.postalCode)
+      ),
     });
-    if (payload.ownerName || payload.phone) {
+    if (payload.ownerName || normalizedPhone) {
       await User.findByIdAndUpdate(retailerId, {
         ...(payload.ownerName && { name: payload.ownerName }),
-        ...(payload.phone && { phone: payload.phone }),
+        ...(normalizedPhone && { phone: normalizedPhone }),
       });
     }
     return profile;
@@ -686,13 +709,21 @@ class RetailerService {
       );
     }
 
+    const normalizedPayload = {
+      items,
+      shippingAddress: checkoutPayload.shippingAddress,
+      billingAddress: checkoutPayload.billingAddress,
+      couponCode: checkoutPayload.couponCode,
+    };
+    if (checkoutPayload.paymentMethod === 'ONLINE') {
+      return RetailerCheckoutService.createPaymentOrder(retailerUser, normalizedPayload);
+    }
+
     // Call unified OrderService for authoritative pricing, stock reservation, order & payment creation
     const result = await OrderService.createOrder(
       retailerUser,
       {
-        items,
-        shippingAddress: checkoutPayload.shippingAddress,
-        billingAddress: checkoutPayload.billingAddress,
+        ...normalizedPayload,
         paymentMethod: checkoutPayload.paymentMethod,
         idempotencyKey: checkoutPayload.idempotencyKey,
       },
@@ -703,6 +734,16 @@ class RetailerService {
     await RetailerRepository.clearCart(retailerId);
 
     return result;
+  }
+
+  static async verifyCheckoutPayment(retailerUser, payload, req = null) {
+    const result = await RetailerCheckoutService.verifyPayment(retailerUser, payload, req);
+    await RetailerRepository.clearCart(retailerUser._id);
+    return result;
+  }
+
+  static async failCheckoutPayment(retailerUser, orderId) {
+    return RetailerCheckoutService.markPaymentFailed(retailerUser, orderId);
   }
 
   /**

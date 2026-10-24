@@ -131,7 +131,20 @@ class RetailerController {
   // Checkout
   checkout = asyncHandler(async (req, res) => {
     const order = await RetailerService.checkout(req.user, req.body, req);
+    if (order.configured) {
+      return ApiResponse.success(res, order, 'Razorpay order created');
+    }
     return ApiResponse.created(res, order, 'Order placed successfully');
+  });
+
+  verifyCheckoutPayment = asyncHandler(async (req, res) => {
+    const result = await RetailerService.verifyCheckoutPayment(req.user, req.body, req);
+    return ApiResponse.success(res, result, 'Payment verified and order placed successfully');
+  });
+
+  failCheckoutPayment = asyncHandler(async (req, res) => {
+    const result = await RetailerService.failCheckoutPayment(req.user, req.body.razorpay_order_id);
+    return ApiResponse.success(res, result, 'Checkout payment marked as failed');
   });
 
   // Orders

@@ -1,5 +1,5 @@
 import { jsx as _jsx } from "react/jsx-runtime";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
 import { WholesalerManagementPage } from "@/components/wholesaler-management-page";
 export const Route = createFileRoute("/wholesalers")({
@@ -20,8 +20,15 @@ export const Route = createFileRoute("/wholesalers")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: () =>
-    _jsx(AdminShell, {
-      children: _jsx(WholesalerManagementPage, {}),
-    }),
+  component: () => {
+    const pathname = useRouterState({
+      select: (state) => state.location.pathname,
+    });
+    return _jsx(AdminShell, {
+      children:
+        pathname === "/wholesalers"
+          ? _jsx(WholesalerManagementPage, {})
+          : _jsx(Outlet, {}),
+    });
+  },
 });

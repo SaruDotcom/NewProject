@@ -54,6 +54,7 @@ function invalidateMutation(path) {
     coupons: ["coupons"],
     notifications: ["notifications"],
     payments: ["payments"],
+    "subscription-plan": ["subscription-plan"],
     reviews: ["reviews"],
     relationships: ["relationships"],
   };
@@ -147,6 +148,60 @@ export async function apiGetKycDocument(documentId) {
   }
   if (!response.ok) {
     throw new Error("Unable to load KYC document");
+  }
+  return response.blob();
+}
+
+async function apiGetPrivateIdentityData(path, errorMessage) {
+  const response = await fetch(buildUrl(path), {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${getStoredToken()}` },
+  });
+  if (response.status === 401) {
+    clearSession();
+    throw new Error("Authentication required");
+  }
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || errorMessage);
+  }
+  return payload.data ?? payload;
+}
+
+export function apiGetRetailerIdentityProfile(retailerId) {
+  return apiGetPrivateIdentityData(
+    `/retailer-identity/${encodeURIComponent(retailerId)}/profile`,
+    "Unable to load retailer identity details",
+  );
+}
+
+export function apiGetRetailerAadhaar(retailerId) {
+  return apiGetPrivateIdentityData(
+    `/retailer-identity/${encodeURIComponent(retailerId)}/aadhaar`,
+    "Unable to reveal retailer Aadhaar number",
+  );
+}
+
+export async function apiGetRetailerIdentityDocument(retailerId, documentType) {
+  const response = await fetch(
+    buildUrl(
+      `/retailer-identity/${encodeURIComponent(retailerId)}/documents/${encodeURIComponent(documentType)}`,
+    ),
+    {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${getStoredToken()}` },
+    },
+  );
+  if (response.status === 401) {
+    clearSession();
+    throw new Error("Authentication required");
+  }
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : null;
+    throw new Error(payload?.message || "Unable to load retailer document");
   }
   return response.blob();
 }

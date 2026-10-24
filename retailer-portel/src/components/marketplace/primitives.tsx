@@ -1,10 +1,11 @@
 import { Link } from "@/lib/router";
 import { useState, useEffect } from "react";
-import { Favorite, ShoppingCart, Star, LocationOn, Verified, Remove, Add, Inventory2, ArrowRight, LocalShipping, VerifiedUser, Delete, WarningAmber } from "@mui/icons-material";
+import { Favorite, ShoppingCart, Star, LocationOn, Verified, Remove, Add, Inventory2, ArrowRight, LocalShipping, VerifiedUser, Delete, WarningAmber, Visibility } from "@mui/icons-material";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useStore, getCategoryHierarchy, type Product, type Wholesaler, type Order } from "@/state/store";
+import { ProductImage } from "./ProductImage";
 
 export const money = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
@@ -89,9 +90,10 @@ export function ProductCard({
   list?: boolean;
   premium?: boolean;
 }) {
-  const { wishlist, toggleWishlist, addToCart, addRecentlyViewed, linkedWholesaler } = useStore();
-  const supplierName = linkedWholesaler?.name || linkedWholesaler?.businessName || "Connected wholesaler";
+  const { wishlist, toggleWishlist, addToCart, addRecentlyViewed } = useStore();
+  const isWishlisted = wishlist.includes(product.id);
   const discount = Math.round((1 - product.price / product.mrp) * 100);
+
   const getProductImage = () => {
     if (product.imageUrl) return product.imageUrl;
     if (product.images && product.images.length > 0) return product.images[0];
@@ -100,149 +102,236 @@ export function ProductCard({
 
   const productImg = getProductImage();
 
-  if (premium)
+  if (list) {
     return (
-      <article className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
-        <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="relative block aspect-[4/3] overflow-hidden bg-tradeflow-gray-50 p-3">
-          {productImg ? (
-            <img src={productImg} alt={product.name} className="h-full w-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-105" />
-          ) : (
-            <ProductVisual index={product.image} name={product.name} className="h-full w-full transition-transform duration-300 group-hover:scale-105" />
-          )}
-          {!productImg && <span className="absolute left-3 top-3 rounded-sm border border-border bg-card/90 px-2 py-1 text-[10px] font-bold text-muted-foreground">No image</span>}
-          {discount > 0 && <span className="absolute bottom-3 left-3 rounded-sm bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground">{discount}% OFF</span>}
-        </Link>
-        <Button
-          aria-label="Remove from wishlist"
-          variant="secondary"
-          size="icon"
-          className="absolute right-3 top-3 rounded-full border border-border/70 bg-card/95 shadow-sm transition-transform duration-200 active:scale-90"
-          onClick={() => toggleWishlist(product.id)}
+      <article className="group relative flex flex-col sm:flex-row h-full overflow-hidden rounded-xl border border-border/80 bg-card shadow-2xs transition-all duration-200 hover:border-emerald-600/40 hover:shadow-md">
+        {/* Product Image */}
+        <Link
+          to="/products/$productId"
+          params={{ productId: product.id }}
+          onClick={() => addRecentlyViewed(product.id)}
+          className="relative block sm:w-52 shrink-0 aspect-square sm:aspect-auto overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-3.5 flex items-center justify-center cursor-pointer"
         >
-          <Favorite className={cn("fill-primary text-primary")} />
-        </Button>
-        <div className="flex flex-1 flex-col p-4">
-          <p className="truncate text-[10px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">
-            {product.brand} · {product.category}
-          </p>
-          <Link to="/products/$productId" params={{ productId: product.id }} className="mt-1.5 line-clamp-2 min-h-11 font-bold leading-snug text-ink transition-colors hover:text-primary">
-            {product.name}
-          </Link>
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">Sold by {supplierName}</p>
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <strong className="text-lg font-extrabold text-ink">{money(product.price)}</strong>
-            <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
-            {discount >= 10 && <span className="text-[10px] font-bold text-success">Save {discount}%</span>}
+          {productImg ? (
+            <ProductImage
+              src={productImg}
+              alt={product.name}
+              className="size-full object-contain mix-blend-multiply dark:mix-blend-normal transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <ProductVisual index={product.image} name={product.name} className="size-full transition-transform duration-300 group-hover:scale-105" />
+          )}
+
+          {/* Small Stock Availability Badge */}
+          <div className="absolute left-2.5 top-2.5">
+            {product.stock > 0 ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-2xs dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                <span className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                In Stock
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60 shadow-2xs dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+                Out of Stock
+              </span>
+            )}
           </div>
-          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-            <span className="text-muted-foreground">MOQ: <b className="text-foreground">{product.moq} × {product.unit || 'units'}</b></span>
-            <span className={cn("rounded-sm px-2 py-1 font-bold", product.stock > 20 ? "bg-success/10 text-success" : "bg-warning/15 text-warning-foreground")}>
-              {product.stock > 0 ? "In stock" : "Out of stock"}
+
+          {/* Discount Pill */}
+          {discount > 0 && (
+            <span className="absolute bottom-2.5 left-2.5 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-2xs">
+              {discount}% OFF
             </span>
+          )}
+        </Link>
+
+        {/* Wishlist Button */}
+        <button
+          type="button"
+          aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+          className="absolute right-3 top-3 z-10 size-8.5 rounded-full border border-border/80 bg-background/90 backdrop-blur-xs flex items-center justify-center text-muted-foreground hover:text-rose-600 hover:border-rose-300 shadow-2xs transition-all cursor-pointer active:scale-90"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleWishlist(product.id);
+          }}
+        >
+          <Favorite className={cn("size-4 transition-colors", isWishlisted ? "fill-rose-600 text-rose-600" : "text-muted-foreground")} />
+        </button>
+
+        {/* Content Body */}
+        <div className="flex flex-1 flex-col justify-between p-4 sm:p-5">
+          <div>
+            <Link
+              to="/products/$productId"
+              params={{ productId: product.id }}
+              onClick={() => addRecentlyViewed(product.id)}
+              className="font-bold text-base text-ink hover:text-emerald-600 transition-colors line-clamp-2"
+            >
+              {product.name}
+            </Link>
+
+            {/* Selling Price */}
+            <div className="mt-2.5 flex flex-wrap items-baseline gap-2">
+              <strong className="text-xl font-black text-ink">{money(product.price)}</strong>
+              <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
+              {discount > 0 && <span className="text-xs font-bold text-emerald-600">Save {discount}%</span>}
+            </div>
           </div>
-          {product.pricingTiers && product.pricingTiers.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {product.pricingTiers.map((tier) => (
-                <span key={tier.id || tier.minQty} className="text-[10px] font-medium bg-secondary/50 text-secondary-foreground px-1.5 py-0.5 rounded-sm">
-                  {tier.minQty}+ : {money(tier.pricePerUnit)}
-                </span>
-              ))}
-            </div>
-          )}
-          {product.categoryAttributes && Object.keys(product.categoryAttributes).length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-              {Object.entries(product.categoryAttributes).slice(0, 3).map(([k, v]) => (
-                <span key={k}>{k}: {String(v)}</span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="px-4 pb-4">
-          <Button
-            disabled={product.stock <= 0}
-            className="w-full rounded-md font-bold transition-all hover:shadow-md active:scale-[0.98]"
-            onClick={() => addToCart(product.id)}
-          >
-            <ShoppingCart /> {product.stock > 0 ? "Add to cart" : "Out of stock"}
-          </Button>
+
+          {/* Action Buttons: View Details & Add to Cart */}
+          <div className="mt-4 flex flex-wrap sm:flex-nowrap items-center gap-2.5 pt-3 border-t border-border/60">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-9 flex-1 min-w-[120px] rounded-lg font-bold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1.5 transition-colors cursor-pointer"
+            >
+              <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)}>
+                <Visibility className="size-3.5 text-muted-foreground" />
+                View Details
+              </Link>
+            </Button>
+            <Button
+              disabled={product.stock <= 0}
+              size="sm"
+              className="h-9 flex-1 min-w-[120px] rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1.5 transition-all active:scale-95 cursor-pointer"
+              onClick={() => addToCart(product.id)}
+            >
+              <ShoppingCart className="size-3.5" />
+              {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
+            </Button>
+          </div>
         </div>
       </article>
     );
+  }
+
+  // Grid Card: Amazon & Myntra Clean Minimal Design
   return (
-    <article className={cn("group relative flex h-full min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:border-primary/35 hover:shadow-md", list && "sm:grid sm:grid-cols-[180px_1fr_auto]")}>
-      <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="relative block overflow-hidden bg-tradeflow-gray-50 p-3">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-600/40 hover:shadow-lg">
+      {/* Product Image Area */}
+      <Link
+        to="/products/$productId"
+        params={{ productId: product.id }}
+        onClick={() => addRecentlyViewed(product.id)}
+        className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-3 flex items-center justify-center cursor-pointer"
+      >
         {productImg ? (
-          <img src={productImg} alt={product.name} className={cn("aspect-[4/3] w-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-[1.03]", list && "sm:aspect-square sm:h-full")} />
+          <ProductImage
+            src={productImg}
+            alt={product.name}
+            className="size-full object-contain mix-blend-multiply dark:mix-blend-normal transition-transform duration-300 group-hover:scale-105"
+          />
         ) : (
-          <ProductVisual index={product.image} name={product.name} className={cn("aspect-[4/3] w-full transition-transform duration-300 group-hover:scale-[1.02]", list && "sm:aspect-square sm:h-full")} />
+          <ProductVisual index={product.image} name={product.name} className="size-full transition-transform duration-300 group-hover:scale-105" />
         )}
-        {!productImg && <span className="absolute left-3 top-3 rounded-sm border border-border bg-card/90 px-2 py-1 text-[10px] font-bold text-muted-foreground">No image</span>}
-        {discount > 0 && <span className="absolute bottom-3 left-3 rounded-sm bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground">{discount}% OFF</span>}
+
+        {/* Small Stock Availability Badge */}
+        <div className="absolute left-2.5 top-2.5 z-10">
+          {product.stock > 0 ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-2xs dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+              <span className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
+              In Stock
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60 shadow-2xs dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+              Out of Stock
+            </span>
+          )}
+        </div>
+
+        {/* Discount Pill */}
+        {discount > 0 && (
+          <span className="absolute bottom-2.5 left-2.5 z-10 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-2xs">
+            {discount}% OFF
+          </span>
+        )}
       </Link>
-      <Button aria-label="Toggle wishlist" variant="secondary" size="icon" className="absolute right-3 top-3 border border-border/70 bg-card/95 shadow-sm" onClick={() => toggleWishlist(product.id)}>
-        <Favorite className={cn(wishlist.includes(product.id) && "fill-primary text-primary")} />
-      </Button>
-      <div className="flex flex-1 flex-col p-4">
-        <p className="truncate text-[10px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">
-          {product.brand} · {product.category}
-        </p>
-        <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="mt-1.5 line-clamp-2 min-h-11 block font-bold leading-snug text-ink hover:text-primary">
+
+      {/* Wishlist Button (Top-Right) */}
+      <button
+        type="button"
+        aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+        className="absolute right-2.5 top-2.5 z-20 size-8.5 rounded-full border border-border/80 bg-background/90 backdrop-blur-xs flex items-center justify-center text-muted-foreground hover:text-rose-600 hover:border-rose-300 shadow-2xs transition-all cursor-pointer active:scale-90"
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleWishlist(product.id);
+        }}
+      >
+        <Favorite className={cn("size-4 transition-colors", isWishlisted ? "fill-rose-600 text-rose-600" : "text-muted-foreground")} />
+      </button>
+
+      {/* Product Details (Clean & Minimal) */}
+      <div className="flex flex-1 flex-col p-3">
+        {/* Product Name */}
+        <Link
+          to="/products/$productId"
+          params={{ productId: product.id }}
+          onClick={() => addRecentlyViewed(product.id)}
+          className="font-bold text-sm sm:text-[15px] leading-snug text-ink hover:text-emerald-600 transition-colors line-clamp-2 min-h-[2.5rem]"
+          title={product.name}
+        >
           {product.name}
         </Link>
-        <p className="mt-1 truncate text-[11px] text-muted-foreground">Sold by {supplierName}</p>
-        <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <strong className="text-lg font-extrabold text-ink">{money(product.price)}</strong>
+
+        {/* Selling Price */}
+        <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+          <strong className="text-base sm:text-lg font-black text-ink">{money(product.price)}</strong>
           <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
-          {discount >= 10 && <span className="text-[10px] font-bold text-success">Save {discount}%</span>}
+          {discount > 0 && <span className="text-xs font-bold text-emerald-600">({discount}% off)</span>}
         </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-          <span className="text-muted-foreground">MOQ: <b>{product.moq} × {product.unit || 'units'}</b></span>
-          <span className={cn("rounded-sm px-2 py-1 font-bold", product.stock > 20 ? "bg-success/10 text-success" : "bg-warning/15 text-warning-foreground")}>
-            {product.stock > 0 ? "In stock" : "Out of stock"}
-          </span>
+
+        {/* Pinned Action Buttons: View Details & Add to Cart */}
+        <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-9 min-w-0 w-full rounded-lg font-bold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1 transition-colors px-1 cursor-pointer"
+          >
+            <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)}>
+              <Visibility className="size-3.5 text-muted-foreground" />
+              View Details
+            </Link>
+          </Button>
+
+          <Button
+            disabled={product.stock <= 0}
+            size="sm"
+            className="h-9 min-w-0 w-full rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1 transition-all active:scale-95 px-1 cursor-pointer"
+            onClick={() => addToCart(product.id)}
+          >
+            <ShoppingCart className="size-3.5" />
+            {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
+          </Button>
         </div>
-        {product.pricingTiers && product.pricingTiers.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {product.pricingTiers.map((tier) => (
-              <span key={tier.id || tier.minQty} className="text-[10px] font-medium bg-secondary/50 text-secondary-foreground px-1.5 py-0.5 rounded-sm">
-                {tier.minQty}+ : {money(tier.pricePerUnit)}
-              </span>
-            ))}
-          </div>
-        )}
-        {product.categoryAttributes && Object.keys(product.categoryAttributes).length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-            {Object.entries(product.categoryAttributes).slice(0, 3).map(([k, v]) => (
-              <span key={k}>{k}: {String(v)}</span>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className={cn("mt-auto px-4 pb-4", list && "sm:flex sm:items-center sm:p-4")}>
-        <Button
-          disabled={product.stock <= 0}
-          className="w-full rounded-md font-bold"
-          onClick={() => addToCart(product.id)}
-        >
-          <ShoppingCart /> {product.stock > 0 ? "Add to cart" : "Out of stock"}
-        </Button>
       </div>
     </article>
   );
 }
 
-export function ProductGrid({ products, list = false, premium = false }: { products: Product[]; list?: boolean; premium?: boolean }) {
+export function ProductGrid({
+  products,
+  list = false,
+  premium = false,
+}: {
+  products: Product[];
+  list?: boolean;
+  premium?: boolean;
+}) {
+  const gridClassName = list
+    ? "grid gap-3"
+    : cn(
+        "grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-stretch",
+        premium ? "gap-5" : "gap-4",
+      );
+
   return (
-    <div className={premium ? "grid auto-rows-fr grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8" : cn(list ? "grid gap-3" : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4")}>
-      {products.map((p, index) =>
-        premium ? (
-          <div key={p.id} className="h-full min-w-0 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2" style={{ animationDelay: `${index * 50}ms` }}>
-            <ProductCard product={p} premium />
-          </div>
-        ) : (
-          <ProductCard key={p.id} product={p} list={list} />
-        )
-      )}
+    <div className={gridClassName}>
+      {products.map((p, index) => (
+        <div key={p.id} className="h-full min-w-0 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2" style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}>
+          <ProductCard product={p} list={list} premium={premium} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -548,7 +637,7 @@ export function OrderCard({ order }: { order: Order }) {
     <article className="rounded-2xl border border-border/80 bg-card p-5 transition-all duration-200 hover:border-primary/40 shadow-xs">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-bold uppercase tracking-wider text-primary">{order.id}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">{order.orderNumber || order.id}</p>
           <span className="text-xs font-medium text-muted-foreground">Placed {order.date}</span>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

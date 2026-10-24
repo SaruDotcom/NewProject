@@ -13,6 +13,8 @@ const {
   addToCartSchema,
   updateCartItemSchema,
   checkoutSchema,
+  verifyCheckoutPaymentSchema,
+  failCheckoutPaymentSchema,
   addressSchema,
   updateAddressSchema,
   createReturnSchema,
@@ -59,6 +61,8 @@ router.delete('/cart', retailerController.clearCart);
 
 // Checkout & Orders
 router.post('/checkout', idempotency, validate(checkoutSchema), retailerController.checkout);
+router.post('/checkout/verify', validate(verifyCheckoutPaymentSchema), retailerController.verifyCheckoutPayment);
+router.post('/checkout/failure', validate(failCheckoutPaymentSchema), retailerController.failCheckoutPayment);
 router.get('/orders', retailerController.getOrders);
 router.get('/orders/:id', retailerController.getOrderById);
 router.post('/orders/:id/cancel', validate(cancelOrderSchema), retailerController.cancelOrder);

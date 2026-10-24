@@ -1,5 +1,5 @@
 import { jsx as _jsx } from "react/jsx-runtime";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
 import { KycManagementPage } from "@/components/kyc-management-page";
 
@@ -10,5 +10,15 @@ export const Route = createFileRoute("/kyc")({
       { name: "description", content: "Review wholesaler KYC applications." },
     ],
   }),
-  component: () => _jsx(AdminShell, { children: _jsx(KycManagementPage, {}) }),
+  component: () => {
+    const pathname = useRouterState({
+      select: (state) => state.location.pathname,
+    });
+    return _jsx(AdminShell, {
+      children:
+        pathname === "/kyc"
+          ? _jsx(KycManagementPage, {})
+          : _jsx(Outlet, {}),
+    });
+  },
 });

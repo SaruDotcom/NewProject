@@ -9,6 +9,7 @@ import {
   type ApiCategory,
   type ApiNotification,
   type ApiOrder,
+  type ApiOrderListData,
   type ApiProduct,
   type ApiWholesaler,
 } from "@/api/api";
@@ -98,6 +99,7 @@ export type OrderItem = {
 export type OrderStatus = "Pending" | "Confirmed" | "Processing" | "Shipped" | "Delivered" | "Cancelled";
 export type Order = {
   id: string;
+  orderNumber?: string;
   date: string;
   status: OrderStatus;
   cancellationReason?: string | undefined;
@@ -177,7 +179,7 @@ export type Store = {
   removeCart: (id: string) => void;
   toggleWishlist: (id: string) => void;
   saveProfile: (profile: RetailerProfile) => Promise<void>;
-  placeOrder: (paymentMethod?: string, couponCode?: string) => Promise<Order[]>;
+  placeOrder: (paymentMethod?: string, couponCode?: string) => Promise<boolean>;
   markRead: () => void;
   addRecentlyViewed: (id: string) => void;
   refreshOrders: () => Promise<void>;
@@ -294,13 +296,22 @@ function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, strin
   if (allImages.length > 0) product.images = allImages;
   if (item.pricingTiers) product.pricingTiers = item.pricingTiers;
   if (item.sizes) product.sizes = item.sizes;
-  if (item.colors) product.colors = item.colors;
-  if (item.colorVariants && Array.isArray(item.colorVariants)) {
-    product.colorVariants = item.colorVariants.map((variant) => ({
-      color: String(variant.color || "").trim(),
-      ...(variant.sku ? { sku: String(variant.sku).trim() } : {}),
-      images: Array.isArray(variant.images) ? variant.images.map(cleanImageUrl).filter(Boolean) : [],
-    })).filter((v) => v.color);
+  const variants = Array.isArray(item.colorVariants)
+    ? item.colorVariants.map((variant) => ({
+        color: String(variant.color || variant.name || "").trim(),
+        ...(variant.sku ? { sku: String(variant.sku).trim() } : {}),
+        images: Array.isArray(variant.images)
+          ? [...new Set(variant.images.map(cleanImageUrl).filter(Boolean))]
+          : [],
+      })).filter((variant) => variant.color)
+    : [];
+  const colors = Array.isArray(item.colors) ? item.colors : [];
+  const variantColors = variants.map((variant) => variant.color);
+  if (colors.length || variantColors.length) {
+    product.colors = [...new Set([...colors, ...variantColors])];
+  }
+  if (variants.length) {
+    product.colorVariants = variants;
   }
   if (item.sizeChart) product.sizeChart = item.sizeChart;
   if (item.additionalOptions) product.additionalOptions = item.additionalOptions;
@@ -423,7 +434,9 @@ export function getCategoryHierarchy(
 }
 
 export function mapOrder(item: ApiOrder): Order {
-  const id = item._id || item.id || item.orderNumber || "order";
+  const mongoId = String(item._id || item.id || "");
+  const orderNumber = item.orderNumber || (item as any).orderNo || (mongoId ? `ORD-${mongoId.slice(-6).toUpperCase()}` : "order");
+  const id = mongoId || orderNumber;
   const status = String(item.orderStatus || item.status || "PENDING").toUpperCase();
 
   const mappedItems: OrderItem[] = (item.items || []).map((line: any, idx: number) => {
@@ -469,9 +482,13 @@ export function mapOrder(item: ApiOrder): Order {
 
   const isCreditOrder = Boolean(item.isCreditOrder || item.paymentMethod === "CREDIT");
   const creditPaymentStatus = item.creditPaymentStatus || (isCreditOrder ? "PENDING" : undefined);
+  const wholesalerId = typeof item.wholesalerId === "object" && item.wholesalerId !== null
+    ? String((item.wholesalerId as any)._id || (item.wholesalerId as any).id || "")
+    : String(item.wholesalerId || "connected-wholesaler");
 
   return {
     id,
+    orderNumber,
     date: item.createdAt ? new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "Today",
     status:
       status === "PENDING" ? "Pending" :
@@ -482,8 +499,8 @@ export function mapOrder(item: ApiOrder): Order {
       status === "CANCELLED" ? "Cancelled" : "Pending",
     cancellationReason: item.cancellationReason || "",
     cancellationNote: item.cancellationNote || "",
-    wholesalerId: String(item.wholesalerId || "connected-wholesaler"),
-    total: Number(item.grandTotal ?? item.total ?? 0),
+    wholesalerId,
+    total: Number(item.grandTotal ?? item.total ?? (item as any).totalAmount ?? 0),
     items: mappedItems,
     paymentMethod: item.paymentMethod || item.paymentMode || (isCreditOrder ? "CREDIT" : "COD"),
     isCreditOrder,
@@ -492,6 +509,12 @@ export function mapOrder(item: ApiOrder): Order {
     creditPaymentStatus,
     creditSettledAt: item.creditSettledAt ? new Date(item.creditSettledAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
   };
+}
+
+export function getApiOrderItems(response: { data?: ApiOrder[] | ApiOrderListData } | null | undefined): ApiOrder[] {
+  const data = response?.data;
+  if (Array.isArray(data)) return data;
+  return data && Array.isArray(data.items) ? data.items : [];
 }
 
 function mapNotification(item: ApiNotification): NotificationItem {
@@ -604,10 +627,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const wishlistItems = ((wishlistRes as { data?: Array<{ _id?: string; productId?: string }> } | null)?.data || []) as Array<{ _id?: string; productId?: string }>;
       setWishlist(wishlistItems.map((item) => String(item.productId || item._id || "")));
 
-      const nextOrders = Array.isArray((ordersRes as { data?: ApiOrder[] })?.data)
-        ? ((ordersRes as { data?: ApiOrder[] }).data || []).map(mapOrder)
-        : [];
-      setOrders(nextOrders);
+      setOrders(getApiOrderItems(ordersRes as { data?: ApiOrder[] | ApiOrderListData } | null).map(mapOrder));
 
       const nextNotifications = Array.isArray((notificationsRes as { data?: ApiNotification[] })?.data)
         ? ((notificationsRes as { data?: ApiNotification[] }).data || []).map(mapNotification)
@@ -633,19 +653,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const token = getAuthToken();
     if (!token) return;
     try {
-      const userId = currentUser?.id;
-      if (!userId) return;
-      await queryClient.invalidateQueries({
-        queryKey: retailerQueryKeys.resource(userId, "orders"),
-      });
-      const ordersRes = await queryClient.fetchQuery({
-        queryKey: retailerQueryKeys.resource(userId, "orders"),
-        queryFn: () => api.getOrders({ limit: 200 }),
-      }).catch(() => null);
-      if (ordersRes && Array.isArray((ordersRes as { data?: ApiOrder[] })?.data)) {
-        const nextOrders = ((ordersRes as { data?: ApiOrder[] }).data || []).map(mapOrder);
-        setOrders(nextOrders);
+      const userId = currentUser?.id || localStorage.getItem("nexora_retailer_user_id");
+      if (userId) {
+        await queryClient.invalidateQueries({
+          queryKey: retailerQueryKeys.resource(userId, "orders"),
+        });
       }
+      const ordersRes = await api.getOrders({ limit: 200 }).catch(() => null);
+      if (ordersRes) setOrders(getApiOrderItems(ordersRes).map(mapOrder));
     } catch {
       // Silent catch for background polling
     }
@@ -887,8 +902,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const placeOrder = useCallback(async (paymentMethod = "COD", couponCode?: string) => {
     if (!cart.length) {
-      toast.error("Your cart is empty");
-      return [];
+      throw new Error("Your cart is empty");
     }
 
     const shippingAddress = {
@@ -908,17 +922,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
         shippingAddress,
         paymentMethod,
-        couponCode: couponCode || undefined,
-      } as any);
+        ...(couponCode ? { couponCode } : {}),
+      });
 
       setCart([]);
       invalidateUserData("cart", "orders", "dashboard");
       await syncSession(true);
       toast.success("Wholesale order placed successfully!");
-      return [];
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to place order");
-      return [];
+      return true;
     } finally {
       setIsLoading(false);
     }

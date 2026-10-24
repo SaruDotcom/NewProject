@@ -82,8 +82,8 @@ export default function OverviewPage() {
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green text-tradeflow-navy tracking-wide flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
               <span>
-                {profile.subscriptionStatus === 'ACTIVE' && profile.subscriptionPlan
-                  ? `${profile.subscriptionPlan} PLAN ACTIVE`
+                {profile.subscriptionStatus === 'ACTIVE'
+                  ? 'SUBSCRIPTION ACTIVE'
                   : 'NO ACTIVE SUBSCRIPTION'}
               </span>
             </span>
@@ -133,7 +133,7 @@ export default function OverviewPage() {
               <p className="mt-0.5 text-xs text-amber-800">Your account is active. Submit your business details for KYC review to unlock catalog creation.</p>
             </div>
           </div>
-          <Link to="/dashboard/kyc" className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">Continue KYC</Link>
+          <Link to="/dashboard/profile?tab=kyc" className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">Continue KYC</Link>
         </div>
       )}
 

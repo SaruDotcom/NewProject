@@ -40,6 +40,46 @@ const retailerProfileSchema = new mongoose.Schema(
       enum: ['REGISTERED', 'UNREGISTERED', 'COMPOSITION'],
       default: 'UNREGISTERED',
     },
+    shopPhoto: {
+      imageUrl: { type: String, default: '' },
+      publicId: { type: String, default: '' },
+      resourceType: { type: String, default: '' },
+      format: { type: String, default: '' },
+    },
+    pan: {
+      numberEncrypted: { type: String, default: '' },
+      last4: { type: String, default: '' },
+      imageUrl: { type: String, default: '' },
+      publicId: { type: String, default: '' },
+      resourceType: { type: String, default: '' },
+      format: { type: String, default: '' },
+    },
+    aadhaar: {
+      last4: { type: String, default: '' },
+      numberEncrypted: { type: String, default: '' },
+      frontImage: {
+        imageUrl: { type: String, default: '' },
+        publicId: { type: String, default: '' },
+        resourceType: { type: String, default: '' },
+        format: { type: String, default: '' },
+      },
+      backImage: {
+        imageUrl: { type: String, default: '' },
+        publicId: { type: String, default: '' },
+        resourceType: { type: String, default: '' },
+        format: { type: String, default: '' },
+      },
+    },
+    consent: {
+      accepted: { type: Boolean, default: false },
+      at: { type: Date, default: null },
+    },
+    verificationStatus: {
+      type: String,
+      enum: ['NOT_SUBMITTED', 'SUBMITTED', 'VERIFIED', 'REJECTED'],
+      default: 'NOT_SUBMITTED',
+    },
+    verificationNote: { type: String, default: '', maxlength: 1000 },
     address: {
       street: { type: String, default: '' },
       city: { type: String, default: '' },
@@ -113,6 +153,35 @@ const retailerProfileSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      transform(_doc, result) {
+        if (result.pan) {
+          delete result.pan.numberEncrypted;
+          delete result.pan.imageUrl;
+          delete result.pan.publicId;
+          delete result.pan.resourceType;
+          delete result.pan.format;
+        }
+        if (result.aadhaar) {
+          delete result.aadhaar.numberEncrypted;
+          for (const key of ['frontImage', 'backImage']) {
+            if (result.aadhaar[key]) {
+              delete result.aadhaar[key].imageUrl;
+              delete result.aadhaar[key].publicId;
+              delete result.aadhaar[key].resourceType;
+              delete result.aadhaar[key].format;
+            }
+          }
+        }
+        if (result.shopPhoto) {
+          delete result.shopPhoto.imageUrl;
+          delete result.shopPhoto.publicId;
+          delete result.shopPhoto.resourceType;
+          delete result.shopPhoto.format;
+        }
+        return result;
+      },
+    },
   }
 );
 

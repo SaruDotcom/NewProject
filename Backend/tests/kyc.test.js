@@ -147,6 +147,54 @@ describe('KYC Workflow Test Suite', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.length).toBeGreaterThan(0);
     expect(res.body.data[0].status).toBe(KYC_STATUS.SUBMITTED);
+    expect(res.body.data[0]._id).toBeDefined();
+  });
+
+  test('Super Admin can view a private KYC profile without exposing file keys or bank account numbers', async () => {
+    const submitRes = await submitKyc({
+      businessName: 'Pooja Textiles',
+      ownerName: 'Pooja Sharma',
+      pan: 'AAACP1234F',
+      gstin: '27AAACP1234F1Z5',
+      address: '22 Textile Park',
+      city: 'Surat',
+      state: 'Gujarat',
+      pincode: '395002',
+      accountHolderName: 'Pooja Textiles',
+      accountNumber: '112233445566',
+      ifscCode: 'SBIN0001234',
+      bankName: 'State Bank of India',
+    }, wholesalerToken);
+
+    const applicationId = submitRes.body.data._id;
+    const response = await request(app)
+      .get(`/api/v1/admin/kyc/${applicationId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data._id).toBe(applicationId);
+    expect(response.body.data.documents).toHaveLength(3);
+    expect(response.body.data.documents[0]).not.toHaveProperty('fileKey');
+    expect(response.body.data.bankDetails.accountNumber).toBe('•••• 5566');
+    expect(response.body.data.profile.bankDetails.accountNumber).toBe('•••• 5566');
+    expect(JSON.stringify(response.body)).not.toContain('112233445566');
+    await expect(
+      AuditLog.findOne({
+        action: 'KYC_VIEWED',
+        entityId: applicationId,
+        actorId: adminUser._id,
+      }),
+    ).resolves.toBeTruthy();
+
+    const forbiddenResponse = await request(app)
+      .get(`/api/v1/admin/kyc/${applicationId}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(forbiddenResponse.status).toBe(403);
+
+    const missingResponse = await request(app)
+      .get('/api/v1/admin/kyc/not-a-valid-id')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(missingResponse.status).toBe(404);
   });
 
   test('3. Admin Approves KYC -> Activates Wholesaler & generates audit log', async () => {
