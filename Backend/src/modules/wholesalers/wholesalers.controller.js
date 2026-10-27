@@ -38,7 +38,7 @@ class WholesalerController {
   });
 
   updateCreditPolicy = asyncHandler(async (req, res) => {
-    const policy = await WholesalerService.updateCreditPolicy(req.user, req.body);
+    const policy = await WholesalerService.updateCreditPolicy(req.user, req.body, req);
     return ApiResponse.success(res, policy, 'Credit policy updated successfully');
   });
 
@@ -46,9 +46,20 @@ class WholesalerController {
     const relationship = await WholesalerService.setRetailerCreditLimit(
       req.user,
       req.params.retailerId,
-      req.body.customCreditLimit
+      req.body.customCreditLimit,
+      req
     );
     return ApiResponse.success(res, relationship, 'Retailer credit limit updated');
+  });
+
+  updateRetailerCreditPolicy = asyncHandler(async (req, res) => {
+    const relationship = await WholesalerService.updateRetailerCreditPolicy(
+      req.user,
+      req.params.retailerId,
+      req.body,
+      req
+    );
+    return ApiResponse.success(res, relationship, 'Retailer credit policy updated');
   });
 
   getCreditOverview = asyncHandler(async (req, res) => {
@@ -56,10 +67,6 @@ class WholesalerController {
     return ApiResponse.success(res, overview, 'Credit overview retrieved');
   });
 
-  settleOrderCredit = asyncHandler(async (req, res) => {
-    const result = await WholesalerService.settleOrderCredit(req.user, req.params.orderId);
-    return ApiResponse.success(res, result.order, result.message);
-  });
 }
 
 module.exports = new WholesalerController();

@@ -26,6 +26,10 @@ const paymentSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    amountPaise: {
+      type: Number,
+      min: 1,
+    },
     currency: {
       type: String,
       default: 'INR',
@@ -44,8 +48,16 @@ const paymentSchema = new mongoose.Schema(
     transactionReference: {
       type: String,
       default: '',
-      index: true,
+      trim: true,
     },
+    transactionReferenceKey: { type: String, default: '' },
+    isReport: { type: Boolean, default: false, index: true },
+    isCreditRepayment: { type: Boolean, default: false, index: true },
+    relatedOrderIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Order' }],
+    screenshotPath: { type: String, default: '' },
+    reviewNote: { type: String, default: '' },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    reviewedAt: { type: Date, default: null },
     gatewayResponse: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
@@ -58,6 +70,11 @@ const paymentSchema = new mongoose.Schema(
   {
     timestamps: true,
   }
+);
+
+paymentSchema.index(
+  { transactionReferenceKey: 1 },
+  { unique: true, partialFilterExpression: { transactionReferenceKey: { $type: 'string', $gt: '' } } }
 );
 
 const Payment = mongoose.model('Payment', paymentSchema);

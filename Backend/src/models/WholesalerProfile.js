@@ -127,6 +127,15 @@ const wholesalerProfileSchema = new mongoose.Schema(
       lateFeePercent: { type: Number, default: 0, min: 0 },
       minOrderForCredit: { type: Number, default: 0, min: 0 },
     },
+    paymentSettings: {
+      upiId: { type: String, trim: true, lowercase: true, default: '' },
+      accountName: { type: String, trim: true, default: '' },
+      qrImagePath: { type: String, default: '' },
+      qrImageMimeType: { type: String, enum: ['', 'image/jpeg', 'image/png', 'image/webp'], default: '' },
+      qrPaymentsEnabled: { type: Boolean, default: false },
+      upiIdPaymentsEnabled: { type: Boolean, default: false },
+      qrSessionMinutes: { type: Number, default: 10, min: 1, max: 60 },
+    },
     walletId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Wallet',

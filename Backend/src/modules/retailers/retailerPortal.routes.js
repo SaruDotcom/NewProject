@@ -13,8 +13,6 @@ const {
   addToCartSchema,
   updateCartItemSchema,
   checkoutSchema,
-  verifyCheckoutPaymentSchema,
-  failCheckoutPaymentSchema,
   addressSchema,
   updateAddressSchema,
   createReturnSchema,
@@ -41,6 +39,7 @@ router.patch('/profile/business', validate(updateBusinessProfileSchema), retaile
 // Connected Wholesaler & Storefront
 router.get('/wholesaler', retailerController.getConnectedWholesaler);
 router.get('/credit-info', retailerController.getCreditInfo);
+router.post('/credit-request', retailerController.requestCredit);
 router.get('/store', retailerController.getStore);
 router.get('/connections', retailerPortalController.getConnections);
 
@@ -61,8 +60,6 @@ router.delete('/cart', retailerController.clearCart);
 
 // Checkout & Orders
 router.post('/checkout', idempotency, validate(checkoutSchema), retailerController.checkout);
-router.post('/checkout/verify', validate(verifyCheckoutPaymentSchema), retailerController.verifyCheckoutPayment);
-router.post('/checkout/failure', validate(failCheckoutPaymentSchema), retailerController.failCheckoutPayment);
 router.get('/orders', retailerController.getOrders);
 router.get('/orders/:id', retailerController.getOrderById);
 router.post('/orders/:id/cancel', validate(cancelOrderSchema), retailerController.cancelOrder);

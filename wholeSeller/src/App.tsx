@@ -20,6 +20,7 @@ import BannerSlidesPage from './app/dashboard/banner-slides/page';
 import CreditPolicyPage from './app/dashboard/credit-policy/page';
 import CouponsPage from './app/dashboard/coupons/page';
 import SupportPage from './app/dashboard/support/page';
+import PaymentSettingsPage from './app/dashboard/payment-settings/page';
 
 const LandingPage = lazy(() => import('./app/landing/page'));
 
@@ -42,6 +43,7 @@ export function App() {
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="credit-policy" element={<CreditPolicyPage />} />
+        <Route path="payment-settings" element={<PaymentSettingsPage />} />
         <Route path="coupons" element={<CouponsPage />} />
         <Route path="wallet" element={<WalletPage />} />
         <Route path="profile" element={<WholesalerProfilePage />} />

@@ -59,6 +59,13 @@ const walletTransactionSchema = new mongoose.Schema(
       default: 'COMPLETED',
       index: true,
     },
+    settlementDate: { type: Date, default: null, index: true },
+    settlementStatus: {
+      type: String,
+      enum: ['PENDING', 'ON_HOLD', 'SETTLED', 'REVERSED'],
+      default: 'SETTLED',
+      index: true,
+    },
     isDemo: { type: Boolean, default: false, index: true },
   },
   {

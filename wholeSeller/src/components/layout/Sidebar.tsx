@@ -21,6 +21,7 @@ import {
   HandCoins,
   Ticket,
   FileText,
+  QrCode,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { name: 'Inventory', path: '/dashboard/inventory', icon: Boxes },
   { name: 'Retailers', path: '/dashboard/retailers', icon: Users },
   { name: 'Credit Policy', path: '/dashboard/credit-policy', icon: HandCoins, badge: 'Credit' },
+  { name: 'Payment Settings', path: '/dashboard/payment-settings', icon: QrCode },
   { name: 'Coupons & Offers', path: '/dashboard/coupons', icon: Ticket, badge: 'Offers' },
   { name: 'Retailer Banner Slides', path: '/dashboard/banner-slides', icon: Sliders, badge: 'New' },
   { name: 'Orders', path: '/dashboard/orders', icon: ShoppingBag, badge: 'New' },

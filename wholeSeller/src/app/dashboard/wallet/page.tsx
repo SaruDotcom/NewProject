@@ -9,6 +9,7 @@ export default function WalletPage() {
   const { profile } = useWholesaler();
   const walletQuery = useQuery({
     queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'wallet'),
+    staleTime: 30 * 1000,
     queryFn: async () => {
       const [walletRes, txRes] = await Promise.all([
         api.getWallet(),
@@ -50,7 +51,8 @@ export default function WalletPage() {
           </div>
           <div>
             <p className="text-sm text-gray-500 font-medium">Available Balance</p>
-            <h3 className="text-2xl font-extrabold text-tradeflow-navy">{formatMoney(wallet?.balance)}</h3>
+            <h3 className="text-2xl font-extrabold text-tradeflow-navy">{formatMoney(wallet?.availableBalance)}</h3>
+            <p className="mt-1 text-xs text-gray-500">Released earnings after payouts and pending requests.</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs flex items-center gap-4">
@@ -60,6 +62,7 @@ export default function WalletPage() {
           <div>
             <p className="text-sm text-gray-500 font-medium">Pending Settlement</p>
             <h3 className="text-2xl font-extrabold text-tradeflow-navy">{formatMoney(wallet?.pendingBalance)}</h3>
+            <p className="mt-1 text-xs text-gray-500">Earnings awaiting settlement or held for a return.</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs flex items-center gap-4">
@@ -69,6 +72,7 @@ export default function WalletPage() {
           <div>
             <p className="text-sm text-gray-500 font-medium">Total Earned</p>
             <h3 className="text-2xl font-extrabold text-tradeflow-navy">{formatMoney(wallet?.totalEarned)}</h3>
+            <p className="mt-1 text-xs text-gray-500">Order earnings after commission and refunds.</p>
           </div>
         </div>
       </div>

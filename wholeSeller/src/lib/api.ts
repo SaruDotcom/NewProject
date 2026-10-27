@@ -185,14 +185,14 @@ function invalidateMutation(endpoint: string) {
   if (path.startsWith('/support/tickets')) resources = ['support'];
   else if (path.startsWith('/wholesaler/products')) resources = ['products', 'inventory', 'analytics'];
   else if (path.startsWith('/wholesaler/categories')) resources = ['categories', 'products'];
-  else if (path.startsWith('/orders/returns') || path.startsWith('/wholesaler/returns')) resources = ['returns', 'orders'];
-  else if (path.startsWith('/wholesaler/orders') || path.startsWith('/orders/')) resources = ['orders', 'analytics'];
+  else if (path.startsWith('/orders/returns') || path.startsWith('/wholesaler/returns')) resources = ['returns', 'orders', 'wallet'];
+  else if (path.startsWith('/wholesaler/orders') || path.startsWith('/orders/')) resources = ['orders', 'analytics', 'wallet'];
   else if (path.startsWith('/wholesaler/retailers')) resources = ['retailers', 'credit-overview'];
   else if (path.startsWith('/wholesaler/inventory')) resources = ['inventory', 'products', 'analytics'];
   else if (path.startsWith('/wholesaler/kyc')) resources = ['kyc'];
   else if (path.startsWith('/wholesaler/coupons')) resources = ['coupons'];
   else if (path.startsWith('/wholesaler/credit-policy')) resources = ['credit-overview'];
-  else if (path.startsWith('/wholesaler/credit/settle-order')) resources = ['credit-overview', 'orders', 'wallet', 'analytics'];
+  else if (path.startsWith('/payouts/')) resources = ['wallet'];
   else if (path.startsWith('/reviews')) resources = ['reviews'];
   else if (path.startsWith('/notifications')) resources = ['notifications'];
   else if (path.startsWith('/wholesaler/invite-links')) resources = ['invite-links'];
@@ -682,6 +682,39 @@ export const api = {
       body: JSON.stringify({ customCreditLimit }),
     }),
 
+  updateRetailerCreditPolicy: (retailerId: string, data: {
+    status?: 'DISABLED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+    creditEnabled?: boolean;
+    customCreditLimit?: number | null;
+    creditPeriodDays?: number;
+  }) =>
+    request<{ success: boolean; data: any }>(`/wholesaler/retailers/${retailerId}/credit-policy`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  getPaymentSettings: () =>
+    request<{ success: boolean; data: any }>('/wholesaler/payment-settings', { method: 'GET' }),
+  updatePaymentSettings: (data: FormData) =>
+    request<{ success: boolean; data: any }>('/wholesaler/payment-settings', {
+      method: 'PATCH',
+      body: data,
+    }),
+  getPaymentReports: () =>
+    request<{ success: boolean; data: any[] }>('/wholesaler/payment-reports', { method: 'GET' }),
+  reviewPaymentReport: (reportId: string, action: 'VERIFY' | 'REJECT', note = '') =>
+    request<{ success: boolean; data: any }>(`/wholesaler/payment-reports/${reportId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action, note }),
+    }),
+  getPaymentReportScreenshot: async (reportId: string) => {
+    const url = buildApiUrl(`/wholesaler/payment-reports/${encodeURIComponent(reportId)}/screenshot`);
+    const token = getAuthToken();
+    const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!response.ok) throw new Error('Unable to load payment evidence.');
+    return URL.createObjectURL(await response.blob());
+  },
+
   getCreditOverview: () =>
     request<{ success: boolean; data: any }>('/wholesaler/credit-overview', { method: 'GET' }),
 
@@ -733,11 +766,6 @@ export const api = {
 
     return response.blob();
   },
-
-  settleOrderCredit: (orderId: string) =>
-    request<{ success: boolean; data: any }>(`/wholesaler/credit/settle-order/${orderId}`, {
-      method: 'POST',
-    }),
 
   // Wholesaler Coupons & Offers
   getWholesalerCoupons: () =>

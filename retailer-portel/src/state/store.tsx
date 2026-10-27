@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -14,6 +14,33 @@ import {
   type ApiWholesaler,
 } from "@/api/api";
 import { retailerQueryKeys } from "@/lib/query-client";
+import { getStoredReferralAttribution } from "@/lib/referral-attribution";
+
+const GUEST_CART_KEY = "nexora_retailer_guest_cart";
+
+function readLocalCart(): CartLine[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(GUEST_CART_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item) => item?.productId && typeof item.quantity === "number");
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+function saveLocalCart(cart: CartLine[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(GUEST_CART_KEY, JSON.stringify(cart));
+  } catch {
+    // ignore
+  }
+}
 
 export type Relationship = "Connected";
 
@@ -160,6 +187,8 @@ export type Store = {
   products: Product[];
   categories: Category[];
   cart: CartLine[];
+  cartCount: number;
+  uniqueCartCount: number;
   wishlist: string[];
   relationships: Record<string, "Connected">;
   orders: Order[];
@@ -245,7 +274,7 @@ function cleanImageUrl(img: any): string {
   return "";
 }
 
-function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, string>): Product {
+export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, string>): Product {
   let categoryName = "Grocery & Staples";
   if (typeof item.category === "object" && item.category !== null && (item.category as any).name) {
     categoryName = String((item.category as any).name);
@@ -276,7 +305,9 @@ function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, strin
     name: item.name || item.title || "Untitled product",
     brand: item.brand || "Verified brand",
     category: categoryName,
-    wholesalerId: item.wholesalerId || "",
+    wholesalerId: typeof item.wholesalerId === "object" && item.wholesalerId !== null
+      ? String(item.wholesalerId._id || item.wholesalerId.id || "")
+      : item.wholesalerId || "",
     price: Number(item.wholesalePrice ?? item.price ?? item.retailerPrice ?? item.mrp ?? 0),
     mrp: Number(item.mrp ?? item.wholesalePrice ?? item.price ?? 0),
     moq: Number(item.moq ?? item.minOrderQty ?? 1),
@@ -541,7 +572,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [returns, setReturns] = useState<any[]>([]);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cart, setCart] = useState<CartLine[]>(() => readLocalCart());
+  const cartRef = useRef<CartLine[]>([]);
+  cartRef.current = cart;
+  const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
+  const uniqueCartCount = cart.length;
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
@@ -555,8 +590,69 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCurrentUser(null);
       setProfile(emptyProfile);
       setDashboard(null);
-      setLinkedWholesaler(null);
-      setRelationships({});
+
+      // Restore cart from local storage for guest
+      const localCart = readLocalCart();
+      setCart(localCart);
+      cartRef.current = localCart;
+
+      // Check if user came with a referral attribution
+      const storedRef = getStoredReferralAttribution();
+      if (storedRef?.code) {
+        try {
+          if (!silent) setIsLoading(true);
+          const [refRes, prodRes] = await Promise.all([
+            api.getReferral(storedRef.code).catch(() => null),
+            api.getReferralProducts(storedRef.code, { limit: 200 }).catch(() => null),
+          ]);
+
+          let mappedWs: Wholesaler | null = null;
+          if (refRes?.data?.wholesaler) {
+            mappedWs = mapWholesaler(refRes.data.wholesaler);
+            setLinkedWholesaler(mappedWs);
+          }
+
+          const rawProducts = Array.isArray(prodRes?.data)
+            ? prodRes.data
+            : Array.isArray((prodRes as any)?.data?.products)
+              ? (prodRes as any).data.products
+              : [];
+
+          if (rawProducts.length > 0) {
+            const wsId = String(mappedWs?.id || rawProducts[0]?.wholesalerId || "connected-wholesaler");
+            if (mappedWs) {
+              mappedWs.id = wsId;
+            }
+            setRelationships({ [wsId]: "Connected" });
+
+            const publicProducts = rawProducts.map((item: any, idx: number) => {
+              const mapped = mapProduct(item, idx);
+              return {
+                ...mapped,
+                wholesalerId: wsId,
+              };
+            });
+            setProducts(publicProducts);
+
+            const catNames = Array.from(new Set(publicProducts.map((p: any) => p.category).filter(Boolean)));
+            const publicCategories = catNames.map((name: any) => ({
+              id: String(name),
+              name: String(name),
+              description: `${name} category`,
+            }));
+            setCategories(publicCategories);
+          } else if (mappedWs) {
+            setRelationships({ [mappedWs.id]: "Connected" });
+          }
+        } catch (e) {
+          console.warn("Could not load referral public catalog", e);
+        } finally {
+          if (!silent) setIsLoading(false);
+        }
+      } else {
+        setLinkedWholesaler(null);
+        setRelationships({});
+      }
       return;
     }
 
@@ -570,6 +666,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("nexora_retailer_user_id", userId);
       setCurrentUser({ id: userId, email });
       setProfile(normalizeProfile(user));
+
+      // Sync any guest cart items added before logging in
+      const guestCart = readLocalCart();
+      if (guestCart.length > 0) {
+        for (const line of guestCart) {
+          await api.addToCart(line.productId, line.quantity, line.color).catch(() => undefined);
+        }
+        try {
+          localStorage.removeItem(GUEST_CART_KEY);
+        } catch {}
+      }
+
       const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>) =>
         queryClient.fetchQuery({
           queryKey: retailerQueryKeys.resource(userId, resource),
@@ -615,14 +723,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const product = mapProduct(item, index, categoryMap);
             return {
               ...product,
-              wholesalerId: item.wholesalerId || (product.wholesalerId === "connected-wholesaler" ? connectedWholesalerData?.id : product.wholesalerId) || "",
+              wholesalerId: product.wholesalerId === "connected-wholesaler" ? connectedWholesalerData?.id || "" : product.wholesalerId,
             };
           })
         : [];
       setProducts(nextProducts);
 
-      const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number }> } } | null)?.data?.items || []) as Array<{ productId: string; quantity: number }>;
-      setCart(cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0) })));
+      const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } } | null)?.data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
+      const mappedCart = cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0), color: item.color }));
+      setCart(mappedCart);
+      cartRef.current = mappedCart;
+      saveLocalCart(mappedCart);
 
       const wishlistItems = ((wishlistRes as { data?: Array<{ _id?: string; productId?: string }> } | null)?.data || []) as Array<{ _id?: string; productId?: string }>;
       setWishlist(wishlistItems.map((item) => String(item.productId || item._id || "")));
@@ -780,47 +891,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const quantity = Math.max(minQty, typeof q === 'number' && Number.isInteger(q) ? q : minQty);
     const token = getAuthToken();
 
+    const applyCartUpdateAndToast = () => {
+      const currentCart = cartRef.current;
+      const existing = currentCart.find(
+        (item) => item.productId === id && String(item.color || '') === String(color || '')
+      );
+      let nextCart: CartLine[];
+      if (existing) {
+        nextCart = currentCart.map((item) =>
+          item.productId === id && String(item.color || '') === String(color || '')
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      } else {
+        nextCart = [...currentCart, { productId: id, quantity, ...(color ? { color } : {}) }];
+      }
+      cartRef.current = nextCart;
+      saveLocalCart(nextCart);
+      const updatedTotalCount = nextCart.reduce((sum, item) => sum + item.quantity, 0);
+      setCart(nextCart);
+      setAddedToCartProduct({ product, quantity, color });
+      toast.success(
+        `${product.name}${color ? ` (${color})` : ''} added to cart! Cart (${updatedTotalCount})`,
+        {
+          description: `Total items in cart: ${updatedTotalCount}`,
+        }
+      );
+    };
+
     if (token) {
       try {
         await api.addToCart(id, quantity, color);
         invalidateUserData("cart");
-        setCart((current) => {
-          const existing = current.find((item) => item.productId === id && String(item.color || '') === String(color || ''));
-          if (existing) {
-            return current.map((item) => (item.productId === id && String(item.color || '') === String(color || '') ? { ...item, quantity: item.quantity + quantity } : item));
-          }
-          return [...current, { productId: id, quantity, ...(color ? { color } : {}) }];
-        });
-        setAddedToCartProduct({ product, quantity, color });
-        toast.success(`${product.name}${color ? ` (${color})` : ''} added to cart`);
+        applyCartUpdateAndToast();
       } catch (err: any) {
         if (err?.status === 401) {
           clearAuthToken();
           setCurrentUser(null);
-          setCart((current) => {
-            const existing = current.find((item) => item.productId === id && String(item.color || '') === String(color || ''));
-            if (existing) {
-              return current.map((item) => (item.productId === id && String(item.color || '') === String(color || '') ? { ...item, quantity: item.quantity + quantity } : item));
-            }
-            return [...current, { productId: id, quantity, ...(color ? { color } : {}) }];
-          });
-          setAddedToCartProduct({ product, quantity, color });
-          toast.success(`${product.name}${color ? ` (${color})` : ''} added to cart`);
+          applyCartUpdateAndToast();
         } else {
           const msg = err?.message || err?.data?.message || "Failed to add to cart";
           toast.error(msg);
         }
       }
     } else {
-      setCart((current) => {
-        const existing = current.find((item) => item.productId === id && String(item.color || '') === String(color || ''));
-        if (existing) {
-          return current.map((item) => (item.productId === id && String(item.color || '') === String(color || '') ? { ...item, quantity: item.quantity + quantity } : item));
-        }
-        return [...current, { productId: id, quantity, ...(color ? { color } : {}) }];
-      });
-      setAddedToCartProduct({ product, quantity, color });
-      toast.success(`${product.name}${color ? ` (${color})` : ''} added to cart`);
+      applyCartUpdateAndToast();
     }
   }, [invalidateUserData, products]);
 
@@ -828,7 +943,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const product = products.find((item) => item.id === id);
     const minQty = Math.max(1, Math.ceil(product?.moq || 1));
     const nextQty = Math.max(minQty, Number.isInteger(q) ? q : minQty);
-    setCart((current) => current.map((item) => (item.productId === id ? { ...item, quantity: nextQty } : item)));
+    const nextCart = cartRef.current.map((item) => (item.productId === id ? { ...item, quantity: nextQty } : item));
+    cartRef.current = nextCart;
+    saveLocalCart(nextCart);
+    setCart(nextCart);
     const token = getAuthToken();
     if (token) {
       try {
@@ -846,7 +964,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [invalidateUserData, products]);
 
   const removeCart = useCallback(async (id: string) => {
-    setCart((current) => current.filter((item) => item.productId !== id));
+    const nextCart = cartRef.current.filter((item) => item.productId !== id);
+    cartRef.current = nextCart;
+    saveLocalCart(nextCart);
+    setCart(nextCart);
     const token = getAuthToken();
     if (token) {
       try {
@@ -926,6 +1047,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
 
       setCart([]);
+      cartRef.current = [];
+      saveLocalCart([]);
       invalidateUserData("cart", "orders", "dashboard");
       await syncSession(true);
       toast.success("Wholesale order placed successfully!");
@@ -958,6 +1081,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       products,
       categories,
       cart,
+      cartCount,
+      uniqueCartCount,
       wishlist,
       relationships,
       orders,
@@ -983,7 +1108,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addRecentlyViewed,
       refreshOrders,
     }),
-    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, products, categories, cart, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders, syncSession]
+    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, products, categories, cart, cartCount, uniqueCartCount, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders, syncSession]
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

@@ -123,11 +123,13 @@ export function IconLink({
   label,
   children,
   hoverChildren,
+  badgeCount,
 }: {
   to: "/wishlist" | "/notifications" | "/cart";
   label: string;
   children: React.ReactNode;
   hoverChildren: React.ReactNode;
+  badgeCount?: number;
 }) {
   return (
     <Link
@@ -141,6 +143,14 @@ export function IconLink({
       <span className="absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100">
         {hoverChildren}
       </span>
+      {typeof badgeCount === "number" && badgeCount > 0 && (
+        <span
+          className="absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-black text-white shadow-2xs ring-2 ring-background transition-transform group-hover:scale-110 pointer-events-none animate-in zoom-in-75 duration-150"
+          aria-label={`${badgeCount} in ${label}`}
+        >
+          {badgeCount > 99 ? "99+" : badgeCount}
+        </span>
+      )}
     </Link>
   );
 }
@@ -148,11 +158,10 @@ export function IconLink({
 export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { retailerProfile, logout, isLoggedIn, linkedWholesaler, isLoading } = useStore();
+  const { retailerProfile, logout, isLoggedIn, linkedWholesaler, isLoading, cartCount, wishlist, unread } = useStore();
   const token = getAuthToken();
   const authenticated = isLoggedIn && Boolean(token);
-  const isLanding = path === "/" && !authenticated;
-  const auth = isLanding || !authenticated || ["/login", "/register", "/forgot-password"].includes(path);
+  const isAuthRoute = ["/login", "/register", "/forgot-password"].includes(path) || /^\/r\/[^/]+$/.test(path);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const safeRetailerProfile = retailerProfile ?? null;
@@ -162,7 +171,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const linkedWholesalerOwner = linkedWholesaler?.ownerName?.trim() || linkedWholesaler?.name?.trim() || "Supplier";
   const linkedWholesalerLocation = linkedWholesaler?.location?.trim() || "India";
 
-  if (auth) return <>{children}</>;
+  if (isAuthRoute) return <>{children}</>;
 
   const getInitials = (name: string) => {
     const safeName = name?.trim() || "Retailer";
@@ -214,63 +223,74 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
           {/* Header Action Icons */}
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-            <IconLink to="/wishlist" label="Wishlist" hoverChildren={<Favorite />}>
+            <IconLink to="/wishlist" label="Wishlist" badgeCount={wishlist?.length} hoverChildren={<Favorite />}>
               <FavoriteBorder />
             </IconLink>
-            <IconLink to="/notifications" label="Notifications" hoverChildren={<Notifications />}>
+            <IconLink to="/notifications" label="Notifications" badgeCount={unread} hoverChildren={<Notifications />}>
               <NotificationsNone />
             </IconLink>
-            <IconLink to="/cart" label="Cart" hoverChildren={<ShoppingCart />}>
+            <IconLink to="/cart" label="Cart" badgeCount={cartCount} hoverChildren={<ShoppingCart />}>
               <ShoppingCartOutlined />
             </IconLink>
 
-            {/* Desktop Profile Dropdown */}
-            <div className="group relative hidden lg:block">
-              <Button
-                variant="ghost"
-                className="min-h-[44px] gap-2 rounded-xl px-2 transition-colors duration-200 hover:bg-secondary hover:text-primary"
-              >
-                <span className="grid size-8 place-items-center rounded-lg border border-border bg-secondary text-xs font-black">
-                  {initials}
-                </span>
-                <KeyboardArrowDown className="size-4 text-muted-foreground" />
-              </Button>
-              <div className="invisible absolute right-0 top-full w-60 translate-y-1 border rounded-2xl bg-popover p-2 opacity-0 elevated transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 shadow-lg">
-                <div className="px-3 py-2 border-b border-border/60 mb-1">
-                  <p className="text-xs font-bold text-ink truncate">{profileLabel}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{retailerBusinessName}</p>
-                  <div className="mt-1 text-[10px] font-extrabold text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-block truncate">
-                    Linked to: {linkedWholesalerName}
+            {/* Desktop Profile Dropdown / Sign In */}
+            {authenticated ? (
+              <div className="group relative hidden lg:block">
+                <Button
+                  variant="ghost"
+                  className="min-h-[44px] gap-2 rounded-xl px-2 transition-colors duration-200 hover:bg-secondary hover:text-primary"
+                >
+                  <span className="grid size-8 place-items-center rounded-lg border border-border bg-secondary text-xs font-black">
+                    {initials}
+                  </span>
+                  <KeyboardArrowDown className="size-4 text-muted-foreground" />
+                </Button>
+                <div className="invisible absolute right-0 top-full w-60 translate-y-1 border rounded-2xl bg-popover p-2 opacity-0 elevated transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 shadow-lg">
+                  <div className="px-3 py-2 border-b border-border/60 mb-1">
+                    <p className="text-xs font-bold text-ink truncate">{profileLabel}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{retailerBusinessName}</p>
+                    <div className="mt-1 text-[10px] font-extrabold text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-block truncate">
+                      Linked to: {linkedWholesalerName}
+                    </div>
                   </div>
-                </div>
-                {account.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-accent min-h-[40px]"
+                  {account.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-accent min-h-[40px]"
+                    >
+                      <item.icon className="size-4 text-primary" />
+                      {item.label}
+                    </Link>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackModalOpen(true)}
+                    className="w-full text-left flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-accent min-h-[40px] text-amber-600 font-bold"
                   >
-                    <item.icon className="size-4 text-primary" />
-                    {item.label}
-                  </Link>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setFeedbackModalOpen(true)}
-                  className="w-full text-left flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-accent min-h-[40px] text-amber-600 font-bold"
-                >
-                  <RateReview className="size-4 text-amber-500" />
-                  Give Feedback & Review
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="w-full text-left mt-1 flex items-center gap-3 rounded-xl border-t px-3 py-2.5 text-sm font-bold text-primary hover:bg-accent min-h-[44px]"
-                >
-                  <Logout className="size-4" />
-                  Sign out
-                </button>
+                    <RateReview className="size-4 text-amber-500" />
+                    Give Feedback & Review
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full text-left mt-1 flex items-center gap-3 rounded-xl border-t px-3 py-2.5 text-sm font-bold text-primary hover:bg-accent min-h-[44px]"
+                  >
+                    <Logout className="size-4" />
+                    Sign out
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="hidden lg:flex items-center gap-2">
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-extrabold text-primary bg-primary/10 hover:bg-primary/20 transition-colors min-h-[40px]"
+                >
+                  Sign In
+                </Link>
+              </div>
+            )}
 
             {/* Mobile / Tablet Hamburger Menu Button */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -337,48 +357,68 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
                   {/* Account Links */}
                   <div className="border-t pt-4">
-                    <div className="mb-3 px-1">
-                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
-                        My Retailer Account
-                      </h3>
-                      <p className="text-xs font-bold text-ink truncate mt-1">{profileLabel}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">{retailerBusinessName}</p>
-                    </div>
-                    <div className="grid gap-1">
-                      {account.map((item) => (
+                    {authenticated ? (
+                      <>
+                        <div className="mb-3 px-1">
+                          <h3 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
+                            My Retailer Account
+                          </h3>
+                          <p className="text-xs font-bold text-ink truncate mt-1">{profileLabel}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{retailerBusinessName}</p>
+                        </div>
+                        <div className="grid gap-1">
+                          {account.map((item) => (
+                            <Link
+                              key={item.to}
+                              to={item.to}
+                              onClick={() => setMobileMenuOpen(false)}
+                              className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-foreground hover:bg-accent min-h-[44px]"
+                            >
+                              <item.icon className="size-4 text-primary" />
+                              <span>{item.label}</span>
+                            </Link>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              setFeedbackModalOpen(true);
+                            }}
+                            className="w-full text-left flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold text-amber-600 hover:bg-accent min-h-[44px]"
+                          >
+                            <RateReview className="size-4 text-amber-500" />
+                            <span>Give Feedback & Review</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMobileMenuOpen(false);
+                              handleSignOut();
+                            }}
+                            className="w-full text-left mt-2 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 text-sm font-extrabold text-primary hover:bg-primary/10 min-h-[44px]"
+                          >
+                            <Logout className="size-4" />
+                            <span>Sign out</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="px-1">
+                          <h3 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
+                            Retailer Access
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">Sign in to view wholesale pricing and place orders.</p>
+                        </div>
                         <Link
-                          key={item.to}
-                          to={item.to}
+                          to="/login"
                           onClick={() => setMobileMenuOpen(false)}
-                          className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-foreground hover:bg-accent min-h-[44px]"
+                          className="flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-extrabold text-primary-foreground hover:bg-primary/90 min-h-[44px]"
                         >
-                          <item.icon className="size-4 text-primary" />
-                          <span>{item.label}</span>
+                          Sign In / Register
                         </Link>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileMenuOpen(false);
-                          setFeedbackModalOpen(true);
-                        }}
-                        className="w-full text-left flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold text-amber-600 hover:bg-accent min-h-[44px]"
-                      >
-                        <RateReview className="size-4 text-amber-500" />
-                        <span>Give Feedback & Review</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileMenuOpen(false);
-                          handleSignOut();
-                        }}
-                        className="w-full text-left mt-2 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 text-sm font-extrabold text-primary hover:bg-primary/10 min-h-[44px]"
-                      >
-                        <Logout className="size-4" />
-                        <span>Sign out</span>
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </SheetContent>
@@ -393,7 +433,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main Page Content */}
-      <div className="flex-1">{children}</div>
+      <div className="flex-1 pb-16 md:pb-0">{children}</div>
 
       {/* Footer */}
       <footer className="border-t border-border bg-ink text-primary-foreground mt-auto">
@@ -447,17 +487,24 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
         {[
           { to: "/" as const, label: "Home", icon: Store },
           { to: "/products" as const, label: "Products", icon: Inventory2 },
-          { to: "/cart" as const, label: "Cart", icon: ShoppingCart },
+          { to: "/cart" as const, label: "Cart", icon: ShoppingCart, badge: cartCount },
           { to: "/orders" as const, label: "Orders", icon: Assignment },
           { to: "/dashboard" as const, label: "Account", icon: Person },
         ].map((i) => (
           <Link
             key={i.to}
             to={i.to}
-            className="flex flex-col items-center justify-center gap-1 py-1.5 text-[10px] font-bold min-h-[44px]"
+            className="relative flex flex-col items-center justify-center gap-1 py-1.5 text-[10px] font-bold min-h-[44px]"
             activeProps={{ className: "text-primary" }}
           >
-            <i.icon className="size-5" />
+            <div className="relative">
+              <i.icon className="size-5" />
+              {typeof (i as any).badge === "number" && (i as any).badge > 0 && (
+                <span className="absolute -top-1 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 text-[9px] font-black text-white shadow-xs">
+                  {(i as any).badge > 99 ? "99+" : (i as any).badge}
+                </span>
+              )}
+            </div>
             <span>{i.label}</span>
           </Link>
         ))}
@@ -470,14 +517,14 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 }
 
 export function AddToCartModal() {
-  const { addedToCartProduct, clearAddedToCartProduct, cart, products } = useStore();
+  const { addedToCartProduct, clearAddedToCartProduct, cart, products, cartCount } = useStore();
   const navigate = useNavigate();
 
   if (!addedToCartProduct) return null;
 
   const { product, quantity } = addedToCartProduct;
 
-  const totalItemsCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+  const totalItemsCount = typeof cartCount === "number" ? cartCount : cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartTotalPrice = cart.reduce((acc, item) => {
     const p = products.find((pr) => pr.id === item.productId);
     return acc + (p ? p.price * item.quantity : 0);
@@ -493,7 +540,7 @@ export function AddToCartModal() {
             <CheckCircle className="size-8" />
           </div>
           <DialogTitle className="text-xl font-extrabold text-ink">
-            Item Added to Cart!
+            Item Added to Cart! ({totalItemsCount} {totalItemsCount === 1 ? "item" : "items"})
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
             Product has been successfully added to your wholesale cart page.
@@ -542,7 +589,7 @@ export function AddToCartModal() {
               navigate({ to: "/cart" });
             }}
           >
-            <ShoppingCart className="mr-1.5 size-4" /> Go to Cart Page
+            <ShoppingCart className="mr-1.5 size-4" /> Go to Cart ({totalItemsCount})
           </Button>
         </DialogFooter>
       </DialogContent>

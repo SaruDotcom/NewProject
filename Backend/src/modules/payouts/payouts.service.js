@@ -35,14 +35,19 @@ class PayoutService {
 
     // Check and lock wallet balance
     const wallet = await WalletService.getOrCreateWallet(wholesalerId, 'WHOLESALER');
-    if (wallet.availableBalance < payoutAmount) {
+    const walletSummary = await WalletService.getWalletSummary(wholesalerId, 'WHOLESALER');
+    if (walletSummary.availableBalance < payoutAmount) {
       throw new BadRequestError(
-        `Insufficient available wallet balance. Available: ₹${wallet.availableBalance}, Requested: ₹${payoutAmount}`,
+        `Insufficient available wallet balance. Available: ₹${walletSummary.availableBalance}, Requested: ₹${payoutAmount}`,
         'INSUFFICIENT_FUNDS'
       );
     }
 
-    await WalletService.lockFunds({ ownerId: wholesalerId, amount: payoutAmount });
+    await WalletService.lockFunds({
+      ownerId: wholesalerId,
+      amount: payoutAmount,
+      availableBalance: walletSummary.availableBalance,
+    });
 
     const payoutNumber = generateReference('PO');
 

@@ -1,8 +1,8 @@
 import { Link, useNavigate } from "@/lib/router";
-import { Component, type ErrorInfo, type ReactNode, useState, useEffect, useMemo, useCallback } from "react";
+import { Component, type ErrorInfo, type ReactNode, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronRight, Favorite, FavoriteBorder, LocationOn, Inventory2, ShoppingCartOutlined, Verified, VerifiedUser, Lock, LocalShipping, Notifications } from "@mui/icons-material";
+import { Check, ChevronRight, Favorite, FavoriteBorder, LocationOn, Inventory2, ShoppingCartOutlined, Verified, VerifiedUser, Lock, LocalShipping, Notifications, LocalOffer, ConfirmationNumber } from "@mui/icons-material";
 import {
   Store,
   MapPin,
@@ -39,35 +39,6 @@ import {
 } from "@/lib/referral-attribution";
 import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, money } from "./primitives";
 
-type RazorpayPaymentResponse = {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-};
-
-type RazorpayCheckoutInstance = {
-  open: () => void;
-  on: (event: string, callback: (response: { error?: { description?: string } }) => void) => void;
-};
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => RazorpayCheckoutInstance;
-  }
-}
-
-function loadRazorpay(): Promise<void> {
-  if (window.Razorpay) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Unable to load Razorpay checkout. Please try again.")), { once: true });
-    document.body.appendChild(script);
-  });
-}
-
 export function DashboardPage() {
   const { currentUser, wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
   const connectedProducts = products.filter((p) => p.wholesalerId === linkedWholesalerId);
@@ -79,6 +50,7 @@ export function DashboardPage() {
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
     queryFn: async () => (await api.getCreditInfo())?.data ?? null,
     enabled: Boolean(currentUser?.id),
+    refetchInterval: 15000,
   });
   const creditInfo = creditQuery.data;
   useEffect(() => {
@@ -100,11 +72,11 @@ export function DashboardPage() {
         <Button asChild><Link to="/products">Continue shopping</Link></Button>
       </div>
 
-      {creditInfo?.creditEnabled && (
+      {creditInfo && (creditInfo.creditEnabled || Number(creditInfo.currentOutstandingAmount || 0) > 0) && (
         <div className="mt-6 rounded-2xl border border-tradeflow-green/20 bg-gradient-to-r from-tradeflow-green-50 via-white to-tradeflow-green-50 p-5 shadow-xs dark:border-tradeflow-green/30 dark:from-tradeflow-navy/70 dark:via-background dark:to-tradeflow-navy/70">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-tradeflow-green/20 pb-3 dark:border-tradeflow-green/30">
             <div className="flex items-center gap-2">
-              <Badge className="bg-tradeflow-green text-tradeflow-navy font-bold">Credit Line Active</Badge>
+              <Badge className="bg-tradeflow-green text-tradeflow-navy font-bold">{creditInfo.creditEnabled ? "Credit Line Active" : "Credit Balance Due"}</Badge>
               <span className="text-xs font-semibold text-muted-foreground">Provided by {linkedSupplierName}</span>
             </div>
             <span className="text-xs text-muted-foreground">Pay within <strong>{creditInfo.creditPeriodDays} days</strong> of order</span>
@@ -113,12 +85,12 @@ export function DashboardPage() {
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
               <span className="text-xs font-medium text-muted-foreground">Total Credit Limit</span>
-              <p className="text-lg font-black text-ink mt-0.5">{money(creditInfo.creditLimit)}</p>
+              <p className="text-lg font-black text-ink mt-0.5">{money(creditInfo.effectiveLimit)}</p>
             </div>
             <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
               <span className="text-xs font-medium text-muted-foreground">Current Outstanding</span>
-              <p className={cn("text-lg font-black mt-0.5", creditInfo.outstandingAmount > 0 ? "text-amber-700 dark:text-amber-300" : "text-green-700 dark:text-tradeflow-green")}>
-                {money(creditInfo.outstandingAmount)}
+              <p className={cn("text-lg font-black mt-0.5", creditInfo.currentOutstandingAmount > 0 ? "text-amber-700 dark:text-amber-300" : "text-green-700 dark:text-tradeflow-green")}>
+                {money(creditInfo.currentOutstandingAmount)}
               </p>
             </div>
             <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
@@ -131,6 +103,9 @@ export function DashboardPage() {
             <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-100 p-3 text-xs font-bold text-amber-800 border border-amber-200">
               ⚠️ You have {overdueCount} overdue credit order{overdueCount > 1 ? "s" : ""}. Please settle your dues with {linkedSupplierName} to avoid late charges.
             </div>
+          )}
+          {Number(creditInfo?.currentOutstandingAmount || 0) > 0 && (
+            <CreditRepaymentPanel outstanding={Number(creditInfo.currentOutstandingAmount)} />
           )}
         </div>
       )}
@@ -187,6 +162,128 @@ export function DashboardPage() {
         <ProductGrid products={connectedProducts.slice(0, 4)} />
       </section>
     </main>
+  );
+}
+
+function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
+  const { currentUser } = useStore();
+  const queryClient = useQueryClient();
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [screenshot, setScreenshot] = useState<File | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const paymentOptionsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-options"),
+    queryFn: async () => (await api.getRetailerPaymentOptions()).data,
+    enabled: Boolean(currentUser?.id),
+  });
+  const options = paymentOptionsQuery.data;
+  const reportsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-reports"),
+    queryFn: async () => (await api.getRetailerPaymentReports()).data || [],
+    enabled: Boolean(currentUser?.id),
+  });
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+      if (remaining === 0) setExpiresAt(null);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+
+  const submit = async () => {
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > outstanding) {
+      toast.error(`Enter a repayment between ₹0.01 and ${money(outstanding)}.`);
+      return;
+    }
+    if (reference.trim().length < 4) {
+      toast.error("Enter the UPI transaction/reference ID.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.createPaymentReport({
+        type: "CREDIT_REPAYMENT",
+        amount: numericAmount.toFixed(2),
+        transactionReference: reference.trim(),
+        screenshot: screenshot || undefined,
+      });
+      setSubmitted(true);
+      await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-reports") });
+      toast.success("Repayment submitted for wholesaler verification. Your outstanding balance changes after confirmation.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to submit repayment.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openQr = () => {
+    setQrOpen(true);
+    const end = Date.now() + Number(options?.qrSessionMinutes || 10) * 60_000;
+    setExpiresAt(end);
+    setSecondsLeft(Math.ceil((end - Date.now()) / 1000));
+  };
+
+  return (
+    <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-5 dark:bg-amber-950/20">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-extrabold text-ink">Repay credit balance</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Outstanding: <strong>{money(outstanding)}</strong>. Pay any installment up to this amount; only wholesaler-confirmed payments update your balance.</p>
+        </div>
+        {options?.qrPaymentsEnabled && !qrOpen && <Button variant="outline" size="sm" onClick={openQr}>Show payment QR</Button>}
+      </div>
+      {qrOpen && options?.qrPaymentsEnabled && (
+        <div className="mt-3 rounded-xl border bg-background p-3 text-center">
+          {secondsLeft > 0 ? (
+            <>
+              <img src={options.qrDataUrl} alt="Wholesaler UPI QR code" className="mx-auto max-h-48 object-contain" />
+              <p className="mt-2 text-xs text-muted-foreground">Session expires in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}. Expiry only hides the QR in this app; the underlying QR remains valid.</p>
+            </>
+          ) : <Button size="sm" variant="outline" onClick={openQr}>Request fresh QR session</Button>}
+        </div>
+      )}
+      {options?.upiIdPaymentsEnabled && (
+        <div className="mt-3 flex items-center gap-2 text-sm">
+          <strong>{options.upiId}</strong>
+          <button type="button" className="text-xs font-bold text-primary" onClick={() => void navigator.clipboard.writeText(options.upiId).then(() => toast.success("UPI ID copied."))}>Copy</button>
+        </div>
+      )}
+      {!submitted ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-bold">Installment amount (₹)
+            <Input type="number" min="0.01" max={outstanding} step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </label>
+          <label className="text-xs font-bold">UPI transaction/reference ID
+            <Input value={reference} onChange={(event) => setReference(event.target.value)} />
+          </label>
+          <label className="text-xs font-bold sm:col-span-2">Screenshot (optional)
+            <Input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setScreenshot(event.target.files?.[0] || null)} />
+          </label>
+          <Button type="button" onClick={() => void submit()} disabled={submitting || !(options?.qrPaymentsEnabled || options?.upiIdPaymentsEnabled)} className="sm:col-span-2">
+            {submitting ? "Submitting…" : "Submit Repayment for Verification"}
+          </Button>
+          {!options?.qrPaymentsEnabled && !options?.upiIdPaymentsEnabled && (
+            <p className="text-xs text-amber-800 sm:col-span-2">Your wholesaler has not enabled a UPI repayment method. Contact them to arrange repayment.</p>
+          )}
+        </div>
+      ) : <p className="mt-3 rounded-lg bg-white p-3 text-sm font-bold text-amber-900">Payment report is Pending Verification.</p>}
+      {(reportsQuery.data || []).filter((report: any) => report.isCreditRepayment).slice(0, 3).map((report: any) => (
+        <p key={report._id} className="mt-2 text-xs text-muted-foreground">
+          ₹{Number(report.amount).toLocaleString("en-IN")} · {report.status} · Ref {report.transactionReference}
+          {report.reviewNote ? ` · ${report.reviewNote}` : ""}
+        </p>
+      ))}
+    </section>
   );
 }
 
@@ -611,7 +708,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
             <h2 className="font-bold">Payment Information</h2>
             <div className="flex justify-between text-xs pt-1">
               <span className="text-muted-foreground">Payment Mode:</span>
-              <strong className="text-ink">{order.isCreditOrder ? "Credit" : order.paymentMethod === "ONLINE" ? "Online Payment" : "Cash on Delivery"}</strong>
+              <strong className="text-ink">{order.isCreditOrder ? "Credit" : order.paymentMethod === "UPI" ? "Direct UPI" : order.paymentMethod === "ONLINE" ? "Legacy Online Payment" : "Cash on Delivery"}</strong>
             </div>
             {order.isCreditOrder && (
               <>
@@ -929,18 +1026,37 @@ export function CartPage() {
 }
 
 export function CheckoutPage() {
-  const { currentUser, cart, retailerProfile, placeOrder, products, refreshData } = useStore();
+  const { currentUser, cart, retailerProfile, placeOrder, products, refreshData, linkedWholesaler } = useStore();
+  const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [placed, setPlaced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [pendingPayment, setPendingPayment] = useState<RazorpayPaymentResponse | null>(null);
-  const [paymentMode, setPaymentMode] = useState<"ONLINE" | "CREDIT">("ONLINE");
+  const [paymentMode, setPaymentMode] = useState<"UPI" | "CREDIT" | "COD">("UPI");
+  const [reportedOrder, setReportedOrder] = useState<{ id: string; number: string; amount: number } | null>(null);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState(0);
+  const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
+  const [qrSessionImage, setQrSessionImage] = useState("");
+  const [qrSessionLoading, setQrSessionLoading] = useState(false);
+  const queryClient = useQueryClient();
   const creditQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
     queryFn: async () => (await api.getCreditInfo())?.data ?? null,
     enabled: Boolean(currentUser?.id),
+    refetchInterval: 15000,
   });
   const creditInfo = creditQuery.data;
   const loadingCredit = creditQuery.isLoading;
+  const paymentOptionsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-options"),
+    queryFn: async () => (await api.getRetailerPaymentOptions()).data,
+    enabled: Boolean(currentUser?.id),
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+  const paymentOptions = paymentOptionsQuery.data;
 
   const total = cart.reduce((sum, line) => {
     const product = products.find((item) => item.id === line.productId);
@@ -957,9 +1073,15 @@ export function CheckoutPage() {
   const creditPeriodDays = Number(creditInfo?.creditPeriodDays || 15);
   const effectiveLimit = Number(creditInfo?.effectiveLimit || 0);
   const outstanding = Number(creditInfo?.currentOutstandingAmount || 0);
+  const [requestingCredit, setRequestingCredit] = useState(false);
 
   const meetsMinOrder = !minOrderForCredit || total >= minOrderForCredit;
   const isCreditEligible = isCreditEnabled && meetsMinOrder && availableCredit >= total;
+  const hasDirectUpi = Boolean(paymentOptions?.qrPaymentsEnabled || paymentOptions?.upiIdPaymentsEnabled);
+
+  useEffect(() => {
+    if (!paymentOptionsQuery.isLoading && !hasDirectUpi && paymentMode === "UPI") setPaymentMode("COD");
+  }, [paymentOptionsQuery.isLoading, hasDirectUpi, paymentMode]);
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + creditPeriodDays);
@@ -967,44 +1089,165 @@ export function CheckoutPage() {
 
   const [agreedToTerms, setAgreedToTerms] = useState(true);
 
-  // Coupon State
+  useEffect(() => {
+    if (!qrExpiresAt) return;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((qrExpiresAt - Date.now()) / 1000));
+      setQrSecondsLeft(remaining);
+      if (remaining === 0) {
+        setQrExpiresAt(null);
+        setQrSessionImage("");
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [qrExpiresAt]);
+
+  const startQrSession = async () => {
+    if (!paymentOptions?.qrPaymentsEnabled || qrSessionLoading) return;
+    setQrSessionLoading(true);
+    try {
+      const session = (await api.createRetailerQrSession()).data;
+      const expiresAt = new Date(session.expiresAt).getTime();
+      if (!session.qrDataUrl || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        throw new Error("The wholesaler QR session could not be loaded. Please try again.");
+      }
+      setQrSessionImage(session.qrDataUrl);
+      setQrExpiresAt(expiresAt);
+      setQrSecondsLeft(Math.ceil((expiresAt - Date.now()) / 1000));
+    } catch (error) {
+      setQrSessionImage("");
+      setQrExpiresAt(null);
+      setQrSecondsLeft(0);
+      toast.error(error instanceof Error ? error.message : "Unable to load the wholesaler QR code.");
+    } finally {
+      setQrSessionLoading(false);
+    }
+  };
+
+  // Available Coupons & Offers State
   const [couponCodeInput, setCouponCodeInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [couponError, setCouponError] = useState<string | null>(null);
-  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [validatingCode, setValidatingCode] = useState<string | null>(null);
+  const [showManualInput, setShowManualInput] = useState(false);
 
-  const handleApplyCoupon = async () => {
-    if (!couponCodeInput.trim()) return;
-    setValidatingCoupon(true);
+  const couponsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "coupons"),
+    queryFn: async () => {
+      const res = await api.getCoupons();
+      return (res?.data || []) as any[];
+    },
+    enabled: Boolean(currentUser?.id),
+    staleTime: 30_000,
+  });
+  const availableCoupons = couponsQuery.data || [];
+  const loadingCoupons = couponsQuery.isLoading;
+
+  const handleApplyCoupon = async (codeToApply?: string) => {
+    const rawCode = (codeToApply || couponCodeInput).trim().toUpperCase();
+    if (!rawCode) {
+      setCouponError("Please enter a coupon code");
+      return;
+    }
+    setValidatingCode(rawCode);
     setCouponError(null);
     try {
       const res = await api.validateCoupon({
-        code: couponCodeInput.trim(),
+        code: rawCode,
+        wholesalerId: linkedWholesaler?.id,
         subtotal: total,
       });
       if (res && res.success && res.data && res.data.valid) {
         setAppliedCoupon(res.data.coupon);
         setDiscountAmount(res.data.discountAmount);
+        setCouponCodeInput(res.data.coupon.code);
         toast.success(`Coupon '${res.data.coupon.code}' applied! Saved ${money(res.data.discountAmount)}`);
       }
     } catch (err: any) {
-      setAppliedCoupon(null);
-      setDiscountAmount(0);
       setCouponError(err?.message || "Invalid or ineligible coupon code");
+      toast.error(err?.message || "Invalid or ineligible coupon code");
     } finally {
-      setValidatingCoupon(false);
+      setValidatingCode(null);
     }
   };
 
   const handleRemoveCoupon = () => {
+    const prevCode = appliedCoupon?.code;
     setAppliedCoupon(null);
     setDiscountAmount(0);
     setCouponCodeInput("");
     setCouponError(null);
+    if (prevCode) {
+      toast.info(`Coupon '${prevCode}' removed`);
+    }
   };
 
+  const handleCreditRequest = async () => {
+    setRequestingCredit(true);
+    try {
+      await api.requestCredit();
+      await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit") });
+      toast.success("Credit request sent to your wholesaler.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to request credit.");
+    } finally {
+      setRequestingCredit(false);
+    }
+  };
+
+  useEffect(() => {
+    if (appliedCoupon && appliedCoupon.minOrderValue > 0 && total < appliedCoupon.minOrderValue) {
+      setAppliedCoupon(null);
+      setDiscountAmount(0);
+      setCouponError(`Coupon '${appliedCoupon.code}' was removed because order total is below ₹${appliedCoupon.minOrderValue}.`);
+    }
+  }, [total, appliedCoupon]);
+
   const finalTotal = Math.max(0, total - discountAmount);
+  const checkoutStorageKey = `retailer-checkout-idempotency:${currentUser?.id || "unknown"}`;
+  const clearCheckoutIdempotencyKey = () => {
+    checkoutIdempotencyRef.current = null;
+    try {
+      sessionStorage.removeItem(checkoutStorageKey);
+    } catch (error) {
+      console.warn("Could not clear the saved checkout request key.", error);
+    }
+  };
+  const getCheckoutIdempotencyKey = () => {
+    const fingerprint = JSON.stringify({
+      cart: cart.map((line) => [line.productId, line.quantity, line.color || ""]).sort(),
+      paymentMode,
+      couponCode: appliedCoupon?.code || "",
+      address: [retailerProfile.address, retailerProfile.city, retailerProfile.state, retailerProfile.pincode],
+    });
+    if (checkoutIdempotencyRef.current?.fingerprint === fingerprint) return checkoutIdempotencyRef.current.key;
+
+    try {
+      const saved = sessionStorage.getItem(checkoutStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { fingerprint?: string; key?: string };
+        if (parsed.fingerprint === fingerprint && parsed.key) {
+          checkoutIdempotencyRef.current = { fingerprint, key: parsed.key };
+          return parsed.key;
+        }
+      }
+    } catch (error) {
+      console.warn("Could not read the saved checkout request key; using an in-memory key.", error);
+    }
+
+    const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const key = `retailer-checkout-${requestId}`;
+    checkoutIdempotencyRef.current = { fingerprint, key };
+    try {
+      sessionStorage.setItem(checkoutStorageKey, JSON.stringify({ fingerprint, key }));
+    } catch (error) {
+      console.warn("Could not persist the checkout request key across reloads.", error);
+    }
+    return key;
+  };
 
   const handlePlaceOrder = async () => {
     if (!agreedToTerms) {
@@ -1015,19 +1258,19 @@ export function CheckoutPage() {
       toast.error("You are not eligible for credit on this order.");
       return;
     }
+    if (paymentMode === "UPI" && !hasDirectUpi) {
+      toast.error("Your wholesaler has not configured UPI payments.");
+      return;
+    }
     setSubmitting(true);
     try {
-      if (pendingPayment) {
-        await api.verifyCheckoutPayment(pendingPayment);
-        setPendingPayment(null);
-        await refreshData(true);
-        toast.success("Payment verified and order placed successfully.");
-        setPlaced(true);
-        return;
-      }
       if (paymentMode === "CREDIT") {
         await placeOrder("CREDIT", appliedCoupon?.code);
+        await refreshData(true);
+        setPlaced(true);
+        toast.success("Credit order placed successfully.");
       } else {
+        const idempotencyKey = getCheckoutIdempotencyKey();
         const checkoutResponse = await api.checkout({
           items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
           shippingAddress: {
@@ -1040,68 +1283,56 @@ export function CheckoutPage() {
             contactName: retailerProfile.ownerName || "Retailer contact",
             phone: retailerProfile.phone || "",
           },
-          paymentMethod: "ONLINE",
+          paymentMethod: paymentMode,
           couponCode: appliedCoupon?.code,
+          idempotencyKey,
         });
-        const paymentOrder = checkoutResponse.data as {
-          configured?: boolean;
-          keyId?: string;
-          order?: { id: string; amount: number; currency: string };
-        };
-        const order = paymentOrder.order;
-        if (!paymentOrder.configured || !paymentOrder.keyId || !order) {
-          throw new Error("Online payment is not configured.");
-        }
-
-        await loadRazorpay();
-        const Razorpay = window.Razorpay;
-        if (!Razorpay) throw new Error("Razorpay checkout is unavailable. Please try again.");
-        let paymentWasCancelled = false;
-        const payment = await new Promise<RazorpayPaymentResponse>((resolve, reject) => {
-          const checkout = new Razorpay({
-            key: paymentOrder.keyId,
-            amount: order.amount,
-            currency: order.currency,
-            name: "TradeFlow",
-            description: "Retailer order payment",
-            order_id: order.id,
-            prefill: {
-              name: retailerProfile.ownerName,
-              email: retailerProfile.email,
-              contact: retailerProfile.phone,
-            },
-            theme: { color: "#20A66A" },
-            handler: (response: RazorpayPaymentResponse) => resolve(response),
-            modal: {
-              ondismiss: () => {
-                paymentWasCancelled = true;
-                reject(new Error("Payment was cancelled."));
-              },
-            },
-          });
-          checkout.on("payment.failed", (response) => {
-            paymentWasCancelled = true;
-            reject(new Error(response.error?.description || "Payment failed. Please try again."));
-          });
-          checkout.open();
-        }).catch(async (error) => {
-          if (paymentWasCancelled) {
-            await api.failCheckoutPayment(order.id).catch((failureError) => {
-              console.error("Unable to update failed checkout payment", failureError);
-            });
-          }
-          throw error;
-        });
-
-        setPendingPayment(payment);
-        await api.verifyCheckoutPayment(payment);
-        setPendingPayment(null);
         await refreshData(true);
-        toast.success("Payment verified and order placed successfully.");
+        const order = (checkoutResponse.data as any)?.order || checkoutResponse.data;
+        if (paymentMode === "UPI") {
+          const orderId = String(order?._id || order?.id || "");
+          if (!orderId) throw new Error("The order was placed but its payment reference could not be loaded. Please check Orders.");
+          clearCheckoutIdempotencyKey();
+          setReportedOrder({
+            id: orderId,
+            number: String(order.orderNumber || orderId),
+            amount: Number(order.grandTotal || order.total || finalTotal),
+          });
+          setPaymentAmount(Number(order.grandTotal || order.total || finalTotal).toFixed(2));
+          toast.success("Order placed. Report your UPI payment for wholesaler verification.");
+          if (paymentOptions?.qrPaymentsEnabled) void startQrSession();
+          return;
+        }
+        clearCheckoutIdempotencyKey();
+        toast.success("Order placed successfully.");
+        setPlaced(true);
       }
-      setPlaced(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to complete checkout.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitPaymentReport = async () => {
+    if (!reportedOrder) return;
+    if (paymentReference.trim().length < 4) {
+      toast.error("Enter the UPI transaction/reference ID.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.createPaymentReport({
+        orderId: reportedOrder.id,
+        amount: paymentAmount || reportedOrder.amount.toFixed(2),
+        transactionReference: paymentReference.trim(),
+        screenshot: paymentScreenshot || undefined,
+      });
+      setReportSubmitted(true);
+      await queryClient.invalidateQueries({ queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-reports") });
+      toast.success("Payment report submitted. It remains pending until your wholesaler confirms receipt.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to submit payment report.");
     } finally {
       setSubmitting(false);
     }
@@ -1116,7 +1347,7 @@ export function CheckoutPage() {
           <p className="mt-3 text-muted-foreground">
             {paymentMode === "CREDIT"
               ? `Your Credit order has been recorded with a payment due date of ${formattedDueDate}.`
-              : "Your order has been split into separate requests for each wholesaler."}
+              : "Your order has been placed."}
           </p>
           <Button asChild className="mt-6 rounded-xl font-extrabold"><Link to="/orders">View Orders</Link></Button>
         </div>
@@ -1147,15 +1378,32 @@ export function CheckoutPage() {
             <h2 className="text-xl font-bold text-ink">Select Payment Method</h2>
 
             <label
-              className={`flex items-start gap-3 border p-4 rounded-xl cursor-pointer transition-all ${
-                paymentMode === "ONLINE" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border/80 hover:bg-muted/30"
-              }`}
-              onClick={() => setPaymentMode("ONLINE")}
+              className={`flex items-start gap-3 border p-4 rounded-xl transition-all ${
+                paymentMode === "UPI" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border/80"
+              } ${hasDirectUpi ? "cursor-pointer hover:bg-muted/30" : "cursor-not-allowed opacity-60"}`}
+              onClick={() => hasDirectUpi && setPaymentMode("UPI")}
             >
-              <input type="radio" name="payment" checked={paymentMode === "ONLINE"} onChange={() => setPaymentMode("ONLINE")} className="mt-1" />
+              <input type="radio" name="payment" disabled={!hasDirectUpi} checked={paymentMode === "UPI"} onChange={() => hasDirectUpi && setPaymentMode("UPI")} className="mt-1" />
               <div>
-                <b className="block text-ink text-sm">Online Payment (UPI / NetBanking / Cards)</b>
-                <span className="mt-0.5 block text-xs text-muted-foreground">Instant payment via secure digital gateway.</span>
+                <b className="block text-ink text-sm">Direct UPI / QR Payment</b>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {hasDirectUpi
+                    ? `Pay ${paymentOptions?.accountName || paymentOptions?.businessName || "your wholesaler"} directly, then report the UPI reference for verification.`
+                    : "Your wholesaler has not enabled UPI or QR payments yet."}
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`flex items-start gap-3 border p-4 rounded-xl cursor-pointer transition-all ${
+                paymentMode === "COD" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border/80 hover:bg-muted/30"
+              }`}
+              onClick={() => setPaymentMode("COD")}
+            >
+              <input type="radio" name="payment" checked={paymentMode === "COD"} onChange={() => setPaymentMode("COD")} className="mt-1" />
+              <div>
+                <b className="block text-ink text-sm">Cash on Delivery</b>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Pay your connected wholesaler on delivery.</span>
               </div>
             </label>
 
@@ -1203,6 +1451,14 @@ export function CheckoutPage() {
                         <strong className="text-ink font-extrabold">{formattedDueDate}</strong>
                       </div>
                       <div className="flex justify-between">
+                        <span className="text-muted-foreground">Approved Credit Limit:</span>
+                        <b className="text-ink font-bold">{money(effectiveLimit)}</b>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Current Outstanding:</span>
+                        <b className="text-ink font-bold">{money(outstanding)}</b>
+                      </div>
+                      <div className="flex justify-between">
                         <span className="text-muted-foreground">Available Credit Limit:</span>
                         <b className="text-emerald-600 font-bold">{money(availableCredit)}</b>
                       </div>
@@ -1210,12 +1466,20 @@ export function CheckoutPage() {
                         <span className="text-muted-foreground">Remaining Limit After Order:</span>
                         <b className="text-ink font-bold">{money(Math.max(0, availableCredit - finalTotal))}</b>
                       </div>
+
                     </div>
                   )}
 
                   {!loadingCredit && !isCreditEnabled && (
                     <div className="mt-2 text-[11px] font-semibold text-amber-700">
-                      ⚠️ Credit payment is currently not enabled by your connected wholesaler.
+                      {creditInfo?.creditStatus === "PENDING_APPROVAL"
+                        ? "Your credit request is pending wholesaler approval."
+                        : "Credit is not currently enabled for your account."}
+                      {creditInfo?.creditStatus !== "PENDING_APPROVAL" && (
+                        <button type="button" onClick={() => void handleCreditRequest()} disabled={requestingCredit} className="ml-2 underline">
+                          {requestingCredit ? "Requesting…" : "Request credit"}
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -1233,57 +1497,310 @@ export function CheckoutPage() {
                 </div>
               </div>
             </div>
+            {reportedOrder && (
+              <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
+                <div>
+                  <h3 className="font-bold text-ink">Pay your wholesaler directly</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Order {reportedOrder.number} · Exact order total {money(reportedOrder.amount)} · Account {paymentOptions?.accountName || paymentOptions?.businessName || "Wholesaler"}
+                  </p>
+                </div>
+                {paymentOptions?.upiId && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3">
+                    <span className="text-sm font-bold text-ink">{paymentOptions.upiId}</span>
+                    {paymentOptions.upiIdPaymentsEnabled && (
+                      <button type="button" className="rounded border px-2 py-1 text-xs font-bold" onClick={() => {
+                        void navigator.clipboard.writeText(paymentOptions.upiId).then(() => toast.success("UPI ID copied."));
+                      }}>Copy UPI ID</button>
+                    )}
+                  </div>
+                )}
+                {!paymentOptions?.qrPaymentsEnabled && (
+                  <p className="rounded-lg border bg-background p-3 text-sm text-muted-foreground">
+                    The wholesaler has not configured an enabled QR code.
+                    {paymentOptions?.upiIdPaymentsEnabled && paymentOptions.upiId
+                      ? <> You can pay using the configured UPI ID above.</>
+                      : <> Please contact the wholesaler for payment instructions.</>}
+                  </p>
+                )}
+                {paymentOptions?.qrPaymentsEnabled && (
+                  <div className="rounded-lg border bg-background p-3">
+                    {qrSecondsLeft > 0 && qrSessionImage ? (
+                      <div className="text-center">
+                        <img src={qrSessionImage} alt="Wholesaler UPI QR code" className="mx-auto max-h-60 max-w-full object-contain" />
+                        <p className="mt-2 text-xs font-semibold text-muted-foreground">QR display expires in {Math.floor(qrSecondsLeft / 60)}:{String(qrSecondsLeft % 60).padStart(2, "0")}. Expiry only closes this app display session; it does not invalidate the underlying QR.</p>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => void startQrSession()} disabled={qrSessionLoading} className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-60">
+                        {qrSessionLoading ? "Loading QR…" : "Show / Request Fresh QR Session"}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!reportSubmitted ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs font-bold text-ink">Amount paid (₹)
+                      <Input type="number" min="0.01" max={reportedOrder.amount} step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
+                    </label>
+                    <label className="text-xs font-bold text-ink">UPI transaction / reference ID
+                      <Input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Enter your UPI reference" />
+                    </label>
+                    <label className="text-xs font-bold text-ink sm:col-span-2">Payment screenshot (optional)
+                      <Input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setPaymentScreenshot(event.target.files?.[0] || null)} />
+                    </label>
+                    <Button type="button" onClick={() => void submitPaymentReport()} disabled={submitting} className="sm:col-span-2">
+                      {submitting ? "Submitting…" : "Report Payment for Verification"}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900">Payment status: Pending Verification. The order will be marked paid only after your wholesaler confirms receipt.</p>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
         <aside className="h-fit border bg-card p-6 rounded-2xl shadow-2xs space-y-4">
           <h2 className="text-xl font-bold text-ink">Order summary</h2>
 
-          {/* Coupon Code Section */}
-          <div className="border border-primary/20 bg-primary/[0.03] p-4 rounded-xl space-y-2">
-            <span className="text-xs font-bold text-ink block">Apply Coupon Code</span>
-            {appliedCoupon ? (
-              <div className="flex items-center justify-between bg-emerald-50 text-emerald-800 border border-emerald-200 p-2.5 rounded-lg text-xs">
-                <div>
-                  <div className="font-extrabold text-status-success">✓ '{appliedCoupon.code}' Applied</div>
-                  <div className="text-[11px] text-emerald-700">Saving {money(discountAmount)}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemoveCoupon}
-                  className="text-xs font-bold text-rose-600 hover:underline"
-                >
-                  Remove
-                </button>
+          {/* Available Coupons & Offers Section */}
+          <div className="border border-primary/20 bg-primary/[0.03] p-4 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <LocalOffer className="!size-4 text-emerald-600" />
+                <span className="text-xs font-extrabold uppercase tracking-wide text-ink">
+                  Available Coupons & Offers
+                </span>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. DIWALI50"
-                    value={couponCodeInput}
-                    onChange={(e) => {
-                      setCouponCodeInput(e.target.value.toUpperCase());
-                      setCouponError(null);
-                    }}
-                    className="flex-1 rounded-lg border bg-background px-3 py-1.5 text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                  <Button
+              {availableCoupons.length > 0 && (
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+                  {availableCoupons.length} offer{availableCoupons.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+
+            {/* Active Applied Coupon Banner */}
+            {appliedCoupon && (
+              <div className="rounded-xl border border-emerald-500/40 bg-emerald-50/80 dark:bg-emerald-950/40 p-2.5 shadow-2xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-black text-white">
+                      ✓
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-black text-xs uppercase text-emerald-900 dark:text-emerald-100">
+                          {appliedCoupon.code}
+                        </span>
+                        <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-extrabold text-white">
+                          APPLIED
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-200">
+                        Saving <b className="font-bold">{money(discountAmount)}</b> on this order
+                      </p>
+                    </div>
+                  </div>
+                  <button
                     type="button"
-                    onClick={handleApplyCoupon}
-                    disabled={validatingCoupon || !couponCodeInput.trim()}
-                    size="sm"
-                    className="rounded-lg font-bold text-xs"
+                    onClick={handleRemoveCoupon}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-700 hover:underline shrink-0 px-1 py-0.5 cursor-pointer"
                   >
-                    {validatingCoupon ? "Validating..." : "Apply"}
-                  </Button>
+                    Remove
+                  </button>
                 </div>
-                {couponError && (
-                  <p className="text-[11px] font-semibold text-rose-600">⚠️ {couponError}</p>
-                )}
               </div>
             )}
+
+            {/* Coupons List */}
+            {loadingCoupons ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="animate-pulse rounded-xl border border-border/60 bg-muted/40 p-3 h-16" />
+                ))}
+              </div>
+            ) : availableCoupons.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 p-3.5 text-center">
+                <LocalOffer className="mx-auto !size-5 text-muted-foreground/50" />
+                <p className="mt-1 text-xs font-bold text-ink">No offers available for this order</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Check back later or enter a promo code below
+                </p>
+              </div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto space-y-2 pr-1 -mr-1">
+                {availableCoupons.map((coupon: any) => {
+                  const isApplied = appliedCoupon?.code === coupon.code;
+                  const meetsMinOrder = !coupon.minOrderValue || total >= coupon.minOrderValue;
+                  const isDateValid = !coupon.validUntil || new Date(coupon.validUntil) >= new Date();
+                  const isEligible = coupon.isAvailable && meetsMinOrder && isDateValid;
+                  const isValidatingThis = validatingCode === coupon.code;
+
+                  let discountBadge = "";
+                  if (coupon.discountType === "PERCENTAGE" || coupon.discountType === "PERCENT") {
+                    discountBadge = `${coupon.discountValue}% OFF`;
+                  } else {
+                    discountBadge = `₹${coupon.discountValue} FLAT OFF`;
+                  }
+
+                  const expiryFormatted = coupon.validUntil
+                    ? new Date(coupon.validUntil).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : null;
+
+                  return (
+                    <div
+                      key={coupon._id || coupon.code}
+                      className={cn(
+                        "relative rounded-xl border p-2.5 transition-all text-xs",
+                        isApplied
+                          ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/20"
+                          : isEligible
+                          ? "border-border/80 bg-card hover:border-emerald-500/40 hover:shadow-2xs"
+                          : "border-border/50 bg-muted/20 opacity-80"
+                      )}
+                    >
+                      {/* Top Row: Code Badge, Discount Highlight, Action */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded border border-dashed border-emerald-600/50 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200">
+                            {coupon.code}
+                          </span>
+                          <span className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400">
+                            {discountBadge}
+                          </span>
+                        </div>
+
+                        {isApplied ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/60 dark:text-emerald-300 px-2 py-0.5 rounded-full">
+                            <Check className="!size-3" /> Applied
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!isEligible || Boolean(validatingCode)}
+                            onClick={() => handleApplyCoupon(coupon.code)}
+                            className={cn(
+                              "h-7 px-2.5 text-xs font-bold rounded-lg cursor-pointer transition-all",
+                              isEligible
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs active:scale-95"
+                                : "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {isValidatingThis ? "Applying..." : "Apply"}
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Title & Description */}
+                      <div className="mt-1">
+                        <b className="block text-xs font-bold text-ink leading-tight">
+                          {coupon.title}
+                        </b>
+                        {coupon.description && (
+                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug line-clamp-1">
+                            {coupon.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Criteria summary */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-muted-foreground font-medium pt-1 border-t border-border/40">
+                        {coupon.minOrderValue > 0 && (
+                          <span>Min order: <strong className="text-ink">{money(coupon.minOrderValue)}</strong></span>
+                        )}
+                        {coupon.maxDiscountCap > 0 && (
+                          <span>Max cap: <strong className="text-ink">{money(coupon.maxDiscountCap)}</strong></span>
+                        )}
+                        {expiryFormatted && (
+                          <span>Valid till: <strong className="text-ink">{expiryFormatted}</strong></span>
+                        )}
+                      </div>
+
+                      {/* Ineligibility Reason */}
+                      {!meetsMinOrder && (
+                        <div className="mt-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>
+                            Add <strong>{money(coupon.minOrderValue - total)}</strong> more to unlock this offer
+                          </span>
+                        </div>
+                      )}
+
+                      {!coupon.isAvailable && coupon.unavailableReason && (
+                        <div className="mt-1.5 rounded-md bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-800 dark:text-rose-300">
+                          ⚠️ {coupon.unavailableReason}
+                        </div>
+                      )}
+
+                      {!isDateValid && (
+                        <div className="mt-1.5 rounded-md bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-800 dark:text-rose-300">
+                          ⚠️ This offer has expired
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Manual Coupon Input Toggle */}
+            <div className="pt-1">
+              {!showManualInput ? (
+                <button
+                  type="button"
+                  onClick={() => setShowManualInput(true)}
+                  className="text-[11px] font-bold text-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Have an unlisted promo code?</span>
+                  <ChevronDown className="size-3" />
+                </button>
+              ) : (
+                <div className="space-y-1.5 pt-1.5 border-t border-border/60">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-muted-foreground">Enter promo code</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowManualInput(false);
+                        setCouponError(null);
+                      }}
+                      className="text-[10px] text-muted-foreground hover:text-ink font-semibold cursor-pointer"
+                    >
+                      Hide
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. DIWALI50"
+                      value={couponCodeInput}
+                      onChange={(e) => {
+                        setCouponCodeInput(e.target.value.toUpperCase());
+                        setCouponError(null);
+                      }}
+                      className="flex-1 rounded-lg border bg-background px-3 py-1 text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => handleApplyCoupon(couponCodeInput)}
+                      disabled={Boolean(validatingCode) || !couponCodeInput.trim()}
+                      size="sm"
+                      className="h-8 px-3 rounded-lg font-bold text-xs"
+                    >
+                      {validatingCode === couponCodeInput ? "Applying..." : "Apply"}
+                    </Button>
+                  </div>
+                  {couponError && (
+                    <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">⚠️ {couponError}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3 border-y border-border/80 py-4 max-h-60 overflow-y-auto">
@@ -1329,14 +1846,11 @@ export function CheckoutPage() {
             </span>
           </label>
 
-          {pendingPayment && (
-            <p role="status" className="text-xs font-semibold text-amber-700">
-              Payment was submitted, but confirmation is pending. Retry verification before starting another payment.
-            </p>
+          {!reportedOrder && (
+            <Button className="w-full rounded-xl font-extrabold" size="lg" onClick={handlePlaceOrder} disabled={submitting}>
+              {submitting ? "Processing..." : paymentMode === "CREDIT" ? "Place Credit Order" : paymentMode === "UPI" ? "Place Order & Continue to UPI" : "Place COD Order"}
+            </Button>
           )}
-          <Button className="w-full rounded-xl font-extrabold" size="lg" onClick={handlePlaceOrder} disabled={submitting}>
-            {submitting ? "Processing..." : pendingPayment ? "Retry Payment Verification" : paymentMode === "CREDIT" ? "Place Credit Order" : "Pay and Place Order"}
-          </Button>
         </aside>
       </div>
     </main>
@@ -1948,8 +2462,25 @@ class OptionalIdentityFieldsBoundary extends Component<
   }
 }
 
-export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "forgot" }) {
+export function AuthPage({
+  mode: initialMode,
+  redirect,
+}: {
+  mode: "login" | "register" | "forgot";
+  redirect?: string;
+}) {
   const { login, isLoggedIn } = useStore();
+
+  const queryRedirect = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("redirect") : null;
+  const targetRedirect = redirect || queryRedirect || (typeof window !== "undefined" ? sessionStorage.getItem("nexora_auth_redirect") : null) || "/dashboard";
+
+  useEffect(() => {
+    if (redirect && typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("nexora_auth_redirect", redirect);
+      } catch {}
+    }
+  }, [redirect]);
 
   const [mode, setMode] = useState<"login" | "register" | "forgot">(initialMode);
   const [email, setEmail] = useState("");
@@ -2008,7 +2539,7 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
     const code = attribution?.code.trim().toUpperCase() || "";
     setReferralCode(code);
     setReferralWholesaler(null);
-    if (mode !== "register" || !attribution || !code) {
+    if (!attribution || !code) {
       setIsLookingUpReferral(false);
       setReferralStatus("idle");
       return;
@@ -2069,7 +2600,11 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
         await login(email, password);
         markRetailerRegistrationComplete();
         toast.success("Login successful!");
-        window.location.href = "/dashboard";
+        const dest = targetRedirect || "/dashboard";
+        try {
+          sessionStorage.removeItem("nexora_auth_redirect");
+        } catch {}
+        window.location.href = dest;
       } else if (mode === "register") {
         if (!activeReferralWholesaler) {
           setReferralError(
@@ -2153,7 +2688,11 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
         if (token) {
           setAuthToken(token);
           toast.success("Account created successfully! Welcome to NEXORA.");
-          window.location.href = "/dashboard";
+          const dest = targetRedirect || "/dashboard";
+          try {
+            sessionStorage.removeItem("nexora_auth_redirect");
+          } catch {}
+          window.location.href = dest;
         } else {
           toast.success("Account created! Please sign in.");
           setMode("login");
@@ -2350,7 +2889,7 @@ export function AuthPage({ mode: initialMode }: { mode: "login" | "register" | "
                       : "Sign in with your retailer ID or email and password."}
                 </p>
               </div>
-              {mode === "login" && activeReferralWholesaler && (
+              {mode === "login" && (
                 <button
                   type="button"
                   onClick={() => setMode("register")}

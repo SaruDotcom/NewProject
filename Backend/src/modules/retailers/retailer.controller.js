@@ -1,4 +1,5 @@
 const { WholesalerRetailerRelationship, WholesalerProfile } = require('../../models');
+const AuditService = require('../../services/audit.service');
 const RetailerService = require('../../services/retailer.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -31,14 +32,17 @@ class RetailerController {
       ? relationship.customCreditLimit
       : (creditPolicy.defaultCreditLimit || 0);
 
-    const outstanding = relationship.currentOutstandingAmount || 0;
+    const outstanding = Number.isSafeInteger(relationship.currentOutstandingPaise)
+      ? relationship.currentOutstandingPaise / 100
+      : Number(relationship.currentOutstandingAmount || 0);
     const availableCredit = Math.max(0, effectiveLimit - outstanding);
 
     return ApiResponse.success(
       res,
       {
         wholesalerId: String(relationship.wholesalerId),
-        creditEnabled: Boolean(creditPolicy.creditEnabled),
+        creditEnabled: Boolean(creditPolicy.creditEnabled && relationship.creditEnabled && relationship.creditStatus === 'APPROVED'),
+        creditStatus: relationship.creditStatus || 'DISABLED',
         defaultCreditLimit: creditPolicy.defaultCreditLimit || 0,
         customCreditLimit: relationship.customCreditLimit,
         effectiveLimit,
@@ -51,6 +55,32 @@ class RetailerController {
       },
       'Credit info retrieved'
     );
+  });
+
+  requestCredit = asyncHandler(async (req, res) => {
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      retailerId: req.user._id,
+      status: 'ACTIVE',
+    });
+    if (!relationship) {
+      return ApiResponse.error(res, 'Connect to a wholesaler before requesting credit.', 403, 'NO_ACTIVE_WHOLESALER');
+    }
+    if (relationship.creditStatus === 'APPROVED' && relationship.creditEnabled) {
+      return ApiResponse.success(res, { creditStatus: 'APPROVED' }, 'Credit is already enabled');
+    }
+    relationship.creditStatus = 'PENDING_APPROVAL';
+    relationship.creditEnabled = false;
+    await relationship.save();
+    await AuditService.log({
+      actorId: req.user._id,
+      actorRole: req.user.role,
+      action: 'CREATE',
+      entityType: 'RetailerCreditRequest',
+      entityId: relationship._id,
+      after: { wholesalerId: String(relationship.wholesalerId), creditStatus: relationship.creditStatus },
+      req,
+    });
+    return ApiResponse.success(res, { creditStatus: relationship.creditStatus }, 'Credit request submitted');
   });
 
   // Profile Management
@@ -131,20 +161,7 @@ class RetailerController {
   // Checkout
   checkout = asyncHandler(async (req, res) => {
     const order = await RetailerService.checkout(req.user, req.body, req);
-    if (order.configured) {
-      return ApiResponse.success(res, order, 'Razorpay order created');
-    }
     return ApiResponse.created(res, order, 'Order placed successfully');
-  });
-
-  verifyCheckoutPayment = asyncHandler(async (req, res) => {
-    const result = await RetailerService.verifyCheckoutPayment(req.user, req.body, req);
-    return ApiResponse.success(res, result, 'Payment verified and order placed successfully');
-  });
-
-  failCheckoutPayment = asyncHandler(async (req, res) => {
-    const result = await RetailerService.failCheckoutPayment(req.user, req.body.razorpay_order_id);
-    return ApiResponse.success(res, result, 'Checkout payment marked as failed');
   });
 
   // Orders

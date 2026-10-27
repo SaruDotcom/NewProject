@@ -54,6 +54,10 @@ const earningSchema = new mongoose.Schema(
     settledAt: {
       type: Date,
     },
+    settlementDate: {
+      type: Date,
+      index: true,
+    },
     isDemo: { type: Boolean, default: false, index: true },
   },
   {

@@ -137,10 +137,47 @@ class ReferralService {
     }
 
     return {
+      _id: String(profile.userId),
+      id: String(profile.userId),
+      wholesalerId: String(profile.userId),
       businessName: profile.businessName,
       logo: profile.businessLogoUrl || '',
       city: profile.address?.city || '',
       categories,
+    };
+  }
+
+  static async getReferralProducts(code, query = {}) {
+    const { profile } = await this.resolveActiveCode(code);
+    const { Product } = require('../../models');
+    const { PRODUCT_STATUS } = require('../../config/constants');
+    const { parsePagination } = require('../../utils/pagination');
+    const { page, limit, skip, sort } = parsePagination(query);
+
+    const filter = {
+      wholesalerId: profile.userId,
+      status: PRODUCT_STATUS.ACTIVE,
+      isDeleted: false,
+    };
+
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .populate('categoryId', 'name slug')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Product.countDocuments(filter),
+    ]);
+
+    return {
+      products,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 }

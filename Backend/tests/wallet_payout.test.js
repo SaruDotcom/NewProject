@@ -1,7 +1,8 @@
 const request = require('supertest');
+const mongoose = require('mongoose');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
-const { User, AdminProfile, WholesalerProfile, Wallet, WalletTransaction, Payout } = require('../src/models');
+const { User, AdminProfile, WholesalerProfile, Wallet, WalletTransaction, Payout, Order, Return } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS, PAYOUT_STATUS } = require('../src/config/constants');
 const WalletService = require('../src/services/wallet.service');
 
@@ -78,6 +79,114 @@ describe('Wallet & Payouts Test Suite', () => {
     // Balance Consistency Check
     const dbWallet = await Wallet.findOne({ ownerId: wholesalerUser._id });
     expect(dbWallet.availableBalance + dbWallet.pendingBalance + dbWallet.lockedBalance).toBe(15000);
+  });
+
+  test('wallet API derives earnings and moves due credits into available balance', async () => {
+    await WalletService.credit({
+      ownerId: wholesalerUser._id,
+      amount: 15675,
+      referenceId: 'ORD-15675',
+      settlementDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      idempotencyKey: 'credit-ORD-15675',
+    });
+    const pendingCredit = await WalletService.credit({
+      ownerId: wholesalerUser._id,
+      amount: 2500,
+      referenceId: 'ORD-PENDING',
+      settlementDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      idempotencyKey: 'credit-ORD-PENDING',
+    });
+    await Payout.create({
+      payoutNumber: 'PO-WALLET-TEST',
+      wholesalerId: wholesalerUser._id,
+      amount: 1000,
+      status: PAYOUT_STATUS.REQUESTED,
+    });
+
+    const pendingTransaction = await WalletTransaction.findById(pendingCredit.transaction._id);
+    pendingTransaction.settlementDate = new Date(Date.now() - 1000);
+    await pendingTransaction.save();
+
+    const response = await request(app)
+      .get('/api/v1/wallets/me')
+      .set('Authorization', ['Bearer', wholesalerToken].join(' '));
+    expect(response.status).toBe(200);
+    expect(response.body.data.totalEarned).toBe(18175);
+    expect(response.body.data.pendingBalance).toBe(0);
+    expect(response.body.data.availableBalance).toBe(17175);
+    expect(response.body.data.withdrawnBalance).toBe(1000);
+    expect(
+      response.body.data.availableBalance
+        + response.body.data.pendingBalance
+        + response.body.data.withdrawnBalance
+    ).toBe(response.body.data.totalEarned);
+
+    const settledTransaction = await WalletTransaction.findById(pendingCredit.transaction._id);
+    expect(settledTransaction.settlementStatus).toBe('SETTLED');
+  });
+
+  test('open returns hold released earnings until the return is rejected', async () => {
+    const order = await Order.create({
+      orderNumber: 'ORD-OPEN-RETURN',
+      retailerId: wholesalerUser._id,
+      wholesalerId: wholesalerUser._id,
+      subtotal: 1000,
+      grandTotal: 1000,
+      orderStatus: 'RETURN_REQUESTED',
+    });
+    await Return.create({
+      returnNumber: 'RET-OPEN-RETURN',
+      orderId: order._id,
+      retailerId: wholesalerUser._id,
+      wholesalerId: wholesalerUser._id,
+      totalRefundAmount: 1000,
+      reason: 'Damaged item',
+      status: 'REQUESTED',
+    });
+    await WalletService.credit({
+      ownerId: wholesalerUser._id,
+      amount: 1000,
+      referenceId: order.orderNumber,
+      settlementDate: new Date(Date.now() - 1000),
+      idempotencyKey: 'credit-open-return',
+    });
+
+    const held = await WalletService.getWalletSummary(wholesalerUser._id);
+    expect(held.availableBalance).toBe(0);
+    expect(held.pendingBalance).toBe(1000);
+
+    await Return.updateOne({ _id: (await Return.findOne({ orderId: order._id }))._id }, { $set: { status: 'REJECTED' } });
+    await Order.updateOne({ _id: order._id }, { $set: { orderStatus: 'DELIVERED' } });
+    const released = await WalletService.getWalletSummary(wholesalerUser._id);
+    expect(released.availableBalance).toBe(1000);
+    expect(released.pendingBalance).toBe(0);
+  });
+
+  test('returned orders reverse the original earnings credit once', async () => {
+    const orderId = new mongoose.Types.ObjectId();
+    await WalletService.credit({
+      ownerId: wholesalerUser._id,
+      amount: 1500,
+      referenceId: 'ORD-RETURNED',
+      idempotencyKey: `credit-${orderId}`,
+    });
+    const reversal = await WalletService.reverseOrderEarnings({
+      ownerId: wholesalerUser._id,
+      orderNumber: 'ORD-RETURNED',
+      orderId,
+      description: 'Returned order',
+    });
+    const duplicateReversal = await WalletService.reverseOrderEarnings({
+      ownerId: wholesalerUser._id,
+      orderNumber: 'ORD-RETURNED',
+      orderId,
+      description: 'Returned order',
+    });
+
+    expect(reversal.amount).toBe(1500);
+    expect(String(duplicateReversal._id)).toBe(String(reversal._id));
+    const summary = await WalletService.getWalletSummary(wholesalerUser._id);
+    expect(summary.totalEarned).toBe(0);
   });
 
   test('2. Wholesaler requests payout -> locks available balance', async () => {

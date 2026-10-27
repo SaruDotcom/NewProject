@@ -1,7 +1,5 @@
 const request = require('supertest');
-const crypto = require('crypto');
 const app = require('../src/app');
-const env = require('../src/config/env');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
   User,
@@ -51,6 +49,11 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       isVerified: true,
       walletId: wallet._id,
       commissionRate: 5.0,
+      paymentSettings: {
+        upiId: 'omni@upi',
+        upiIdPaymentsEnabled: true,
+        qrPaymentsEnabled: false,
+      },
     });
 
     const wsLogin = await request(app).post('/api/v1/auth/login').send({
@@ -252,80 +255,159 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     );
   });
 
-  test('Razorpay checkout creates no order until captured payment is verified', async () => {
-    const previousKeyId = env.RAZORPAY_KEY_ID;
-    const previousKeySecret = env.RAZORPAY_KEY_SECRET;
-    const originalFetch = global.fetch;
-    env.RAZORPAY_KEY_ID = 'rzp_test_key';
-    env.RAZORPAY_KEY_SECRET = 'test_secret';
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'rzp-checkout-order', amount: 236000, currency: 'INR' }),
+  test('direct UPI checkout stays pending until the wholesaler confirms a payment report', async () => {
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'UPI',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          postalCode: '560001',
+          contactName: 'Rohan',
+          phone: '9876543210',
+        },
+      });
+
+    expect(checkout.status).toBe(201);
+    expect(checkout.body.data.order.paymentStatus).toBe(PAYMENT_STATUS.PENDING);
+    expect(checkout.body.data.order.paymentMethod).toBe('UPI');
+
+    const report = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        orderId: checkout.body.data.order._id,
+        amount: '2360',
+        transactionReference: 'DIRECT-UPI-REF-10001',
+      });
+
+    expect(report.status).toBe(201);
+    expect(report.body.data.status).toBe(PAYMENT_STATUS.PENDING);
+    const verification = await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${report.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY', note: 'Matched in bank statement' });
+
+    expect(verification.status).toBe(200);
+    expect(verification.body.data.status).toBe(PAYMENT_STATUS.PAID);
+    const paidOrder = await Order.findById(checkout.body.data.order._id);
+    expect(paidOrder.paymentStatus).toBe(PAYMENT_STATUS.PAID);
+    expect(await Payment.countDocuments({ orderId: paidOrder._id, status: PAYMENT_STATUS.PAID })).toBe(2);
+  });
+
+  test('retailer credit requests require approval and verified installments clear the balance once', async () => {
+    const requestResponse = await request(app)
+      .post('/api/v1/retailer/credit-request')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({});
+    expect(requestResponse.status).toBe(200);
+    expect(requestResponse.body.data.creditStatus).toBe('PENDING_APPROVAL');
+    const unapprovedOrder = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CREDIT',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          postalCode: '560001',
+        },
+      });
+    expect(unapprovedOrder.status).toBe(400);
+    expect(unapprovedOrder.body.code).toBe('CREDIT_DISABLED');
+
+    await request(app)
+      .patch('/api/v1/wholesaler/credit-policy')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ creditEnabled: true, defaultCreditLimit: 5000, creditPeriodDays: 15 });
+
+    const approval = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/${retailerUser._id}/credit-policy`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: 'APPROVED', customCreditLimit: 3000, creditPeriodDays: 30 });
+    expect(approval.status).toBe(200);
+
+    const orderResponse = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CREDIT',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          postalCode: '560001',
+        },
+      });
+    expect(orderResponse.status).toBe(201);
+    expect(orderResponse.body.data.order.creditDueDate).toBeDefined();
+
+    const overLimit = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CREDIT',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          postalCode: '560001',
+        },
+      });
+    expect(overLimit.status).toBe(400);
+    expect(overLimit.body.code).toBe('CREDIT_LIMIT_EXCEEDED');
+
+    const firstInstallment = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        type: 'CREDIT_REPAYMENT',
+        amount: '1000',
+        transactionReference: 'CREDIT-UPI-REF-10001',
+      });
+    expect(firstInstallment.status).toBe(201);
+    await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${firstInstallment.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY', note: 'First installment received' });
+
+    const secondInstallment = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        type: 'CREDIT_REPAYMENT',
+        amount: '1360',
+        transactionReference: 'CREDIT-UPI-REF-10002',
+      });
+    expect(secondInstallment.status).toBe(201);
+    const finalVerification = await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${secondInstallment.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY', note: 'Final installment received' });
+    expect(finalVerification.status).toBe(200);
+
+    const repeatedVerification = await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${secondInstallment.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY', note: 'Duplicate confirmation attempt' });
+    expect(repeatedVerification.status).toBe(200);
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      wholesalerId: wholesalerUser._id,
+      retailerId: retailerUser._id,
     });
-
-    try {
-      const checkout = await request(app)
-        .post('/api/v1/retailer/checkout')
-        .set('Authorization', `Bearer ${retailerToken}`)
-        .send({
-          paymentMethod: 'ONLINE',
-          items: [{ productId: product._id, quantity: 10 }],
-          shippingAddress: {
-            addressLine1: '10 Main Road',
-            city: 'Bengaluru',
-            state: 'Karnataka',
-            postalCode: '560001',
-            contactName: 'Rohan',
-            phone: '9876543210',
-          },
-        });
-
-      expect(checkout.status).toBe(200);
-      expect(checkout.body.data.order.id).toBe('rzp-checkout-order');
-      expect(await Order.countDocuments()).toBe(0);
-
-      const paymentId = 'rzp-captured-payment';
-      const signature = crypto.createHmac('sha256', env.RAZORPAY_KEY_SECRET)
-        .update(`rzp-checkout-order|${paymentId}`)
-        .digest('hex');
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          order_id: 'rzp-checkout-order',
-          amount: 236000,
-          currency: 'INR',
-          status: 'captured',
-        }),
-      });
-
-      const verification = await request(app)
-        .post('/api/v1/retailer/checkout/verify')
-        .set('Authorization', `Bearer ${retailerToken}`)
-        .send({
-          razorpay_order_id: 'rzp-checkout-order',
-          razorpay_payment_id: paymentId,
-          razorpay_signature: signature,
-        });
-
-      expect(verification.status).toBe(200);
-      expect(verification.body.data.order.paymentStatus).toBe(PAYMENT_STATUS.PAID);
-      expect(verification.body.data.order.shippingAddress).toMatchObject({
-        street: '10 Main Road',
-        city: 'Bengaluru',
-        pincode: '560001',
-        contactName: 'Rohan',
-        phone: '9876543210',
-      });
-      expect(await Order.countDocuments()).toBe(1);
-      expect(await Payment.findOne({ orderId: verification.body.data.order._id })).toMatchObject({
-        status: PAYMENT_STATUS.PAID,
-        transactionReference: paymentId,
-      });
-    } finally {
-      env.RAZORPAY_KEY_ID = previousKeyId;
-      env.RAZORPAY_KEY_SECRET = previousKeySecret;
-      global.fetch = originalFetch;
-    }
+    expect(relationship.currentOutstandingPaise).toBe(0);
+    expect(relationship.currentOutstandingAmount).toBe(0);
+    const paidOrder = await Order.findById(orderResponse.body.data.order._id);
+    expect(paidOrder.creditPaymentStatus).toBe('PAID');
+    expect(paidOrder.creditPaidAmount).toBe(2360);
   });
 
   test('3. Insufficient stock rejected', async () => {

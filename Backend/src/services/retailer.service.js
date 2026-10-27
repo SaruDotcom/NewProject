@@ -15,7 +15,6 @@ const RetailerRepository = require('../repositories/retailer.repository');
 const ProductRepository = require('../repositories/product.repository');
 const OrderRepository = require('../repositories/order.repository');
 const OrderService = require('../modules/orders/orders.service');
-const RetailerCheckoutService = require('../modules/retailers/retailer-checkout.service');
 const InvitationService = require('../modules/invitations/invitations.service');
 const WalletService = require('./wallet.service');
 const SupportService = require('../modules/support/support.service');
@@ -715,10 +714,6 @@ class RetailerService {
       billingAddress: checkoutPayload.billingAddress,
       couponCode: checkoutPayload.couponCode,
     };
-    if (checkoutPayload.paymentMethod === 'ONLINE') {
-      return RetailerCheckoutService.createPaymentOrder(retailerUser, normalizedPayload);
-    }
-
     // Call unified OrderService for authoritative pricing, stock reservation, order & payment creation
     const result = await OrderService.createOrder(
       retailerUser,
@@ -734,16 +729,6 @@ class RetailerService {
     await RetailerRepository.clearCart(retailerId);
 
     return result;
-  }
-
-  static async verifyCheckoutPayment(retailerUser, payload, req = null) {
-    const result = await RetailerCheckoutService.verifyPayment(retailerUser, payload, req);
-    await RetailerRepository.clearCart(retailerUser._id);
-    return result;
-  }
-
-  static async failCheckoutPayment(retailerUser, orderId) {
-    return RetailerCheckoutService.markPaymentFailed(retailerUser, orderId);
   }
 
   /**

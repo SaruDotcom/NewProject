@@ -43,6 +43,9 @@ type CreditRetailerItem = {
   effectiveLimit: number;
   currentOutstandingAmount: number;
   availableCredit: number;
+  creditStatus: 'DISABLED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+  creditEnabled: boolean;
+  creditPeriodDays: number;
   activeCreditOrdersCount: number;
   overdueCount: number;
   overdueAmount: number;
@@ -80,10 +83,8 @@ export default function CreditPolicyPage() {
   
   const [editingRetailer, setEditingRetailer] = useState<CreditRetailerItem | null>(null);
   const [customLimitInput, setCustomLimitInput] = useState<string>('');
+  const [creditPeriodInput, setCreditPeriodInput] = useState<string>('15');
   const [savingLimit, setSavingLimit] = useState(false);
-
-  const [settleModalRetailer, setSettleModalRetailer] = useState<CreditRetailerItem | null>(null);
-  const [settlingOrderId, setSettlingOrderId] = useState<string | null>(null);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -165,7 +166,10 @@ export default function CreditPolicyPage() {
     setSavingLimit(true);
     try {
       const numericLimit = customLimitInput.trim() === '' ? null : Math.max(0, Number(customLimitInput));
-      await api.setRetailerCreditLimit(editingRetailer.retailerId, numericLimit);
+      await api.updateRetailerCreditPolicy(editingRetailer.retailerId, {
+        customCreditLimit: numericLimit,
+        creditPeriodDays: Number(creditPeriodInput),
+      });
       setMessage({
         type: 'success',
         text: `Credit limit updated for ${editingRetailer.businessName}.`,
@@ -179,17 +183,20 @@ export default function CreditPolicyPage() {
     }
   };
 
-  const handleSettleOrder = async (orderId: string) => {
-    setSettlingOrderId(orderId);
+  const handleCreditStatus = async (retailer: CreditRetailerItem, status: 'APPROVED' | 'REJECTED' | 'DISABLED') => {
     try {
-      await api.settleOrderCredit(orderId);
-      setMessage({ type: 'success', text: 'Order credit payment settled successfully!' });
-      setSettleModalRetailer(null);
+      await api.updateRetailerCreditPolicy(retailer.retailerId, { status });
+      setMessage({
+        type: 'success',
+        text: status === 'APPROVED'
+          ? `Credit approved for ${retailer.businessName}.`
+          : status === 'REJECTED'
+            ? `Credit request rejected for ${retailer.businessName}.`
+            : `Future credit disabled for ${retailer.businessName}. Existing balance is unchanged.`,
+      });
       await loadCreditData();
     } catch (err: any) {
-      setMessage({ type: 'error', text: err?.message || 'Failed to settle order credit.' });
-    } finally {
-      setSettlingOrderId(null);
+      setMessage({ type: 'error', text: err?.message || 'Unable to update retailer credit access.' });
     }
   };
 
@@ -587,25 +594,42 @@ export default function CreditPolicyPage() {
                           <AlertTriangle className="h-3 w-3" />
                           {item.overdueCount} Overdue (₹{item.overdueAmount.toLocaleString('en-IN')})
                         </span>
-                      ) : item.currentOutstandingAmount > 0 ? (
+                      ) : item.creditStatus === 'PENDING_APPROVAL' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-300">
+                          Pending Approval
+                        </span>
+                      ) : item.creditEnabled ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-300">
                           <Clock className="h-3 w-3" />
-                          Active Credit
+                          Credit Enabled
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-[10px] font-bold text-green-800 border border-green-300">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Clear Balance
+                          Credit Disabled
                         </span>
                       )}
                     </td>
 
                     <td className="py-3.5 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {item.creditStatus === 'PENDING_APPROVAL' ? (
+                          <>
+                            <button onClick={() => void handleCreditStatus(item, 'APPROVED')} className="rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">Approve</button>
+                            <button onClick={() => void handleCreditStatus(item, 'REJECTED')} className="rounded-xl border border-red-200 px-2.5 py-1.5 text-xs font-bold text-red-700">Reject</button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => void handleCreditStatus(item, item.creditEnabled ? 'DISABLED' : 'APPROVED')}
+                            className={`rounded-xl px-2.5 py-1.5 text-xs font-bold ${item.creditEnabled ? 'border border-amber-200 text-amber-800' : 'bg-emerald-600 text-white'}`}
+                          >
+                            {item.creditEnabled ? 'Disable Credit' : 'Enable Credit'}
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setEditingRetailer(item);
                             setCustomLimitInput(item.customCreditLimit !== null ? String(item.customCreditLimit) : '');
+                            setCreditPeriodInput(String(item.creditPeriodDays || policy.creditPeriodDays));
                           }}
                           className="inline-flex items-center gap-1 rounded-xl border border-tradeflow-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-tradeflow-gray-50"
                         >
@@ -613,15 +637,6 @@ export default function CreditPolicyPage() {
                           <span>Custom Limit</span>
                         </button>
 
-                        {item.currentOutstandingAmount > 0 && (
-                          <button
-                            onClick={() => setSettleModalRetailer(item)}
-                            className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs"
-                          >
-                            <HandCoins className="h-3 w-3" />
-                            <span>Settle Credit</span>
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -713,74 +728,14 @@ export default function CreditPolicyPage() {
                 </button>
               </div>
             </div>
+            <label className="block text-xs font-bold text-tradeflow-navy">
+              Repayment term (days)
+              <input type="number" min={1} max={365} value={creditPeriodInput} onChange={(event) => setCreditPeriodInput(event.target.value)} className="mt-1 w-full rounded-xl border border-tradeflow-gray-300 px-3 py-2" />
+            </label>
           </form>
         </div>
       )}
 
-      {/* Modal 2: Settle Credit Orders for Retailer */}
-      {settleModalRetailer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div>
-                <h3 className="text-base font-extrabold text-tradeflow-navy">Settle Credit Orders</h3>
-                <p className="text-xs text-gray-500">
-                  {settleModalRetailer.businessName} • Outstanding: <strong className="text-amber-700">₹{settleModalRetailer.currentOutstandingAmount.toLocaleString('en-IN')}</strong>
-                </p>
-              </div>
-              <button type="button" onClick={() => setSettleModalRetailer(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-xs font-bold text-gray-700">Pending Credit Orders for this retailer:</p>
-              {settleModalRetailer.creditOrders.length === 0 ? (
-                <div className="p-4 text-center text-xs text-gray-400 border border-dashed rounded-xl">
-                  No individual credit order records found.
-                </div>
-              ) : (
-                settleModalRetailer.creditOrders.map((order) => (
-                  <div key={order.orderId} className="flex items-center justify-between border rounded-xl p-3 text-xs bg-tradeflow-gray-50">
-                    <div>
-                      <div className="font-extrabold text-tradeflow-navy">Order #{order.orderNumber}</div>
-                      <div className="text-[11px] text-gray-500">
-                        Placed: {new Date(order.createdAt).toLocaleDateString('en-IN')} • Due: <strong className="text-gray-700">{order.creditDueDate ? new Date(order.creditDueDate).toLocaleDateString('en-IN') : 'N/A'}</strong>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="font-extrabold text-amber-700">₹{order.grandTotal.toLocaleString('en-IN')}</div>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                          {order.creditPaymentStatus}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => handleSettleOrder(order.orderId)}
-                        disabled={settlingOrderId === order.orderId}
-                        className="rounded-xl bg-emerald-600 text-white font-bold px-3 py-1.5 text-xs hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        {settlingOrderId === order.orderId ? 'Settling...' : 'Mark Paid'}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex justify-end pt-3">
-              <button
-                onClick={() => setSettleModalRetailer(null)}
-                className="rounded-xl border border-tradeflow-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-tradeflow-gray-50"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

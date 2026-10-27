@@ -1,1 +1,1 @@
-export const BRAND_NAME = 'VyaparOne';
+export const BRAND_NAME = 'VyapaarDwaar';

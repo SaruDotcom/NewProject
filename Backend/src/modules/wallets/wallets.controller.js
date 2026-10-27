@@ -1,4 +1,4 @@
-const { Wallet, WalletTransaction } = require('../../models');
+const { WalletTransaction } = require('../../models');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 const { parsePagination } = require('../../utils/pagination');
@@ -7,7 +7,7 @@ const WalletService = require('../../services/wallet.service');
 class WalletController {
   // Get current user's wallet
   getMyWallet = asyncHandler(async (req, res) => {
-    const wallet = await WalletService.getOrCreateWallet(
+    const wallet = await WalletService.getWalletSummary(
       req.user._id,
       req.user.role === 'WHOLESALER' ? 'WHOLESALER' : 'RETAILER'
     );

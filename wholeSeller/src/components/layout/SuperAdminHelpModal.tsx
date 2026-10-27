@@ -30,7 +30,7 @@ export const SUPER_ADMIN_CONTACT = {
   whatsapp: '+91 98765 43210',
   email: 'superadmin@vyaparone.com',
   secondaryEmail: 'support@vyaparone.com',
-  address: 'VyaparOne Tech Tower, Sector 62, Noida, UP - 201309',
+  address: 'VyapaarDwaar Tech Tower, Sector 62, Noida, UP - 201309',
   supportHours: '24/7 Priority Emergency Line',
 };
 

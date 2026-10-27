@@ -53,6 +53,31 @@ const wholesalerRetailerRelationshipSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    customCreditLimitPaise: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+    currentOutstandingPaise: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+    creditEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    creditStatus: {
+      type: String,
+      enum: ['DISABLED', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED'],
+      default: 'DISABLED',
+      index: true,
+    },
+    creditPeriodDays: {
+      type: Number,
+      min: 1,
+      default: null,
+    },
     currentOutstandingAmount: {
       type: Number,
       default: 0,

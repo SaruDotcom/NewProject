@@ -7,6 +7,7 @@ const { ROLES } = require('../../config/constants');
 
 const publicRoutes = express.Router();
 publicRoutes.get('/:code', referralLookupRateLimiter, controller.lookup);
+publicRoutes.get('/:code/products', referralLookupRateLimiter, controller.getReferralProducts);
 
 const wholesalerRoutes = express.Router();
 wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));

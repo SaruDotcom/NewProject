@@ -33,7 +33,7 @@ export type ApiProduct = {
   category?: { _id?: string; name?: string; slug?: string } | string;
   categoryId?: string;
   subcategoryId?: string;
-  wholesalerId?: string;
+  wholesalerId?: string | { _id?: string; id?: string; name?: string };
   wholesalePrice?: number;
   retailerPrice?: number;
   mrp?: number;
@@ -186,6 +186,8 @@ function invalidateMutation(endpoint: string) {
   if (path.startsWith('/retailer/cart')) resources = ['cart'];
   else if (path.startsWith('/retailer/wishlist')) resources = ['wishlist'];
   else if (path === '/retailer/checkout') resources = ['cart', 'orders', 'dashboard'];
+  else if (path.startsWith('/retailer/payments/reports')) resources = ['payment-reports', 'orders', 'credit'];
+  else if (path === '/retailer/credit-request') resources = ['credit'];
   else if (path.startsWith('/retailer/orders')) resources = ['orders', 'dashboard'];
   else if (path.startsWith('/retailer/returns')) resources = ['returns', 'orders'];
   else if (path.startsWith('/retailer/profile')) resources = ['profile', 'dashboard'];
@@ -290,6 +292,20 @@ export const api = {
           { method: 'GET' },
         ),
       staleTime: 0,
+      retry: false,
+    });
+  },
+
+  getReferralProducts: (code: string, params?: Record<string, string | number | boolean | null | undefined>) => {
+    const normalizedCode = code.trim().toUpperCase();
+    return queryClient.fetchQuery({
+      queryKey: ['public', 'referral-products', normalizedCode, params],
+      queryFn: () =>
+        request<ApiEnvelope<ApiProduct[]> & { meta?: Record<string, unknown> }>(
+          `/referral/${encodeURIComponent(normalizedCode)}/products${buildQueryString(params)}`,
+          { method: 'GET' },
+        ),
+      staleTime: 60_000,
       retry: false,
     });
   },
@@ -503,20 +519,40 @@ export const api = {
       }),
     }),
 
-  verifyCheckoutPayment: (payload: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }) =>
-    request<ApiEnvelope<{ order: ApiOrder; payment: unknown }>>('/retailer/checkout/verify', {
+  getRetailerPaymentOptions: () =>
+    request<ApiEnvelope<{
+      wholesalerId: string;
+      businessName: string;
+      accountName: string;
+      qrPaymentsEnabled: boolean;
+      hasQrImage: boolean;
+      qrDataUrl: string;
+      upiIdPaymentsEnabled: boolean;
+      upiId: string;
+      qrSessionMinutes: number;
+    }>>('/retailer/payment-options', { method: 'GET' }),
+  createRetailerQrSession: () =>
+    request<ApiEnvelope<{
+      wholesalerId: string;
+      qrDataUrl: string;
+      qrSessionMinutes: number;
+      expiresAt: string;
+    }>>('/retailer/payment-options/qr-session', { method: 'POST', body: JSON.stringify({}) }),
+  createPaymentReport: (payload: { orderId?: string; amount: string; transactionReference: string; type?: 'CREDIT_REPAYMENT'; screenshot?: File }) => {
+    const formData = new FormData();
+    if (payload.orderId) formData.append('orderId', payload.orderId);
+    formData.append('amount', payload.amount);
+    formData.append('transactionReference', payload.transactionReference);
+    if (payload.type) formData.append('type', payload.type);
+    if (payload.screenshot) formData.append('screenshot', payload.screenshot);
+    return request<ApiEnvelope<any>>('/retailer/payments/reports', { method: 'POST', body: formData });
+  },
+  getRetailerPaymentReports: () =>
+    request<ApiEnvelope<any[]>>('/retailer/payments/reports', { method: 'GET' }),
+  requestCredit: () =>
+    request<ApiEnvelope<{ creditStatus: string }>>('/retailer/credit-request', {
       method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-
-  failCheckoutPayment: (razorpay_order_id: string) =>
-    request<ApiEnvelope<{ status: string }>>('/retailer/checkout/failure', {
-      method: 'POST',
-      body: JSON.stringify({ razorpay_order_id }),
+      body: JSON.stringify({}),
     }),
 
   getOrders: (params?: Record<string, string | number | boolean | null | undefined>) =>

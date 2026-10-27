@@ -29,6 +29,11 @@ import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
 import { HelpSupportPage } from "@/components/marketplace/support";
 import { LandingPage } from "@/components/marketplace/landing";
+import {
+  getReferralAttributionFromUrl,
+  saveReferralAttribution,
+  getStoredReferralAttribution,
+} from "@/lib/referral-attribution";
 
 function isBusinessSetupComplete(profile: ReturnType<typeof useStore>["retailerProfile"]) {
   if (profile.profileComplete) return true;
@@ -59,6 +64,14 @@ function RouterView() {
   const token = getAuthToken();
   const authenticated = isLoggedIn && Boolean(token);
 
+  // Preserve referral parameter wherever present in URL
+  if (url.searchParams.has("ref")) {
+    const attribution = getReferralAttributionFromUrl(url);
+    if (attribution) {
+      saveReferralAttribution(attribution);
+    }
+  }
+
   // Validate token with backend before showing store: prevent flash of store content
   if (isLoading && Boolean(token) && !isLoggedIn) {
     return (
@@ -71,7 +84,9 @@ function RouterView() {
     );
   }
 
-  // Public Landing Page: logged-out visitors who open "/" see a landing page, not the store
+  // ===== 1. Disable Retailer Landing Page =====
+  // Commented out existing retailer landing page rendering without deleting its code or affecting other landing pages.
+  /*
   if (path === "/" && !authenticated) {
     const searchParams = new URLSearchParams(url.search);
     const hasRef = searchParams.has("ref");
@@ -83,6 +98,8 @@ function RouterView() {
   if (path === "/landing") {
     return <LandingPage />;
   }
+  */
+  // ===== END Disable Retailer Landing Page =====
 
   // Public authentication routes
   if (/^\/r\/[^/]+$/.test(path)) {
@@ -93,27 +110,28 @@ function RouterView() {
   const isRefPath = path === "/register";
   if (path === "/login") {
     const searchParams = new URLSearchParams(url.search);
-    const hasRef = searchParams.has("ref");
-    if (authenticated && hasRef) return <HomePage />;
-    return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} />;
+    const hasRef = searchParams.has("ref") || Boolean(getStoredReferralAttribution()?.code);
+    if (authenticated && !searchParams.get("redirect")) return <HomePage />;
+    return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} redirect={searchParams.get("redirect") || undefined} />;
   }
   if (isRefPath) {
-    return <AuthPage key={`${path}${url.search}`} mode="register" />;
+    const searchParams = new URLSearchParams(url.search);
+    return <AuthPage key={`${path}${url.search}`} mode="register" redirect={searchParams.get("redirect") || undefined} />;
   }
   if (path === "/forgot-password") return <AuthPage key={`${path}${url.search}`} mode="forgot" />;
 
-  // Route Guard: Require authentication for all protected store pages
-  if (!authenticated) {
-    const searchParams = new URLSearchParams(url.search);
-    const hasRef = searchParams.has("ref");
-    return <AuthPage key={`${path}${url.search}`} mode={hasRef || isRefPath ? "register" : "login"} />;
+  // 3. Checkout Authentication Guard: Require authentication before proceeding to checkout
+  if (path === "/checkout") {
+    if (!authenticated) {
+      const searchParams = new URLSearchParams(url.search);
+      const activeRef = searchParams.get("ref") || getStoredReferralAttribution()?.code;
+      const initialMode = activeRef ? "register" : "login";
+      return <AuthPage key={`checkout-auth-${url.search}`} mode={initialMode} redirect="/checkout" />;
+    }
+    return <CheckoutPage />;
   }
 
-  if (!isLoading && !isBusinessSetupComplete(retailerProfile) && path !== "/profile" && path !== "/setup") {
-    return <ProfilePage setupMode />;
-  }
-
-  // Logged-in retailers keep seeing their store home as today
+  // 2. Retailer Navigation: Public store pages navigate directly to retailer home page and catalog
   if (path === "/") return <HomePage />;
   if (path === "/products") return <ProductsPage initialCategory={url.searchParams.get("category") ?? "All"} />;
   if (path.startsWith("/products/")) return <ProductDetailPage productId={decodeURIComponent(path.split("/")[2] ?? "")} />;
@@ -126,11 +144,23 @@ function RouterView() {
     }
     return <WholesalerProfilePage wholesalerId={decodeURIComponent(parts[2] ?? "")} />;
   }
+  if (path === "/cart") return <CartPage />;
+
+  // Route Guard: Require authentication for all protected account/workspace pages
+  if (!authenticated) {
+    const searchParams = new URLSearchParams(url.search);
+    const hasRef = searchParams.has("ref") || Boolean(getStoredReferralAttribution()?.code);
+    return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} redirect={path} />;
+  }
+
+  if (!isLoading && !isBusinessSetupComplete(retailerProfile) && path !== "/profile" && path !== "/setup") {
+    return <ProfilePage setupMode />;
+  }
+
+  // Protected workspace views
   if (path === "/dashboard") return <DashboardPage />;
   if (path === "/orders") return <OrdersPage />;
   if (path.startsWith("/orders/")) return <OrderDetailsPage orderId={decodeURIComponent(path.split("/")[2] ?? "")} />;
-  if (path === "/cart") return <CartPage />;
-  if (path === "/checkout") return <CheckoutPage />;
   if (path === "/wishlist") return <WishlistPage />;
   if (path === "/notifications") return <NotificationsPage />;
   if (path === "/support") return <HelpSupportPage />;

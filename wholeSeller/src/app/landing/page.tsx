@@ -1,26 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  ArrowDownLeft,
-  ArrowDown,
   ArrowRight,
   BarChart3,
   Boxes,
   Building2,
   Check,
-  ChevronDown,
   CircleDollarSign,
   CreditCard,
-  FileSpreadsheet,
   Link2,
   Menu,
   Package,
-  ReceiptText,
-  RotateCcw,
   ShieldCheck,
   ShoppingBag,
   Store,
-  Tag,
   Truck,
   TrendingUp,
   Users,
@@ -31,54 +24,47 @@ import { WholesalerProvider } from '@/context/WholesalerContext';
 import { LoginForm } from '@/app/login/page';
 import { RegisterForm } from '@/app/register/page';
 import { BRAND_NAME } from '@/config/brand';
-import { clearAuthToken, getAuthToken, type SubscriptionPlan, default as api } from '@/lib/api';
+import { clearAuthToken, getAuthToken, resolveProductImageUrl, type SubscriptionPlan, default as api } from '@/lib/api';
 
 const landingCopy = {
   hero: {
-    label: 'B2B WHOLESALE PLATFORM',
-    headline: 'Run Your B2B Wholesale Business Online. Add Retailers, Take Orders, Grow Faster.',
-    subtext: 'Add your retailers with your own link, share your catalog, and receive orders, payments and bills in one place.',
-    primaryButton: 'Register Free',
+    label: 'Private B2B Business Platform',
+    headline: 'Your Business.\nYour Store.\nYour Way.',
+    subtext: 'Create your own online wholesale store, manage your retailers, track orders and simplify your daily business operations.',
+    primaryButton: 'Create Your Store',
     secondaryButton: 'See How It Works',
   },
   metadata: {
     title: `${BRAND_NAME} · B2B Wholesale Business Online`,
     description: 'Add retailers online, share your wholesale catalog, and manage B2B orders, stock, payments and bills in one place.',
   },
-  keyMessages: [
-    { icon: Users, title: 'Add Your Retailers Online', text: 'Every retailer joins with your link and sees only your products.' },
-    { icon: Package, title: 'Sell in Bulk, Your Way', text: 'Set bulk prices, minimum order quantity and credit terms for each retailer.' },
-    { icon: Truck, title: 'Track Every Order', text: 'Follow each order from placement through delivery and payment.' },
-  ],
   features: [
-    { icon: Link2, title: 'Retailer onboarding by link', text: 'Share your link so retailers can join your business online.' },
-    { icon: Package, title: 'Product catalog with categories and colors', text: 'Organize products so retailers can find the right items.' },
-    { icon: Boxes, title: 'Automatic stock updates', text: 'Stock changes as you manage orders.' },
-    { icon: CreditCard, title: 'Bulk pricing and minimum order quantity', text: 'Set prices and order quantities for bulk purchases.' },
-    { icon: CircleDollarSign, title: 'Credit for trusted retailers', text: 'Set credit terms for retailers you trust.' },
-    { icon: ReceiptText, title: 'GST invoices', text: 'Create GST invoices for retailer orders.' },
-    { icon: FileSpreadsheet, title: 'Bulk Excel product upload', text: 'Add or update products using an Excel file.' },
-    { icon: Tag, title: 'Coupons and offers', text: 'Share offers with your connected retailers.' },
-    { icon: BarChart3, title: 'Reports and analytics', text: 'Review orders, sales and stock in clear reports.' },
-    { icon: RotateCcw, title: 'Returns handling', text: 'Review and manage retailer return requests.' },
+    { icon: Store, title: 'Private Online Store', text: 'Your own business identity and store link.' },
+    { icon: Users, title: 'Retailer Management', text: 'Manage your own retailer network.' },
+    { icon: Package, title: 'Orders & Inventory', text: 'Track stock and orders in one place.' },
+    { icon: CreditCard, title: 'Sales & Credit', text: 'Manage sales, credit and outstanding payments.' },
+    { icon: BarChart3, title: 'Business Reports', text: 'Get insights to make better decisions.' },
+    { icon: ShieldCheck, title: 'Secure & Private', text: 'Your data stays with you. Always.' },
   ],
   steps: [
-    { icon: Store, title: 'Register your business', text: 'Create an account for your wholesale business.' },
-    { icon: Package, title: 'Add your products', text: 'Add products and prices after your business is approved.' },
-    { icon: Users, title: 'Share your link with retailers', text: 'Send your link so your retailers can join.' },
-    { icon: ShoppingBag, title: 'Receive and manage orders', text: 'Review retailer orders and manage their progress.' },
+    { icon: Users, title: 'Register', text: 'Create your business account.' },
+    { icon: Store, title: 'Build Your Store', text: 'Set up your online store with your brand.' },
+    { icon: Package, title: 'Add Products', text: 'Upload your products, prices and stock.' },
+    { icon: Link2, title: 'Share Your Link', text: 'Share with retailers via WhatsApp, social media or email.' },
+    { icon: TrendingUp, title: 'Manage & Grow', text: 'Track orders, sales, payments and more.' },
   ],
-  faqs: [
-    ['Who is this B2B service for?', 'Manufacturers, wholesalers, distributors and stockists can manage products, retailers and orders.'],
-    ['When can I add products?', 'Your account is ready after registration. Add products after your business details are approved.'],
-    ['How do retailers join my business?', 'Share your link. Retailers who join see your products and can order from your catalog.'],
-    ['Can I upload products in bulk?', 'Yes. Use the Excel upload to add or update products in bulk.'],
+  benefits: [
+    { icon: ShieldCheck, title: 'Complete Privacy', text: 'Your store, products and customers are only yours.' },
+    { icon: Store, title: 'Easy Store Setup', text: 'Create your online store in minutes without technical skills.' },
+    { icon: Users, title: 'Find New Customers', text: 'Share your store link and get new retailers through social media.' },
+    { icon: CreditCard, title: 'Cash & Credit Orders', text: 'Sell on cash or approved credit with payment tracking.' },
+    { icon: Building2, title: 'Business Management', text: 'Inventory, orders, payments and reports in one dashboard.' },
+    { icon: Truck, title: 'Dedicated Support', text: 'We are here to help you at every step.' },
   ],
 };
 
 const steps = landingCopy.steps;
 const features = landingCopy.features;
-const faqs = landingCopy.faqs;
 
 function setMeta(name: string, content: string, property = false) {
   const selector = property ? `meta[property="${name}"]` : `meta[name="${name}"]`;
@@ -157,6 +143,15 @@ function AuthModal({
             <h2 id="auth-modal-heading" className="text-lg font-extrabold text-tradeflow-navy">
               {tab === 'welcome' ? 'Welcome! Start selling online in minutes' : 'Sign in or create an account'}
             </h2>
+          </div>
+          <div className="relative z-0 mx-auto -mt-px h-2 w-[96%] rounded-b-xl bg-gradient-to-b from-gray-300 to-gray-400 shadow-lg" />
+          <div className="landing-float absolute -bottom-7 right-2 z-30 hidden w-40 rounded-[1.8rem] border-[5px] border-tradeflow-navy bg-white p-2 text-tradeflow-navy shadow-2xl sm:block md:right-0 md:w-48">
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-tradeflow-gray-200" />
+            <div className="rounded-xl bg-sky-50 p-2.5">
+              <div className="flex items-center justify-between"><Store className="size-4 text-tradeflow-green" /><span className="text-[8px] font-bold">Your Store</span><ShoppingBag className="size-3.5" /></div>
+              <div className="mt-2 rounded-lg bg-gradient-to-br from-blue-100 to-emerald-100 p-3 text-center"><Package className="mx-auto size-8 text-tradeflow-green" /><span className="mt-1 block text-[8px] font-bold">New arrivals</span></div>
+              <div className="mt-2 grid grid-cols-2 gap-1.5"><div className="rounded-md border bg-white p-2"><span className="block h-7 rounded bg-amber-100" /><span className="mt-1 block h-1.5 w-4/5 rounded bg-gray-200" /></div><div className="rounded-md border bg-white p-2"><span className="block h-7 rounded bg-sky-100" /><span className="mt-1 block h-1.5 w-4/5 rounded bg-gray-200" /></div></div>
+            </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close sign-in dialog" className="rounded-full p-2 text-tradeflow-navy hover:bg-tradeflow-gray-100">
             <X className="size-5" />
@@ -361,11 +356,14 @@ function LandingContent() {
   return (
     <main className="min-h-screen bg-white text-tradeflow-navy">
       <style>{`
+        html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
+        section[id] { scroll-margin-top: 4rem; }
         .landing-reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; }
         .landing-reveal.is-visible { opacity: 1; transform: translateY(0); }
         @keyframes landingFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
         .landing-float { animation: landingFloat 5s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) {
+          html { scroll-behavior: auto; }
           .landing-reveal, .landing-reveal.is-visible { opacity: 1; transform: none; transition: none; }
           .landing-motion, .landing-float { animation: none !important; transition: none !important; }
         }
@@ -374,22 +372,23 @@ function LandingContent() {
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 lg:px-8" aria-label="Main navigation">
           <a href="#home" className="flex items-center gap-2.5" aria-label={`${BRAND_NAME} home`}>
             <span className="flex size-10 items-center justify-center rounded-xl bg-tradeflow-green text-tradeflow-navy"><Store className="size-5" /></span>
-            <span className="font-heading text-lg font-extrabold tracking-tight">{BRAND_NAME}</span>
+            <span><span className="block font-heading text-lg font-extrabold tracking-tight">{BRAND_NAME}</span><span className="block text-[8px] font-medium leading-3 text-gray-500 sm:text-[10px]">Your Business. Your Store. Your Way.</span></span>
           </a>
           <button type="button" className="rounded-lg p-2 md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>
             {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
           <div className={`${mobileMenuOpen ? 'absolute left-0 right-0 top-full flex flex-col border-b bg-white p-4 shadow-lg' : 'hidden'} items-center gap-6 text-sm font-semibold md:static md:flex md:flex-row md:border-0 md:bg-transparent md:p-0 md:shadow-none`}>
+            <a onClick={() => setMobileMenuOpen(false)} href="#home" className="hover:text-tradeflow-green">Home</a>
             <a onClick={() => setMobileMenuOpen(false)} href="#features" className="hover:text-tradeflow-green">Features</a>
-            <a onClick={() => setMobileMenuOpen(false)} href="#how-it-works" className="hover:text-tradeflow-green">How it works</a>
             <a onClick={() => setMobileMenuOpen(false)} href="#pricing" className="hover:text-tradeflow-green">Pricing</a>
-            <a onClick={() => setMobileMenuOpen(false)} href="#faq" className="hover:text-tradeflow-green">FAQ</a>
+            <a onClick={() => setMobileMenuOpen(false)} href="#how-it-works" className="hover:text-tradeflow-green">How It Works</a>
+            <a onClick={() => setMobileMenuOpen(false)} href="#about" className="hover:text-tradeflow-green">About</a>
             {loggedIn ? (
               <Link to="/dashboard" className="text-tradeflow-green hover:underline">Go to Dashboard</Link>
             ) : (
               <>
                 <button type="button" onClick={() => showModal('login')} className="hover:text-tradeflow-green">Login</button>
-                <button type="button" onClick={() => showModal('register')} className="rounded-xl bg-tradeflow-green px-4 py-2.5 font-bold text-tradeflow-navy transition hover:bg-tradeflow-green-hover">Register Free</button>
+                <button type="button" onClick={() => showModal('register')} className="rounded-xl bg-tradeflow-green px-4 py-2.5 font-bold text-tradeflow-navy transition hover:bg-tradeflow-green-hover">Get Started</button>
               </>
             )}
           </div>
@@ -408,8 +407,8 @@ function LandingContent() {
         </div>
         <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 md:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
           <div className="relative z-10 landing-reveal">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-emerald-100 shadow-sm">{landingCopy.hero.label}</span>
-            <h1 className="mt-6 max-w-2xl font-heading text-4xl font-bold leading-[1.14] tracking-[-0.035em] sm:text-5xl lg:text-[3.4rem]">{landingCopy.hero.headline}</h1>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-emerald-100 shadow-sm"><ShieldCheck className="size-4" />{landingCopy.hero.label}</span>
+            <h1 className="mt-6 max-w-2xl whitespace-pre-line font-heading text-4xl font-extrabold leading-[1.14] tracking-[-0.035em] sm:text-5xl lg:text-[3.8rem]">{landingCopy.hero.headline}</h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-white/80 sm:text-lg">{landingCopy.hero.subtext}</p>
             <div className="mt-8 flex flex-wrap gap-3">
               {loggedIn ? (
@@ -423,103 +422,96 @@ function LandingContent() {
             </div>
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/85">
               {[
-                { icon: Users, text: 'Add retailers online' },
-                { icon: Package, text: 'Catalog and stock in one place' },
-                { icon: ReceiptText, text: 'GST bills and payments' },
+                { icon: ShieldCheck, text: 'Private Store' },
+                { icon: Package, text: 'Easy Management' },
+                { icon: CircleDollarSign, text: 'Affordable Plans' },
               ].map(({ icon: Icon, text }) => <span key={text} className="inline-flex items-center gap-2"><Icon className="size-4 text-emerald-200" />{text}</span>)}
             </div>
           </div>
 
-          <div className="relative mx-auto w-full max-w-2xl landing-reveal" aria-label="Illustration of your online shop dashboard">
-            <div className="relative z-10 rounded-3xl border border-white/20 bg-white/95 p-4 text-tradeflow-navy shadow-2xl sm:p-7">
-              <div className="flex items-center justify-between gap-3">
-                <div><p className="text-xs font-bold uppercase tracking-wider text-gray-500">Your shop</p><p className="mt-1 font-heading text-base font-bold sm:text-lg">Business overview</p></div>
-                <span className="flex size-11 items-center justify-center rounded-xl bg-tradeflow-green/10 text-tradeflow-green"><Building2 className="size-6" /></span>
-              </div>
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                <div className="rounded-xl border border-tradeflow-gray-200 bg-white p-3 sm:p-4"><Package className="size-5 text-tradeflow-green" /><p className="mt-2 text-sm font-bold">Products</p><p className="mt-1 text-xs text-gray-500">View details</p></div>
-                <div className="rounded-xl border border-tradeflow-gray-200 bg-white p-3 sm:p-4"><ShoppingBag className="size-5 text-tradeflow-green" /><p className="mt-2 text-sm font-bold">Orders</p><p className="mt-1 text-xs text-gray-500">View details</p></div>
-                <div className="rounded-xl border border-tradeflow-gray-200 bg-white p-3 sm:p-4"><Boxes className="size-5 text-tradeflow-green" /><p className="mt-2 text-sm font-bold">Stock</p><p className="mt-1 text-xs text-gray-500">View details</p></div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1.2fr_.8fr]">
-                <div className="rounded-xl border border-tradeflow-gray-200 p-4">
-                  <div className="flex items-center justify-between"><p className="text-sm font-bold">Sales overview</p><TrendingUp className="size-5 text-tradeflow-green" /></div>
-                  <div className="mt-4 flex h-24 items-end justify-around gap-2 border-b border-gray-100 px-2">
-                    {[35, 58, 44, 78, 62, 92, 70].map((height, index) => <span key={index} className="w-5 rounded-t bg-gradient-to-t from-tradeflow-green to-sky-300" style={{ height: `${height}%` }} />)}
+          <div className="relative mx-auto w-full max-w-2xl landing-reveal" aria-label="Laptop wholesaler dashboard with mobile storefront preview">
+            <div className="relative z-10 w-[91%] pt-4 sm:w-[94%]">
+              <div className="rounded-t-[1.25rem] border-[5px] border-b-0 border-slate-800 bg-slate-800 p-[3px] shadow-[0_24px_55px_rgba(4,18,31,0.42)] sm:rounded-t-[1.6rem] sm:border-[7px] sm:p-1">
+                <div className="overflow-hidden rounded-t-lg bg-slate-50 text-slate-700 sm:rounded-t-xl">
+                  <div className="flex h-7 items-center justify-between border-b border-slate-200 bg-white px-3 sm:h-9 sm:px-4">
+                    <span className="flex items-center gap-1.5"><i className="size-1.5 rounded-full bg-rose-400" /><i className="size-1.5 rounded-full bg-amber-300" /><i className="size-1.5 rounded-full bg-emerald-400" /></span>
+                    <span className="rounded-md bg-slate-100 px-3 py-1 text-[6px] text-slate-400 sm:px-8 sm:text-[8px]">app.vyapaardwaar.in/dashboard</span>
+                    <span className="size-3 rounded-full bg-slate-100 sm:size-4" />
                   </div>
-                  <div className="mt-2 flex justify-between text-xs text-gray-400"><span>Mon</span><span>Wed</span><span>Fri</span><span>Sun</span></div>
+                  <div className="grid min-h-[225px] grid-cols-[78px_1fr] sm:min-h-[300px] sm:grid-cols-[112px_1fr]">
+                    <aside className="bg-[#102c45] px-2 py-2.5 text-white sm:px-3 sm:py-4">
+                      <div className="mb-3 flex items-center gap-1.5 border-b border-white/10 pb-2 sm:mb-4 sm:gap-2 sm:pb-3"><span className="flex size-4 items-center justify-center rounded bg-emerald-400 text-[8px] font-black text-slate-900 sm:size-5 sm:text-[10px]">V</span><span className="truncate text-[6px] font-bold sm:text-[8px]">VyapaarDwaar</span></div>
+                      {[
+                        { icon: Building2, label: 'Dashboard' },
+                        { icon: Package, label: 'Products' },
+                        { icon: ShoppingBag, label: 'Orders' },
+                        { icon: Users, label: 'Retailers' },
+                        { icon: Boxes, label: 'Inventory' },
+                        { icon: CircleDollarSign, label: 'Sales' },
+                        { icon: BarChart3, label: 'Reports' },
+                        { icon: ShieldCheck, label: 'Settings' },
+                      ].map(({ icon: Icon, label }, index) => <div key={label} className={`mb-1 flex items-center gap-1.5 rounded px-1.5 py-1 text-[6px] sm:mb-1.5 sm:gap-2 sm:px-2 sm:py-1.5 sm:text-[8px] ${index === 0 ? 'bg-emerald-400/15 font-bold text-emerald-200' : 'text-slate-300'}`}><Icon className="size-2.5 shrink-0 sm:size-3" /><span className="truncate">{label}</span></div>)}
+                    </aside>
+                    <div className="min-w-0 p-2 sm:p-4">
+                      <div className="flex items-center justify-between">
+                        <div><p className="text-[6px] text-slate-400 sm:text-[8px]">MONDAY, 24 JUNE 2025</p><p className="mt-0.5 text-[9px] font-extrabold text-slate-800 sm:text-sm">Business Dashboard</p></div>
+                        <div className="flex size-5 items-center justify-center rounded-full bg-emerald-100 text-[7px] font-bold text-emerald-800 sm:size-7 sm:text-[9px]">AK</div>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-1 sm:mt-3 sm:gap-2">
+                        {[
+                          { icon: ShoppingBag, label: 'Total Orders', value: '1,248', tint: 'bg-sky-50 text-sky-600' },
+                          { icon: CircleDollarSign, label: 'Total Sales', value: '₹8.42L', tint: 'bg-emerald-50 text-emerald-600' },
+                          { icon: Users, label: 'Retailers', value: '386', tint: 'bg-violet-50 text-violet-600' },
+                        ].map(({ icon: Icon, label, value, tint }) => <div key={label} className="min-w-0 rounded-md border border-slate-200 bg-white p-1 sm:rounded-lg sm:p-2"><span className={`flex size-4 items-center justify-center rounded ${tint} sm:size-6`}><Icon className="size-2.5 sm:size-3.5" /></span><p className="mt-1 truncate text-[5px] text-slate-400 sm:text-[7px]">{label}</p><p className="text-[8px] font-extrabold text-slate-800 sm:text-xs">{value}</p></div>)}
+                      </div>
+                      <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-white sm:mt-3 sm:rounded-lg">
+                        <div className="flex items-center justify-between border-b border-slate-100 px-1.5 py-1 sm:px-2.5 sm:py-2"><p className="text-[7px] font-bold text-slate-700 sm:text-[9px]">Recent Orders</p><span className="text-[5px] font-semibold text-emerald-700 sm:text-[7px]">View all</span></div>
+                        <div className="grid grid-cols-[1fr_1.1fr_.8fr_.8fr] gap-1 border-b border-slate-100 bg-slate-50 px-1.5 py-1 text-[5px] font-semibold text-slate-400 sm:px-2.5 sm:text-[6px]"><span>ORDER</span><span>RETAILER</span><span>AMOUNT</span><span>STATUS</span></div>
+                        {[
+                          ['#VD-2481', 'Shree Traders', '₹24,500', 'Delivered', 'bg-emerald-100 text-emerald-700'],
+                          ['#VD-2480', 'Milan Fashion', '₹18,200', 'Processing', 'bg-amber-100 text-amber-700'],
+                          ['#VD-2479', 'City Collection', '₹32,750', 'Shipped', 'bg-sky-100 text-sky-700'],
+                        ].map(([id, retailer, amount, status, statusColor]) => <div key={id} className="grid grid-cols-[1fr_1.1fr_.8fr_.8fr] items-center gap-1 border-b border-slate-50 px-1.5 py-1.5 text-[5px] last:border-0 sm:px-2.5 sm:py-2 sm:text-[7px]"><span className="font-bold text-slate-600">{id}</span><span className="truncate text-slate-500">{retailer}</span><span className="font-semibold text-slate-700">{amount}</span><span className={`w-fit rounded-full px-1 py-0.5 text-[4px] font-bold sm:px-1.5 sm:text-[6px] ${statusColor}`}>{status}</span></div>)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-tradeflow-gray-200 p-4">
-                  <p className="text-sm font-bold">Recent orders</p>
-                  {['New order', 'Packed', 'Delivered'].map((label, index) => <div key={label} className="mt-4 flex items-center gap-2"><span className={`size-2.5 rounded-full ${index === 0 ? 'bg-sky-400' : index === 1 ? 'bg-amber-400' : 'bg-tradeflow-green'}`} /><span className="text-xs text-gray-600">{label}</span></div>)}
+              </div>
+              <div className="relative -mt-px h-2 w-full rounded-b-[50%] border-t border-slate-500 bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500 shadow-[0_14px_18px_rgba(4,18,31,0.28)] sm:h-3"><div className="mx-auto h-1 w-1/5 rounded-b-md bg-slate-500/60 sm:h-1.5" /></div>
+            </div>
+
+            <div className="absolute right-0 top-8 z-20 w-[34%] min-w-[112px] max-w-[190px] rounded-[1.5rem] border-[4px] border-slate-800 bg-slate-800 p-1 shadow-[0_22px_45px_rgba(4,18,31,0.5)] sm:right-0 sm:top-12 sm:w-[33%] sm:min-w-[155px] sm:rounded-[2rem] sm:border-[6px] sm:p-1.5">
+              <div className="relative overflow-hidden rounded-[1.15rem] bg-white text-slate-800 sm:rounded-[1.5rem]">
+                <div className="flex h-5 items-center justify-between bg-white px-2 text-[6px] font-bold sm:h-7 sm:px-3 sm:text-[8px]"><span>9:41</span><span className="h-1 w-7 rounded-full bg-slate-800 sm:w-9" /><span>● ●</span></div>
+                <div className="px-2 pb-2 sm:px-3 sm:pb-3">
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-1"><span className="flex size-4 items-center justify-center rounded bg-emerald-500 text-[7px] font-black text-white sm:size-5 sm:text-[9px]">V</span><span className="text-[7px] font-extrabold sm:text-[9px]">VyapaarDwaar Store</span></div><ShoppingBag className="size-3 text-slate-600 sm:size-3.5" /></div>
+                  <div className="mt-1.5 flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[6px] text-slate-400 sm:mt-2 sm:py-1.5 sm:text-[7px]"><Store className="size-2.5 sm:size-3" />Search products</div>
+                  <div className="relative mt-2 overflow-hidden rounded-lg bg-gradient-to-br from-[#0f4c5c] to-emerald-700 px-2 py-2.5 text-white sm:mt-3 sm:rounded-xl sm:px-3 sm:py-4">
+                    <p className="relative z-10 text-[6px] font-bold uppercase tracking-wide text-emerald-100 sm:text-[8px]">Wholesale picks</p><p className="relative z-10 mt-0.5 text-[9px] font-extrabold leading-tight sm:text-sm">Fresh styles,<br />better margins</p><span className="relative z-10 mt-1 inline-flex rounded-full bg-white px-1.5 py-0.5 text-[5px] font-bold text-emerald-800 sm:text-[6px]">Explore collection</span>
+                    <Package className="absolute -bottom-1 -right-1 size-10 rotate-12 text-white/15 sm:size-14" />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between sm:mt-3"><p className="text-[7px] font-extrabold sm:text-[9px]">Featured products</p><span className="text-[5px] font-semibold text-emerald-700 sm:text-[6px]">See all</span></div>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:mt-2 sm:gap-2">
+                    {[
+                      { image: '/uploads/products/0b2576f4-6f78-4a57-ae2b-ffefa95a9938.webp', name: 'Classic Collection', price: '₹1,250' },
+                      { image: '/uploads/products/4f0b7afc-ada9-40d1-9a87-e7ade720cc12.webp', name: 'Everyday Essentials', price: '₹890' },
+                    ].map(({ image, name, price }) => <article key={image} className="overflow-hidden rounded-md border border-slate-100 bg-white sm:rounded-lg"><div className="h-12 overflow-hidden bg-amber-50 sm:h-16"><img src={resolveProductImageUrl(image) ?? undefined} alt={name} className="size-full object-cover" /></div><div className="p-1 sm:p-1.5"><p className="truncate text-[5px] font-semibold sm:text-[7px]">{name}</p><p className="mt-0.5 text-[6px] font-extrabold text-emerald-700 sm:text-[8px]">{price}</p></div></article>)}
+                  </div>
                 </div>
+                <div className="mx-auto mb-1 h-1 w-8 rounded-full bg-slate-300 sm:w-10" />
               </div>
             </div>
-            {[
-              { icon: ShoppingBag, label: 'New order received', style: '-left-5 top-7', color: 'bg-sky-100 text-sky-700' },
-              { icon: Boxes, label: 'Stock updated', style: '-right-4 top-[37%]', color: 'bg-emerald-100 text-emerald-700' },
-              { icon: Wallet, label: 'Payment received', style: '-left-3 bottom-[18%]', color: 'bg-amber-100 text-amber-700' },
-              { icon: Users, label: 'New retailer joined', style: '-right-3 bottom-4', color: 'bg-violet-100 text-violet-700' },
-            ].map(({ icon: Icon, label, style, color }) => <div key={label} className={`landing-motion landing-float absolute ${style} z-20 hidden items-center gap-2 rounded-xl border border-tradeflow-gray-200 bg-white px-4 py-3 text-tradeflow-navy shadow-xl sm:flex`}><span className={`flex size-10 items-center justify-center rounded-full ${color}`}><Icon className="size-5" /></span><span className="text-sm font-bold">{label}</span></div>)}
-          </div>
-        </div>
-      </section>
-
-      <section className="border-b border-tradeflow-gray-200 bg-white px-5 py-7" aria-label="B2B wholesale tools">
-        <div className="mx-auto grid max-w-7xl gap-3 sm:grid-cols-3 sm:gap-4">
-          {landingCopy.keyMessages.map(({ icon: Icon, title, text }) => (
-            <article key={title} className="flex items-start gap-3 rounded-xl bg-tradeflow-gray-50 px-4 py-4">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-tradeflow-green/10 text-tradeflow-green"><Icon className="size-5" /></span>
-              <div><h2 className="text-sm font-bold text-tradeflow-navy">{title}</h2><p className="mt-1 text-xs leading-5 text-gray-600">{text}</p></div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8">
-        <div className="landing-reveal flex flex-col items-start justify-between gap-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-sky-50 p-6 sm:flex-row sm:items-center sm:px-8">
-          <div>
-            <h2 className="font-heading text-xl font-extrabold">Free to start</h2>
-            <p className="mt-1 text-sm leading-5 text-gray-600">Create your account and see the current plan choices before subscribing.</p>
-          </div>
-          {!loggedIn && <button type="button" onClick={() => showModal('register')} className="shrink-0 rounded-xl bg-tradeflow-green px-5 py-3 text-sm font-bold text-tradeflow-navy shadow-sm transition hover:bg-tradeflow-green-hover">Register Free</button>}
-        </div>
-      </section>
-
-      <section className="bg-tradeflow-gray-50 px-5 py-16">
-        <div className="mx-auto max-w-7xl">
-          <div className="landing-reveal mx-auto max-w-2xl text-center">
-            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">A clear view of your business</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Bring B2B retailer orders online</h2>
-            <p className="mt-3 text-sm leading-5 text-gray-600">Share your catalog with retailers and manage their orders in one place.</p>
-          </div>
-          <div className="landing-reveal mt-9 grid gap-4 md:grid-cols-2">
-            <article className="flex gap-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-6 shadow-sm">
-              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800"><FileSpreadsheet className="size-5" /></span>
-              <div><h3 className="font-heading font-bold">Add retailers with your link</h3><p className="mt-2 text-sm leading-5 text-gray-600">Retailers join your business and see your catalog.</p></div>
-            </article>
-            <article className="flex gap-4 rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm">
-              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-800"><Store className="size-5" /></span>
-              <div><h3 className="font-heading font-bold">Receive and manage orders</h3><p className="mt-2 text-sm leading-5 text-gray-600">Follow orders, stock, payments and bills together.</p></div>
-            </article>
           </div>
         </div>
       </section>
 
       <section id="features" className="mx-auto max-w-7xl px-5 py-16 lg:px-8">
         <div className="landing-reveal mx-auto max-w-2xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Tools for daily wholesale work</p>
-          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">B2B tools for wholesale businesses</h2>
-          <p className="mt-3 text-sm leading-5 text-gray-600">Add retailers, share products and keep orders moving.</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Built for your business</p>
+          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">Everything Your Business Needs</h2>
+          <p className="mt-3 text-sm leading-5 text-gray-600">Powerful tools to help you grow and manage your wholesale business — all in one place.</p>
         </div>
-        <div className="landing-reveal mt-8 grid gap-3 rounded-2xl bg-tradeflow-navy p-5 text-white sm:grid-cols-3 sm:p-6">
-          {[
-          { icon: Package, text: 'Share your catalog with retailers.' },
-          { icon: Users, text: 'Add retailers online with your link.' },
-          { icon: CircleDollarSign, text: 'Track orders, payments and bills.' },
-          ].map(({ icon: Icon, text }) => <div key={text} className="flex items-center gap-3 rounded-xl bg-white/5 p-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-tradeflow-green/15 text-emerald-200"><Icon className="size-5" /></span><p className="text-sm font-semibold leading-5">{text}</p></div>)}
-        </div>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map(({ icon: Icon, title, text }, index) => (
             <article key={title} className={`landing-reveal landing-motion rounded-2xl border border-tradeflow-gray-200 p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-tradeflow-green/40 hover:shadow-lg ${index % 2 ? 'bg-tradeflow-gray-50' : 'bg-white'}`}>
               <span className="flex size-11 items-center justify-center rounded-full bg-tradeflow-green/10 text-tradeflow-green"><Icon className="size-5" /></span>
@@ -534,11 +526,11 @@ function LandingContent() {
         <div className="mx-auto max-w-7xl">
           <div className="landing-reveal mx-auto max-w-2xl text-center">
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Get started</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">How it works</h2>
-            <p className="mt-3 text-sm leading-5 text-gray-600">Set up your business and start taking orders from retailers.</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">How It Works</h2>
+            <p className="mt-3 text-sm leading-5 text-gray-600">Get started in just a few simple steps.</p>
           </div>
-          <div className="relative mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="pointer-events-none absolute left-[12%] right-[12%] top-7 hidden border-t-2 border-dotted border-tradeflow-green/40 lg:block" />
+          <div className="relative mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="pointer-events-none absolute left-[10%] right-[10%] top-7 hidden border-t-2 border-dotted border-tradeflow-green/40 lg:block" />
             {steps.map(({ icon: Icon, title, text }, index) => (
               <article key={title} className="landing-reveal relative z-10 flex flex-col items-center rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-5 text-center shadow-sm">
                 <span className="relative flex size-14 items-center justify-center rounded-full bg-white text-tradeflow-green shadow-md ring-4 ring-tradeflow-green/10">
@@ -553,40 +545,12 @@ function LandingContent() {
         </div>
       </section>
 
-      <section className="bg-gradient-to-br from-sky-50 via-white to-emerald-50 px-5 py-16">
-        <div className="mx-auto max-w-5xl">
-          <div className="landing-reveal mx-auto max-w-2xl text-center">
-            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Who it is for</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">For manufacturers and wholesale suppliers</h2>
-            <p className="mt-3 max-w-lg text-sm leading-5 text-gray-600">For manufacturers, wholesalers, distributors and stockists.</p>
-          </div>
-          <div className="landing-reveal mt-8">
-            <article className="landing-motion rounded-3xl bg-tradeflow-navy p-6 text-white shadow-xl transition hover:-translate-y-1 sm:p-8">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-4 sm:w-1/3"><span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-emerald-200"><Building2 className="size-7" /></span><div><p className="text-xs font-bold uppercase tracking-wider text-white/60">Your business</p><h3 className="mt-1 font-heading text-xl font-extrabold">Wholesaler</h3></div></div>
-                <div className="grid gap-3 sm:flex-1 sm:grid-cols-3">
-                  {['Add retailers with your link', 'Share products and bulk prices', 'Take orders and track payments'].map((text) => <p key={text} className="flex items-center gap-2 rounded-xl bg-white/5 p-3 text-sm font-semibold"><Check className="size-4 shrink-0 text-emerald-300" />{text}</p>)}
-                </div>
-              </div>
-            </article>
-            <div className="flex flex-col items-center py-3 text-center text-sm font-semibold text-tradeflow-navy">
-              <span className="h-7 border-l-2 border-dotted border-tradeflow-green" />
-              <span className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm"><Link2 className="size-4 text-tradeflow-green" />Retailers join with your link</span>
-              <ArrowDown className="mt-1 size-5 text-tradeflow-green" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {['Join with your link', 'See your products', 'Place and track orders'].map((text, index) => <article key={text} className="landing-motion flex items-center gap-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-md transition hover:-translate-y-1"><span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><Store className="size-6" /></span><div><p className="text-[10px] font-bold uppercase tracking-wider text-tradeflow-green">Retailer {index + 1}</p><h3 className="mt-1 font-heading font-bold">{text}</h3></div></article>)}
-            </div>
-          </div>
-          <p className="mt-6 text-center text-sm font-medium leading-6 text-gray-600">Retailers see your catalog. You set your prices, minimum order quantities and credit terms.</p>
-        </div>
-      </section>
-
-      <section id="pricing" className="mx-auto max-w-5xl px-5 py-16 lg:px-8">
+      {/* <section id="pricing" className="bg-tradeflow-gray-50 px-5 py-16 lg:px-8">
+        <div className="mx-auto max-w-7xl">
         <div className="landing-reveal mx-auto max-w-2xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Plans for your business</p>
-          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Plans for your wholesale business</h2>
-          <p className="mt-3 text-sm leading-5 text-gray-600">Choose a plan that fits your business and billing preference.</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Straightforward plans</p>
+          <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Simple &amp; Transparent Pricing</h2>
+          <p className="mt-3 text-sm leading-5 text-gray-600">Choose the plan that fits your business. Cancel anytime.</p>
         </div>
         <div className="mx-auto mt-8 grid max-w-6xl gap-5 md:grid-cols-2 xl:grid-cols-3">
           {subscriptionPlans.length ? subscriptionPlans.map((subscriptionPlan) => (
@@ -602,7 +566,7 @@ function LandingContent() {
                 ))}
               </ul>
               <p className="mt-4 text-xs text-gray-500">{subscriptionPlan.taxNote}</p>
-              {!loggedIn && <button type="button" onClick={() => showModal('register')} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-4 py-2.5 text-sm font-bold text-tradeflow-navy">Register Free <ArrowRight className="size-4" /></button>}
+              {!loggedIn && <button type="button" onClick={() => showModal('register')} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-4 py-2.5 text-sm font-bold text-tradeflow-navy">Get Started <ArrowRight className="size-4" /></button>}
             </article>
           )) : (
             <p role={subscriptionPlanError ? 'alert' : 'status'} className="rounded-xl border border-tradeflow-gray-200 bg-white p-6 text-center text-sm text-gray-600">
@@ -610,49 +574,78 @@ function LandingContent() {
             </p>
           )}
         </div>
-      </section>
+        <p className="mx-auto mt-5 max-w-3xl text-center text-xs leading-5 text-gray-500">Plans and prices shown are the active options configured for this platform.</p>
+        </div>
+      </section> */}
 
-      <section id="faq" className="bg-tradeflow-gray-50 px-5 py-16">
-        <div className="mx-auto max-w-4xl">
-          <div className="landing-reveal text-center">
-            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Questions and answers</p>
-            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Common questions</h2>
-            <p className="mt-3 text-sm leading-5 text-gray-600">Answers about adding retailers, products and orders.</p>
+      <section id="about" className="bg-sky-50 px-5 py-16">
+        <div className="mx-auto max-w-7xl">
+          <div className="landing-reveal mx-auto max-w-2xl text-center">
+            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-tradeflow-green">Made for Indian wholesale businesses</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight">Why Choose {BRAND_NAME}?</h2>
           </div>
-          <div className="mt-8 space-y-3">
-            {faqs.map(([question, answer]) => (
-              <details key={question} className="landing-reveal group rounded-xl border border-tradeflow-gray-200 bg-white p-5 open:border-tradeflow-green/40">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold"><span>{question}</span><ChevronDown className="size-4 shrink-0 transition group-open:rotate-180" /></summary>
-                <p className="mt-3 text-sm leading-5 text-gray-600">{answer}</p>
-              </details>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {landingCopy.benefits.map(({ icon: Icon, title, text }) => (
+              <article key={title} className="landing-reveal flex gap-4 rounded-xl border border-sky-100 bg-white p-5 shadow-sm">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><Icon className="size-5" /></span>
+                <div><h3 className="font-heading font-bold">{title}</h3><p className="mt-1 text-sm leading-5 text-gray-600">{text}</p></div>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-gradient-to-r from-tradeflow-navy via-[#174a57] to-tradeflow-green px-5 py-16 text-center text-white">
-        <div className="landing-reveal mx-auto max-w-3xl">
-          <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-white/10 text-emerald-200"><ArrowDownLeft className="size-6" /></span>
-          <h2 className="mt-4 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">Bring your retailers online today</h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-5 text-white/80">Register your business, share your link and start receiving retailer orders online.</p>
-          <div className="mt-7 flex flex-wrap justify-center gap-3">
-            {loggedIn ? (
-              <Link to="/dashboard" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5">Go to Dashboard <ArrowRight className="size-4" /></Link>
-            ) : (
-              <>
-                <button type="button" onClick={() => showModal('register')} className="inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-6 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5 hover:bg-tradeflow-green-hover">Register Free <ArrowRight className="size-4" /></button>
-                <button type="button" onClick={() => showModal('login')} className="rounded-xl border border-white/30 bg-white/10 px-6 py-3 font-bold text-white hover:bg-white/20">Login</button>
-              </>
-            )}
+      <section className="bg-tradeflow-navy px-5 py-14 text-white sm:py-16">
+        <div className="mx-auto grid max-w-7xl items-center gap-9 lg:grid-cols-[1fr_1.2fr_0.9fr]">
+          <div className="landing-reveal relative flex min-h-52 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-sky-900 via-slate-800 to-tradeflow-navy p-6">
+            <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-slate-950/60" />
+            <div className="relative flex h-32 w-full max-w-xs items-end justify-center gap-2 rounded-t-lg border border-white/20 bg-white/10 px-4 pt-5">
+              <span className="absolute left-3 top-3 flex items-center gap-1.5 text-[9px] font-bold text-white/80"><Building2 className="size-3.5 text-emerald-300" /> WHOLESALE</span>
+              {[36, 58, 44, 76, 54].map((height, index) => <span key={index} className="w-1/6 rounded-t bg-gradient-to-t from-tradeflow-green/80 to-sky-200/80" style={{ height: `${height}%` }} />)}
+              <span className="absolute -bottom-2 left-0 right-0 h-2 rounded bg-slate-950" />
+            </div>
+            <span className="absolute right-5 top-5 flex size-12 items-center justify-center rounded-xl bg-white/10 text-emerald-200"><Boxes className="size-6" /></span>
+            <span className="absolute bottom-5 left-5 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold"><Truck className="size-4 text-emerald-300" />Built for wholesale</span>
+          </div>
+          <div className="landing-reveal">
+            <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-emerald-300">Take your business online</p>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold tracking-tight sm:text-4xl">Start Your Private B2B Store Today</h2>
+            <p className="mt-3 text-sm leading-6 text-white/75">Take your wholesale business online and manage your retailers easily with {BRAND_NAME}.</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {loggedIn ? (
+                <Link to="/dashboard" className="inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-5 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5">Go to Dashboard <ArrowRight className="size-4" /></Link>
+              ) : (
+                <>
+                  <button type="button" onClick={() => showModal('register')} className="inline-flex items-center gap-2 rounded-xl bg-tradeflow-green px-5 py-3 font-bold text-tradeflow-navy shadow-lg transition hover:-translate-y-0.5 hover:bg-tradeflow-green-hover">Create Your Store <ArrowRight className="size-4" /></button>
+                  <button type="button" onClick={() => showModal('login')} className="rounded-xl border border-white/30 bg-white/10 px-5 py-3 font-bold text-white hover:bg-white/20">Login</button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="landing-reveal space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <p className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-300" /><span><strong className="block text-xl">100%</strong><span className="text-sm text-white/70">Private &amp; Secure</span></span></p>
+            <p className="flex items-start gap-3"><Building2 className="mt-0.5 size-5 shrink-0 text-emerald-300" /><span><strong className="block text-sm">All Business Types</strong><span className="text-xs leading-5 text-white/70">Manufacturers, Wholesalers, Distributors, Stockists</span></span></p>
+            <p className="flex items-start gap-3"><Check className="mt-0.5 size-5 shrink-0 text-emerald-300" /><span><strong className="block text-sm">Trusted Platform</strong><span className="text-xs text-white/70">Built for Indian Businesses</span></span></p>
           </div>
         </div>
       </section>
 
-      <footer className="border-t border-tradeflow-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between lg:px-8">
-          <a href="#home" className="font-heading font-extrabold text-tradeflow-navy">{BRAND_NAME}</a>
-          <div className="flex flex-wrap gap-5"><a href="#features" className="hover:text-tradeflow-green">Features</a><a href="#faq" className="hover:text-tradeflow-green">Questions</a>{loggedIn ? <Link to="/dashboard" className="font-semibold text-tradeflow-green hover:underline">Go to Dashboard</Link> : <button type="button" onClick={() => showModal('login')} className="hover:text-tradeflow-green">Login</button>}</div>
-          <span>Trust · Grow · Together</span>
+      <footer className="border-t border-white/10 bg-slate-950 text-white">
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[1.3fr_2fr] lg:px-8">
+          <div><a href="#home" className="font-heading text-xl font-extrabold">{BRAND_NAME}</a><p className="mt-2 text-sm text-white/65">Your Business. Your Store. Your Way.</p></div>
+          <nav className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/75" aria-label="Footer navigation">
+            <a href="#home" className="hover:text-tradeflow-green">Home</a>
+            <a href="#features" className="hover:text-tradeflow-green">Features</a>
+            <a href="#pricing" className="hover:text-tradeflow-green">Pricing</a>
+            <a href="#how-it-works" className="hover:text-tradeflow-green">How It Works</a>
+            <a href="#about" className="hover:text-tradeflow-green">About</a>
+            <Link to="/dashboard/support" className="hover:text-tradeflow-green">Contact</Link>
+            {loggedIn ? <Link to="/dashboard" className="font-semibold text-tradeflow-green hover:underline">Go to Dashboard</Link> : <button type="button" onClick={() => showModal('login')} className="hover:text-tradeflow-green">Login</button>}
+          </nav>
+          <div className="flex flex-col gap-2 border-t border-white/10 pt-5 text-xs text-white/55 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
+            <span>© {new Date().getFullYear()} {BRAND_NAME}. All rights reserved.</span>
+            <span>Private B2B business platform for India</span>
+          </div>
         </div>
       </footer>
 

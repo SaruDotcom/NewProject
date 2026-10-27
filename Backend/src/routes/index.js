@@ -28,6 +28,7 @@ const wholesalerPortalRoutes = require('../modules/wholesalers/wholesalerPortal.
 const supportRoutes = require('../modules/support/support.routes');
 const wholesalerInviteRoutes = require('../modules/wholesaler-invites/wholesalerInvites.routes');
 const subscriptionRoutes = require('../modules/subscriptions/subscriptions.routes');
+const paymentRoutes = require('../modules/payments/payments.routes');
 
 // Health Check
 router.get('/health', (req, res) => {
@@ -47,6 +48,7 @@ router.use('/support', supportRoutes.router);
 router.use('/admin/support', supportRoutes.adminRouter);
 router.use('/admin/wholesaler-invites', wholesalerInviteRoutes.adminRouter);
 router.use('/admin/subscription-plan', subscriptionRoutes.adminRoutes);
+router.use('/admin/payment-reports', paymentRoutes.adminRoutes);
 router.use('/subscription-plan', subscriptionRoutes.publicRoutes);
 router.use('/wholesaler/subscription', subscriptionRoutes.wholesalerRoutes);
 
@@ -83,12 +85,14 @@ router.get(
 
 // Wholesaler Portal Routes
 router.use('/wholesaler', wholesalerPortalRoutes);
+router.use('/wholesaler', paymentRoutes.wholesalerRoutes);
 
 const retailerPortalRoutes = require('../modules/retailers/retailerPortal.routes');
 const retailerIdentityRoutes = require('../modules/retailers/retailerIdentity.routes');
 
 // Retailer Portal Routes
 router.use('/retailer', retailerPortalRoutes);
+router.use('/retailer', paymentRoutes.retailerRoutes);
 router.use('/retailer-identity', retailerIdentityRoutes);
 
 // General & Shared Modules

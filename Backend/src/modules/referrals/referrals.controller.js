@@ -8,6 +8,11 @@ class ReferralController {
     return ApiResponse.success(res, { wholesaler }, 'Referral code is valid');
   });
 
+  getReferralProducts = asyncHandler(async (req, res) => {
+    const data = await ReferralService.getReferralProducts(req.params.code, req.query);
+    return ApiResponse.paginated(res, data.products, data.meta, 'Referral products retrieved successfully');
+  });
+
   getWholesalerReferral = asyncHandler(async (req, res) => {
     const referral = await ReferralService.getWholesalerReferral(req.user);
     return ApiResponse.success(res, referral, 'Referral settings retrieved');

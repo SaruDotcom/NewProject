@@ -12,7 +12,8 @@ const addToCartSchema = Joi.object({
     'number.min': 'Quantity must be at least 1',
     'any.required': 'Quantity is required',
   }),
-});
+  color: Joi.string().trim().allow('', null).optional(),
+}).unknown(true);
 
 const updateCartItemSchema = Joi.object({
   quantity: Joi.number().integer().min(1).required().messages({
@@ -20,7 +21,8 @@ const updateCartItemSchema = Joi.object({
     'number.min': 'Quantity must be at least 1',
     'any.required': 'Quantity is required',
   }),
-});
+  color: Joi.string().trim().allow('', null).optional(),
+}).unknown(true);
 
 const addressObjectSchema = Joi.object({
   fullName: Joi.string().trim().optional(),
@@ -80,21 +82,11 @@ const checkoutSchema = Joi.object({
     phone: Joi.string().trim().optional(),
   }).optional(),
   paymentMethod: Joi.string()
-    .valid('COD', 'CREDIT', 'BANK_TRANSFER', 'UPI', 'CARD', 'WALLET', 'NET_BANKING', 'ONLINE')
+    .valid('COD', 'CREDIT', 'UPI')
     .default('COD'),
   couponCode: Joi.string().trim().allow('', null).optional(),
   idempotencyKey: Joi.string().trim().optional(),
   notes: Joi.string().trim().allow('', null).optional(),
-});
-
-const verifyCheckoutPaymentSchema = Joi.object({
-  razorpay_order_id: Joi.string().trim().required(),
-  razorpay_payment_id: Joi.string().trim().required(),
-  razorpay_signature: Joi.string().trim().required(),
-});
-
-const failCheckoutPaymentSchema = Joi.object({
-  razorpay_order_id: Joi.string().trim().required(),
 });
 
 const addressSchema = Joi.object({
@@ -265,8 +257,6 @@ module.exports = {
   addToCartSchema,
   updateCartItemSchema,
   checkoutSchema,
-  verifyCheckoutPaymentSchema,
-  failCheckoutPaymentSchema,
   addressSchema,
   updateAddressSchema,
   createReturnSchema,

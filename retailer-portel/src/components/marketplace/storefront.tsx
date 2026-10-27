@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@/lib/router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Inventory, CheckCircle, HeadsetMic, CurrencyRupee, Business, Handshake, ShoppingCart, Favorite, FlashOn } from "@mui/icons-material";
 import { ProductCard, ProductGrid, ProductVisual, SectionHeading, StatusBadge, WholesalerCard, money } from "./primitives";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet,SheetContent,SheetHeader,SheetTitle,SheetTrigger } from "@/components/ui/sheet";
-import { useStore } from "@/state/store";
+import { mapProduct, useStore } from "@/state/store";
+import { api } from "@/api/api";
+import { retailerQueryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 import { CategoryCard } from "./CategoryCard";
 import { toast } from "sonner";
@@ -397,31 +400,38 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
         </div>
       )}
 
-      <div className="mt-7 grid gap-8 lg:grid-cols-[220px_1fr]">
-        <aside className="hidden border-r pr-6 lg:block">
+      <div className="mt-7 grid gap-6 lg:gap-8 lg:grid-cols-[240px_minmax(0,1fr)] items-start">
+        <aside className="hidden w-[240px] shrink-0 border-r pr-6 lg:block">
           <Filters {...filterProps} />
         </aside>
 
-        {shown.length ? (
-          <ProductGrid products={shown} list={list} />
-        ) : (
-          <div className="border border-dashed bg-card p-10 text-center rounded-2xl">
-            <Inventory2 className="mx-auto size-10 text-primary" />
-            <h2 className="mt-4 text-xl font-bold text-ink">No products match your search or filters</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-              Try selecting a different category or clearing your filter criteria.
-            </p>
-            <Button className="mt-5 rounded-xl font-bold" onClick={handleResetAll}>
-              Reset filters
-            </Button>
-          </div>
-        )}
+        <div className="min-w-0 flex-1">
+          {shown.length ? (
+            <ProductGrid
+              products={shown}
+              list={list}
+              className="grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5"
+            />
+          ) : (
+            <div className="border border-dashed bg-card p-10 text-center rounded-2xl">
+              <Inventory2 className="mx-auto size-10 text-primary" />
+              <h2 className="mt-4 text-xl font-bold text-ink">No products match your search or filters</h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Try selecting a different category or clearing your filter criteria.
+              </p>
+              <Button className="mt-5 rounded-xl font-bold" onClick={handleResetAll}>
+                Reset filters
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
 }
 export function ProductDetailPage({ productId }: { productId: string }) {
   const {
+    currentUser,
     products,
     linkedWholesaler,
     addToCart,
@@ -430,7 +440,18 @@ export function ProductDetailPage({ productId }: { productId: string }) {
     relationships,
     addRecentlyViewed,
   } = useStore();
-  const product = products.find((item) => item.id === productId);
+  const catalogProduct = products.find((item) => item.id === productId);
+  const productQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "product-detail", productId),
+    queryFn: async () => {
+      const response = await api.getProductById(encodeURIComponent(productId));
+      const productData = response?.data?.product;
+      return productData ? mapProduct(productData) : null;
+    },
+    enabled: Boolean(currentUser?.id && productId && !catalogProduct),
+    staleTime: 30_000,
+  });
+  const product = catalogProduct ?? productQuery.data ?? undefined;
   const w = linkedWholesaler;
   
   useEffect(() => {
@@ -455,8 +476,16 @@ export function ProductDetailPage({ productId }: { productId: string }) {
       <main className="shell py-16">
         <div className="mx-auto max-w-xl border border-dashed bg-card p-8 text-center rounded-2xl">
           <Inventory2 className="mx-auto size-12 text-muted-foreground" />
-          <h1 className="mt-5 text-2xl font-extrabold text-ink">Product not found</h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">This product is not available in your connected wholesaler catalog.</p>
+          <h1 className="mt-5 text-2xl font-extrabold text-ink">
+            {productQuery.isLoading ? "Loading product" : "Product not found"}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {productQuery.isLoading
+              ? "Loading product details from your connected wholesaler."
+              : productQuery.error instanceof Error
+                ? productQuery.error.message
+                : "This product is not available in your connected wholesaler catalog."}
+          </p>
           <Button asChild className="mt-6 font-bold rounded-xl">
             <Link to="/products">Browse products</Link>
           </Button>

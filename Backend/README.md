@@ -97,11 +97,28 @@ RETAILER_IDENTITY_ENCRYPTION_KEY=<64-hex-character AES-256-GCM key>
 # Wholesaler subscriptions (use Razorpay test-mode credentials in development)
 RAZORPAY_KEY_ID=rzp_test_...
 RAZORPAY_KEY_SECRET=...
+
+# Wallet earnings settle seven days after delivery by default
+WALLET_SETTLEMENT_DAYS=7
 ```
 
 Generate the encryption key with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and store it as a secret in `Backend/.env`. Keep the same key available for decryption; changing it requires re-encrypting saved retailer identity numbers.
 
 The Super Admin-managed wholesaler plan catalog is initialized with Monthly Plan (₹300/month), Annual Pro Plan (₹3,000/year), and the existing Wholesaler Plan (₹499/month). Super Admins can add, edit, deactivate, reorder, and delete plans and features. Plan and price details are snapshotted when an order is created, so catalog changes do not alter an existing subscription. Razorpay credentials are required to create and verify subscription payments; without them, the wholesaler portal displays “Online payment is not configured”.
+
+### Retailer UPI payments and credit
+
+Retailer order checkout no longer creates or verifies gateway payments. Orders can use `UPI`, `COD`, or `CREDIT`; a UPI order remains unpaid until its connected wholesaler confirms a payment report. Razorpay remains in use for wholesaler subscriptions only.
+
+- Wholesalers configure UPI and private QR details with `GET/PATCH /api/v1/wholesaler/payment-settings`.
+- Retailers fetch the connected wholesaler’s options from `GET /api/v1/retailer/payment-options`.
+- Retailers fetch a fresh, authenticated QR display session from `POST /api/v1/retailer/payment-options/qr-session`; the QR is loaded after order placement and can be requested again after the display timer expires.
+- Retailers report direct UPI order payments or credit installments at `POST /api/v1/retailer/payments/reports`; wholesalers list and review those reports at `GET /api/v1/wholesaler/payment-reports` and `PATCH /api/v1/wholesaler/payment-reports/:reportId`.
+- Payment evidence is served only by authenticated report screenshot routes and each access is audited. QR and evidence images are stored outside the static product-upload directory.
+- Super Admins can review all reports at `GET /api/v1/admin/payment-reports` and access evidence through the corresponding authenticated screenshot route.
+- Retailers may request credit at `POST /api/v1/retailer/credit-request`. Wholesalers approve, reject, enable, or disable per-retailer access and configure limits/terms at `PATCH /api/v1/wholesaler/retailers/:retailerId/credit-policy`.
+- Credit orders use an atomic paise-denominated outstanding/limit check. Credit repayments are separate payment reports and change outstanding balances only after wholesaler confirmation.
+- QR display duration defaults to 10 minutes and is configurable from 1–60 minutes. Expiry affects only the in-app display session; it does not invalidate the underlying UPI QR.
 
 ---
 

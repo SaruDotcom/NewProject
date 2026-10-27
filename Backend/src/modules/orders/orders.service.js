@@ -32,6 +32,7 @@ const { generateReference } = require('../../utils/crypto');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const WalletService = require('../../services/wallet.service');
+const env = require('../../config/env');
 
 const normalizeOrderAddress = (address = {}) => ({
   street: address.addressLine1 || address.street || '',
@@ -48,14 +49,16 @@ class OrderService {
   /**
    * Retailer creates new B2B order with authoritative price calculation & inventory reservation
    */
-  static async createOrder(retailerUser, orderPayload, req = null, verifiedPayment = null, quoteOnly = false) {
+  static async createOrder(retailerUser, orderPayload, req = null, quoteOnly = false) {
     const retailerId = retailerUser._id;
     const { wholesalerId: requestedWholesalerId, items, shippingAddress, billingAddress, paymentMethod, idempotencyKey, couponCode } =
       orderPayload;
-    if (paymentMethod === 'ONLINE' && !verifiedPayment && !quoteOnly) {
-      throw new BadRequestError('Online orders must be verified through the payment gateway', 'PAYMENT_VERIFICATION_REQUIRED');
+    if (paymentMethod === 'ONLINE') {
+      throw new BadRequestError('Gateway checkout is no longer available. Choose direct UPI, COD, or approved credit.', 'GATEWAY_CHECKOUT_DISABLED');
     }
-
+    if (paymentMethod && !['UPI', 'COD', 'CREDIT'].includes(paymentMethod)) {
+      throw new BadRequestError('Choose direct UPI, COD, or approved credit for retailer checkout.', 'UNSUPPORTED_PAYMENT_METHOD');
+    }
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new BadRequestError('Order must contain at least one item', 'EMPTY_ORDER');
     }
@@ -257,8 +260,8 @@ class OrderService {
 
     if (isCreditRequested) {
       const creditPolicy = wholesalerProfile?.creditPolicy || {};
-      if (!creditPolicy.creditEnabled) {
-        throw new BadRequestError('Credit payment is currently not enabled by this wholesaler.', 'CREDIT_DISABLED');
+      if (!creditPolicy.creditEnabled || !relationship.creditEnabled || relationship.creditStatus !== 'APPROVED') {
+        throw new BadRequestError('Credit has not been approved for this retailer.', 'CREDIT_DISABLED');
       }
 
       if (creditPolicy.minOrderForCredit && grandTotal < creditPolicy.minOrderForCredit) {
@@ -268,27 +271,58 @@ class OrderService {
         );
       }
 
-      const effectiveLimit = relationship.customCreditLimit !== null && relationship.customCreditLimit !== undefined
-        ? relationship.customCreditLimit
-        : (creditPolicy.defaultCreditLimit || 0);
+      const currentOutstandingPaise = Number.isSafeInteger(relationship.currentOutstandingPaise)
+        ? relationship.currentOutstandingPaise
+        : Math.round(Number(relationship.currentOutstandingAmount || 0) * 100);
+      if (!Number.isSafeInteger(relationship.currentOutstandingPaise)) {
+        await WholesalerRetailerRelationship.updateOne(
+          { _id: relationship._id, currentOutstandingPaise: null },
+          { $set: { currentOutstandingPaise } }
+        );
+      }
+      const effectiveLimitPaise = Number.isSafeInteger(relationship.customCreditLimitPaise)
+        ? relationship.customCreditLimitPaise
+        : Math.round(Number(relationship.customCreditLimit ?? creditPolicy.defaultCreditLimit ?? 0) * 100);
+      const orderAmountPaise = Math.round(grandTotal * 100);
+      const availableCreditPaise = Math.max(0, effectiveLimitPaise - currentOutstandingPaise);
 
-      const currentOutstanding = relationship.currentOutstandingAmount || 0;
-      const availableCredit = Math.max(0, effectiveLimit - currentOutstanding);
-
-      if (grandTotal > availableCredit) {
+      if (orderAmountPaise > availableCreditPaise) {
         throw new BadRequestError(
-          `Credit limit exceeded. Your available credit with this wholesaler is ₹${availableCredit.toLocaleString('en-IN')}, but order total is ₹${grandTotal.toLocaleString('en-IN')}. (Outstanding: ₹${currentOutstanding.toLocaleString('en-IN')} / Limit: ₹${effectiveLimit.toLocaleString('en-IN')})`,
+          `Credit limit exceeded. Your available credit with this wholesaler is ₹${(availableCreditPaise / 100).toLocaleString('en-IN')}, but order total is ₹${grandTotal.toLocaleString('en-IN')}.`,
           'CREDIT_LIMIT_EXCEEDED'
         );
       }
 
       isCreditOrder = true;
-      creditPeriodDays = creditPolicy.creditPeriodDays || 15;
+      creditPeriodDays = relationship.creditPeriodDays || creditPolicy.creditPeriodDays || 15;
       creditDueDate = new Date(Date.now() + creditPeriodDays * 24 * 60 * 60 * 1000);
       creditPaymentStatus = 'PENDING';
 
-      relationship.currentOutstandingAmount = currentOutstanding + grandTotal;
-      await relationship.save();
+      const updatedRelationship = await WholesalerRetailerRelationship.findOneAndUpdate(
+        {
+          _id: relationship._id,
+          status: 'ACTIVE',
+          creditEnabled: true,
+          creditStatus: 'APPROVED',
+          currentOutstandingPaise: { $exists: true },
+          $expr: {
+            $lte: [
+              { $add: ['$currentOutstandingPaise', orderAmountPaise] },
+              effectiveLimitPaise,
+            ],
+          },
+        },
+        {
+          $inc: {
+            currentOutstandingPaise: orderAmountPaise,
+            currentOutstandingAmount: orderAmountPaise / 100,
+          },
+        },
+        { new: true }
+      );
+      if (!updatedRelationship) {
+        throw new BadRequestError('Credit limit exceeded or credit access is no longer active.', 'CREDIT_LIMIT_EXCEEDED');
+      }
     }
 
     // 3. Check availability for every product before reserving stock
@@ -346,8 +380,8 @@ class OrderService {
       shipping: 0,
       grandTotal,
       orderStatus: ORDER_STATUS.PENDING,
-      paymentStatus: verifiedPayment ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.PENDING,
-      paymentMethod: paymentMethod || PAYMENT_METHOD.BANK_TRANSFER,
+      paymentStatus: PAYMENT_STATUS.PENDING,
+      paymentMethod: paymentMethod || PAYMENT_METHOD.COD,
       isCreditOrder,
       creditDueDate,
       creditPeriodDays,
@@ -377,14 +411,9 @@ class OrderService {
       wholesalerId,
       amount: grandTotal,
       currency: 'INR',
-      status: verifiedPayment ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.PENDING,
-      paymentMethod: paymentMethod || PAYMENT_METHOD.BANK_TRANSFER,
-      transactionReference: verifiedPayment?.razorpayPaymentId || generateReference('PAY'),
-      gatewayResponse: verifiedPayment ? {
-        razorpayOrderId: verifiedPayment.razorpayOrderId,
-        razorpayPaymentId: verifiedPayment.razorpayPaymentId,
-      } : {},
-      paidAt: verifiedPayment ? new Date() : undefined,
+      status: PAYMENT_STATUS.PENDING,
+      paymentMethod: paymentMethod || PAYMENT_METHOD.COD,
+      transactionReference: generateReference('PAY'),
     });
 
     // 6. Update Retailer Profile metrics
@@ -445,7 +474,7 @@ class OrderService {
   }
 
   static async quoteOrder(retailerUser, orderPayload) {
-    return this.createOrder(retailerUser, orderPayload, null, null, true);
+    return this.createOrder(retailerUser, orderPayload, null, true);
   }
 
   /**
@@ -720,6 +749,10 @@ class OrderService {
       const platformCommission = Math.round((order.subtotal * (commissionRate / 100)) * 100) / 100;
       const wholesalerAmount = order.grandTotal - platformCommission;
 
+      const deliveredAt = new Date();
+      const settlementDate = new Date(
+        deliveredAt.getTime() + env.WALLET_SETTLEMENT_DAYS * 24 * 60 * 60 * 1000
+      );
       await Earning.findOneAndUpdate(
         { orderId: order._id },
         {
@@ -730,8 +763,9 @@ class OrderService {
           platformCommission,
           tax: order.tax,
           wholesalerAmount,
-          status: 'SETTLED',
-          settledAt: new Date(),
+          status: settlementDate <= deliveredAt ? 'SETTLED' : 'PENDING',
+          ...(settlementDate <= deliveredAt ? { settledAt: deliveredAt } : {}),
+          settlementDate,
         },
         { upsert: true, new: true }
       );
@@ -745,6 +779,8 @@ class OrderService {
         description: `Earnings credited for delivered order ${order.orderNumber}`,
         referenceType: 'ORDER',
         referenceId: order.orderNumber,
+        idempotencyKey: `order-earning:${order._id}`,
+        settlementDate,
       });
     }
 
@@ -779,6 +815,12 @@ class OrderService {
 
     // If order is RETURNED, restore stock from sold to available
     if (normalizedStatus === ORDER_STATUS.RETURNED && previousStatus !== ORDER_STATUS.RETURNED) {
+      await WalletService.reverseOrderEarnings({
+        ownerId: order.wholesalerId,
+        orderNumber: order.orderNumber,
+        orderId: order._id,
+        description: `Earnings reversed for returned order ${order.orderNumber}`,
+      });
       for (const item of order.items) {
         const inventory = await Inventory.findOne({ productId: item.productId });
         if (inventory) {
@@ -801,6 +843,15 @@ class OrderService {
             referenceId: order.orderNumber,
             performedBy: user._id,
             notes: `Stock restored upon order return: ${order.orderNumber}`,
+          });
+        }
+
+        if (normalizedStatus === ORDER_STATUS.CANCELLED && previousStatus !== ORDER_STATUS.CANCELLED) {
+          await WalletService.reverseOrderEarnings({
+            ownerId: order.wholesalerId,
+            orderNumber: order.orderNumber,
+            orderId: order._id,
+            description: `Earnings reversed for cancelled order ${order.orderNumber}`,
           });
         }
       }

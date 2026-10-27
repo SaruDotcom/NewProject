@@ -183,21 +183,21 @@ export function ProductCard({
               asChild
               variant="outline"
               size="sm"
-              className="h-9 flex-1 min-w-[120px] rounded-lg font-bold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1.5 transition-colors cursor-pointer"
+              className="h-9 flex-1 min-w-[120px] rounded-lg font-semibold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1.5 transition-colors cursor-pointer whitespace-nowrap px-3"
             >
-              <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)}>
-                <Visibility className="size-3.5 text-muted-foreground" />
-                View Details
+              <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="inline-flex items-center justify-center gap-1.5 w-full min-w-0">
+                <Visibility className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">View Details</span>
               </Link>
             </Button>
             <Button
               disabled={product.stock <= 0}
               size="sm"
-              className="h-9 flex-1 min-w-[120px] rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="h-9 flex-1 min-w-[120px] rounded-lg font-semibold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap px-3"
               onClick={() => addToCart(product.id)}
             >
-              <ShoppingCart className="size-3.5" />
-              {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
+              <ShoppingCart className="size-3.5 shrink-0" />
+              <span className="truncate">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
             </Button>
           </div>
         </div>
@@ -213,7 +213,7 @@ export function ProductCard({
         to="/products/$productId"
         params={{ productId: product.id }}
         onClick={() => addRecentlyViewed(product.id)}
-        className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-3 flex items-center justify-center cursor-pointer"
+        className="relative block aspect-[4/3] max-h-52 w-full overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-3 flex items-center justify-center cursor-pointer"
       >
         {productImg ? (
           <ProductImage
@@ -226,7 +226,7 @@ export function ProductCard({
         )}
 
         {/* Small Stock Availability Badge */}
-        <div className="absolute left-2.5 top-2.5 z-10">
+        <div className="absolute left-2.5 top-2.5 z-10 pointer-events-none">
           {product.stock > 0 ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-2xs dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
               <span className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
@@ -241,7 +241,7 @@ export function ProductCard({
 
         {/* Discount Pill */}
         {discount > 0 && (
-          <span className="absolute bottom-2.5 left-2.5 z-10 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-2xs">
+          <span className="absolute bottom-2.5 left-2.5 z-10 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-2xs pointer-events-none">
             {discount}% OFF
           </span>
         )}
@@ -261,47 +261,52 @@ export function ProductCard({
       </button>
 
       {/* Product Details (Clean & Minimal) */}
-      <div className="flex flex-1 flex-col p-3">
+      <div className="flex flex-1 flex-col p-3.5">
         {/* Product Name */}
         <Link
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="font-bold text-sm sm:text-[15px] leading-snug text-ink hover:text-emerald-600 transition-colors line-clamp-2 min-h-[2.5rem]"
+          className="font-bold text-sm leading-snug text-ink hover:text-emerald-600 transition-colors line-clamp-2 h-10 block"
           title={product.name}
         >
           {product.name}
         </Link>
 
         {/* Selling Price */}
-        <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+        <div className="mt-2 flex items-baseline gap-1.5 h-6">
           <strong className="text-base sm:text-lg font-black text-ink">{money(product.price)}</strong>
           <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
           {discount > 0 && <span className="text-xs font-bold text-emerald-600">({discount}% off)</span>}
         </div>
 
         {/* Pinned Action Buttons: View Details & Add to Cart */}
-        <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
+        <div className="mt-auto grid grid-cols-2 gap-2 pt-3 border-t border-border/50">
           <Button
             asChild
             variant="outline"
             size="sm"
-            className="h-9 min-w-0 w-full rounded-lg font-bold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1 transition-colors px-1 cursor-pointer"
+            className="h-9 min-w-0 w-full rounded-lg font-semibold text-xs border-border/80 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 !gap-1.5 transition-colors !px-2 cursor-pointer whitespace-nowrap"
           >
-            <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)}>
-              <Visibility className="size-3.5 text-muted-foreground" />
-              View Details
+            <Link
+              to="/products/$productId"
+              params={{ productId: product.id }}
+              onClick={() => addRecentlyViewed(product.id)}
+              className="inline-flex items-center justify-center gap-1.5 w-full min-w-0 text-center"
+            >
+              <Visibility className="!size-3.5 shrink-0 text-muted-foreground" />
+              <span className="whitespace-nowrap">View Details</span>
             </Link>
           </Button>
 
           <Button
             disabled={product.stock <= 0}
             size="sm"
-            className="h-9 min-w-0 w-full rounded-lg font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1 transition-all active:scale-95 px-1 cursor-pointer"
+            className="h-9 min-w-0 w-full rounded-lg font-semibold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs !gap-1.5 transition-all active:scale-95 !px-2 cursor-pointer whitespace-nowrap"
             onClick={() => addToCart(product.id)}
           >
-            <ShoppingCart className="size-3.5" />
-            {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
+            <ShoppingCart className="!size-3.5 shrink-0" />
+            <span className="whitespace-nowrap">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
           </Button>
         </div>
       </div>
@@ -313,16 +318,18 @@ export function ProductGrid({
   products,
   list = false,
   premium = false,
+  className,
 }: {
   products: Product[];
   list?: boolean;
   premium?: boolean;
+  className?: string;
 }) {
   const gridClassName = list
-    ? "grid gap-3"
+    ? cn("grid gap-3", className)
     : cn(
-        "grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] items-stretch",
-        premium ? "gap-5" : "gap-4",
+        "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5",
+        className,
       );
 
   return (
@@ -681,6 +688,7 @@ export function OrderCard({ order }: { order: Order }) {
       <div className="mt-4 divide-y divide-border/60 border-y border-border/60 py-2">
         {order.items.map((item, idx) => {
           const linkedProduct = item.product || products.find((p) => String(p.id) === String(item.productId));
+          const productId = item.productId || linkedProduct?.id;
           const name = item.name || linkedProduct?.name || "Product";
           const imageUrl =
             item.imageUrl ||
@@ -694,28 +702,62 @@ export function OrderCard({ order }: { order: Order }) {
 
           return (
             <div key={item.productId || idx} className="flex items-center gap-3.5 py-3">
-              <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl border border-border/80 bg-muted shadow-2xs">
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt={name}
-                    className="h-full w-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = "none";
-                      const sibling = (e.target as HTMLElement).nextElementSibling;
-                      if (sibling) (sibling as HTMLElement).style.display = "flex";
-                    }}
-                  />
-                ) : null}
-                <div
-                  className="h-full w-full items-center justify-center bg-primary/10 text-primary font-bold"
-                  style={{ display: imageUrl ? "none" : "flex" }}
+              {productId ? (
+                <Link
+                  to="/products/$productId"
+                  params={{ productId }}
+                  aria-label={`View ${name} details`}
+                  className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl border border-border/80 bg-muted shadow-2xs"
                 >
-                  <Inventory2 className="size-5 text-primary/70" />
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={name}
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                        const sibling = (e.target as HTMLElement).nextElementSibling;
+                        if (sibling) (sibling as HTMLElement).style.display = "flex";
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="h-full w-full items-center justify-center bg-primary/10 text-primary font-bold"
+                    style={{ display: imageUrl ? "none" : "flex" }}
+                  >
+                    <Inventory2 className="size-5 text-primary/70" />
+                  </div>
+                </Link>
+              ) : (
+                <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl border border-border/80 bg-muted shadow-2xs">
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={name}
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                        const sibling = (e.target as HTMLElement).nextElementSibling;
+                        if (sibling) (sibling as HTMLElement).style.display = "flex";
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="h-full w-full items-center justify-center bg-primary/10 text-primary font-bold"
+                    style={{ display: imageUrl ? "none" : "flex" }}
+                  >
+                    <Inventory2 className="size-5 text-primary/70" />
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-ink text-sm sm:text-base truncate">{name}</h4>
+                <h4 className="font-bold text-ink text-sm sm:text-base truncate">
+                  {productId ? (
+                    <Link to="/products/$productId" params={{ productId }} className="hover:text-primary hover:underline">
+                      {name}
+                    </Link>
+                  ) : name}
+                </h4>
                 <p className="text-xs text-primary/80 font-semibold truncate mt-0.5">{categoryHierarchy}</p>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
                   <span>Qty: <strong className="text-ink">{item.quantity}</strong> units</span>

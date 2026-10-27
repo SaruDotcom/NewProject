@@ -134,6 +134,16 @@ const orderSchema = new mongoose.Schema(
     creditSettledAt: {
       type: Date,
     },
+    creditPaidAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    directPaidPaise: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
     creditPaymentStatus: {
       type: String,
       enum: ['NOT_APPLICABLE', 'PENDING', 'PAID', 'OVERDUE'],

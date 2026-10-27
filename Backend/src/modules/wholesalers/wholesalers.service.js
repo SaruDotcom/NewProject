@@ -422,28 +422,62 @@ class WholesalerService {
   /**
    * Update Wholesaler Credit Policy
    */
-  static async updateCreditPolicy(wholesalerUser, policyData) {
+  static async updateCreditPolicy(wholesalerUser, policyData, req) {
     const wholesalerId = wholesalerUser?._id || wholesalerUser?.id || wholesalerUser;
     const profile = await WholesalerProfile.findOne({ userId: wholesalerId });
     if (!profile) throw new NotFoundError('Wholesaler profile not found');
 
+    const defaultCreditLimit = policyData.defaultCreditLimit === undefined
+      ? Number(profile.creditPolicy?.defaultCreditLimit || 0)
+      : Number(policyData.defaultCreditLimit);
+    const creditPeriodDays = policyData.creditPeriodDays === undefined
+      ? Number(profile.creditPolicy?.creditPeriodDays || 15)
+      : Number(policyData.creditPeriodDays);
+    const lateFeePercent = policyData.lateFeePercent === undefined
+      ? Number(profile.creditPolicy?.lateFeePercent || 0)
+      : Number(policyData.lateFeePercent);
+    const minOrderForCredit = policyData.minOrderForCredit === undefined
+      ? Number(profile.creditPolicy?.minOrderForCredit || 0)
+      : Number(policyData.minOrderForCredit);
+    if (!Number.isFinite(defaultCreditLimit) || defaultCreditLimit < 0 || defaultCreditLimit > 100000000 || Math.round(defaultCreditLimit * 100) / 100 !== defaultCreditLimit) {
+      throw new BadRequestError('Enter a valid default credit limit.');
+    }
+    if (!Number.isInteger(creditPeriodDays) || creditPeriodDays < 1 || creditPeriodDays > 365) {
+      throw new BadRequestError('Credit period must be between 1 and 365 days.');
+    }
+    if (!Number.isFinite(lateFeePercent) || lateFeePercent < 0 || lateFeePercent > 100) {
+      throw new BadRequestError('Late fee percentage must be between 0 and 100.');
+    }
+    if (!Number.isFinite(minOrderForCredit) || minOrderForCredit < 0 || minOrderForCredit > 100000000 || Math.round(minOrderForCredit * 100) / 100 !== minOrderForCredit) {
+      throw new BadRequestError('Enter a valid minimum order value for credit.');
+    }
+
     profile.creditPolicy = {
       creditEnabled: policyData.creditEnabled !== undefined ? Boolean(policyData.creditEnabled) : (profile.creditPolicy?.creditEnabled || false),
       allowCOD: policyData.allowCOD !== undefined ? Boolean(policyData.allowCOD) : (profile.creditPolicy?.allowCOD !== undefined ? profile.creditPolicy.allowCOD : true),
-      defaultCreditLimit: policyData.defaultCreditLimit !== undefined ? Math.max(0, Number(policyData.defaultCreditLimit)) : (profile.creditPolicy?.defaultCreditLimit || 0),
-      creditPeriodDays: policyData.creditPeriodDays !== undefined ? Math.max(1, Number(policyData.creditPeriodDays)) : (profile.creditPolicy?.creditPeriodDays || 15),
-      lateFeePercent: policyData.lateFeePercent !== undefined ? Math.max(0, Number(policyData.lateFeePercent)) : (profile.creditPolicy?.lateFeePercent || 0),
-      minOrderForCredit: policyData.minOrderForCredit !== undefined ? Math.max(0, Number(policyData.minOrderForCredit)) : (profile.creditPolicy?.minOrderForCredit || 0),
+      defaultCreditLimit,
+      creditPeriodDays,
+      lateFeePercent,
+      minOrderForCredit,
     };
 
     await profile.save();
+    await AuditService.log({
+      actorId: wholesalerId,
+      actorRole: wholesalerUser.role,
+      action: AUDIT_ACTION.UPDATE,
+      entityType: 'WholesalerCreditPolicy',
+      entityId: profile._id,
+      after: profile.creditPolicy,
+      req,
+    });
     return profile.creditPolicy;
   }
 
   /**
    * Set custom credit limit for a specific retailer
    */
-  static async setRetailerCreditLimit(wholesalerUser, retailerId, customCreditLimit) {
+  static async setRetailerCreditLimit(wholesalerUser, retailerId, customCreditLimit, req) {
     const wholesalerId = wholesalerUser?._id || wholesalerUser?.id || wholesalerUser;
     const relationship = await WholesalerRetailerRelationship.findOne({
       wholesalerId,
@@ -455,11 +489,86 @@ class WholesalerService {
       throw new NotFoundError('Active connection with this retailer not found');
     }
 
-    relationship.customCreditLimit = customCreditLimit !== null && customCreditLimit !== undefined && customCreditLimit !== ''
-      ? Math.max(0, Number(customCreditLimit))
+    const parsedLimit = customCreditLimit !== null && customCreditLimit !== undefined && customCreditLimit !== ''
+      ? Number(customCreditLimit)
       : null;
+    if (parsedLimit !== null && (!Number.isFinite(parsedLimit) || parsedLimit < 0 || parsedLimit > 100000000 || Math.round(parsedLimit * 100) / 100 !== parsedLimit)) {
+      throw new BadRequestError('Enter a valid retailer credit limit.');
+    }
+    relationship.customCreditLimit = parsedLimit;
+    relationship.customCreditLimitPaise = relationship.customCreditLimit === null
+      ? null
+      : Math.round(relationship.customCreditLimit * 100);
 
     await relationship.save();
+    await AuditService.log({
+      actorId: wholesalerId,
+      actorRole: wholesalerUser.role,
+      action: AUDIT_ACTION.UPDATE,
+      entityType: 'RetailerCreditPolicy',
+      entityId: relationship._id,
+      after: {
+        retailerId: String(retailerId),
+        customCreditLimitPaise: relationship.customCreditLimitPaise,
+      },
+      req,
+    });
+    return relationship;
+  }
+
+  static async updateRetailerCreditPolicy(wholesalerUser, retailerId, policyData, req) {
+    const wholesalerId = wholesalerUser?._id || wholesalerUser?.id || wholesalerUser;
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      wholesalerId,
+      retailerId,
+      status: 'ACTIVE',
+    });
+    if (!relationship) throw new NotFoundError('Active connection with this retailer not found');
+
+    const status = String(policyData.status || '').toUpperCase();
+    if (status && !['DISABLED', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED'].includes(status)) {
+      throw new BadRequestError('Choose a valid retailer credit status.');
+    }
+    if (status) relationship.creditStatus = status;
+    if (policyData.creditEnabled !== undefined) {
+      relationship.creditStatus = policyData.creditEnabled ? 'APPROVED' : 'DISABLED';
+    }
+    relationship.creditEnabled = relationship.creditStatus === 'APPROVED';
+
+    if (policyData.customCreditLimit !== undefined) {
+      const limit = policyData.customCreditLimit === null || policyData.customCreditLimit === ''
+        ? null
+        : Number(policyData.customCreditLimit);
+      if (limit !== null && (!Number.isFinite(limit) || limit < 0 || limit > 100000000 || Math.round(limit * 100) / 100 !== limit)) {
+        throw new BadRequestError('Enter a valid credit limit.');
+      }
+      relationship.customCreditLimit = limit;
+      relationship.customCreditLimitPaise = limit === null ? null : Math.round(limit * 100);
+    }
+    if (policyData.creditPeriodDays !== undefined) {
+      const days = Number(policyData.creditPeriodDays);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        throw new BadRequestError('Credit terms must be between 1 and 365 days.');
+      }
+      relationship.creditPeriodDays = days;
+    }
+
+    await relationship.save();
+    await AuditService.log({
+      actorId: wholesalerId,
+      actorRole: wholesalerUser.role,
+      action: relationship.creditStatus === 'APPROVED' ? AUDIT_ACTION.APPROVE : AUDIT_ACTION.UPDATE,
+      entityType: 'RetailerCreditPolicy',
+      entityId: relationship._id,
+      after: {
+        retailerId: String(retailerId),
+        creditEnabled: relationship.creditEnabled,
+        creditStatus: relationship.creditStatus,
+        customCreditLimitPaise: relationship.customCreditLimitPaise,
+        creditPeriodDays: relationship.creditPeriodDays,
+      },
+      req,
+    });
     return relationship;
   }
 
@@ -505,11 +614,15 @@ class WholesalerService {
     const items = relationships.map((rel) => {
       const rUser = rel.retailerId || {};
       const rProfile = profileMap[String(rUser._id)] || {};
-      const effectiveLimit = rel.customCreditLimit !== null && rel.customCreditLimit !== undefined
-        ? rel.customCreditLimit
-        : (creditPolicy.defaultCreditLimit || 0);
+      const effectiveLimit = Number.isSafeInteger(rel.customCreditLimitPaise)
+        ? rel.customCreditLimitPaise / 100
+        : (rel.customCreditLimit !== null && rel.customCreditLimit !== undefined
+          ? rel.customCreditLimit
+          : (creditPolicy.defaultCreditLimit || 0));
 
-      const outstanding = rel.currentOutstandingAmount || 0;
+      const outstanding = Number.isSafeInteger(rel.currentOutstandingPaise)
+        ? rel.currentOutstandingPaise / 100
+        : Number(rel.currentOutstandingAmount || 0);
       const availableCredit = Math.max(0, effectiveLimit - outstanding);
 
       const retailerOrders = creditOrders.filter((o) => String(o.retailerId) === String(rUser._id));
@@ -524,6 +637,9 @@ class WholesalerService {
         phone: rUser.phone || '',
         email: rUser.email || '',
         customCreditLimit: rel.customCreditLimit,
+        creditStatus: rel.creditStatus || 'DISABLED',
+        creditEnabled: Boolean(creditPolicy.creditEnabled && rel.creditEnabled && rel.creditStatus === 'APPROVED'),
+        creditPeriodDays: rel.creditPeriodDays || creditPolicy.creditPeriodDays || 15,
         effectiveLimit,
         currentOutstandingAmount: outstanding,
         availableCredit,
@@ -559,40 +675,6 @@ class WholesalerService {
   /**
    * Settle an order's outstanding credit
    */
-  static async settleOrderCredit(wholesalerUser, orderId) {
-    const wholesalerId = wholesalerUser?._id || wholesalerUser?.id || wholesalerUser;
-    const order = await Order.findOne({
-      _id: orderId,
-      wholesalerId,
-      isCreditOrder: true,
-    });
-
-    if (!order) {
-      throw new NotFoundError('Credit order not found');
-    }
-
-    if (order.creditPaymentStatus === 'PAID') {
-      throw new BadRequestError('Order credit is already fully paid', 'ALREADY_PAID');
-    }
-
-    const relationship = await WholesalerRetailerRelationship.findOne({
-      wholesalerId: wholesalerUser._id,
-      retailerId: order.retailerId,
-      status: 'ACTIVE',
-    });
-
-    if (relationship) {
-      relationship.currentOutstandingAmount = Math.max(0, (relationship.currentOutstandingAmount || 0) - order.grandTotal);
-      await relationship.save();
-    }
-
-    order.creditPaymentStatus = 'PAID';
-    order.paymentStatus = 'PAID';
-    order.creditSettledAt = new Date();
-    await order.save();
-
-    return { message: 'Credit order settled successfully', order };
-  }
 }
 
 module.exports = WholesalerService;
