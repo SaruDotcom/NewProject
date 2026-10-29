@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Product, Category, Retailer, Order, OrderStatus, InventoryLog, SecuritySession, AuditLog, ReturnRequest,
 } from '@/lib/types';
-import api, { setAuthToken, clearAuthToken, getAuthToken } from '@/lib/api';
+import api, { setAuthToken, clearAuthToken, getAuthToken, type WholesalerStoreTheme } from '@/lib/api';
 import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 
 const productImageUrl = (image: unknown): string => {
@@ -25,6 +25,7 @@ export interface WholesalerProfile {
   id: string;
   businessName: string;
   businessLogoUrl: string;
+  activeStoreTheme: WholesalerStoreTheme;
   businessType: string;
   ownerName: string;
   email: string;
@@ -142,6 +143,7 @@ export const DEFAULT_PROFILE: WholesalerProfile = {
   id: '',
   businessName: '',
   businessLogoUrl: '',
+  activeStoreTheme: 'DEFAULT',
   businessType: '',
   ownerName: '',
   email: '',
@@ -244,6 +246,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           accountStatus: u.status === 'SUSPENDED' || u.status === 'BLOCKED' ? u.status : 'ACTIVE',
           businessName: wp.businessName || u.businessName || prev.businessName,
           businessLogoUrl: wp.businessLogoUrl || prev.businessLogoUrl,
+          activeStoreTheme: wp.activeStoreTheme || 'DEFAULT',
           businessType: wp.businessType || prev.businessType,
           ownerName: u.name || prev.ownerName,
           email: u.email || prev.email,

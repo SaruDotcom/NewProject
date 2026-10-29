@@ -11,6 +11,7 @@ import {
   Link2,
   Menu,
   Package,
+  Search,
   ShieldCheck,
   ShoppingBag,
   Store,
@@ -429,50 +430,46 @@ function LandingContent() {
             </div>
           </div>
 
-          <div className="relative mx-auto w-full max-w-2xl landing-reveal" aria-label="Laptop wholesaler dashboard with mobile storefront preview">
+          <div className="relative mx-auto w-full max-w-2xl landing-reveal" aria-label="Laptop product catalogue with mobile storefront preview">
             <div className="relative z-10 w-[91%] pt-4 sm:w-[94%]">
               <div className="rounded-t-[1.25rem] border-[5px] border-b-0 border-slate-800 bg-slate-800 p-[3px] shadow-[0_24px_55px_rgba(4,18,31,0.42)] sm:rounded-t-[1.6rem] sm:border-[7px] sm:p-1">
                 <div className="overflow-hidden rounded-t-lg bg-slate-50 text-slate-700 sm:rounded-t-xl">
                   <div className="flex h-7 items-center justify-between border-b border-slate-200 bg-white px-3 sm:h-9 sm:px-4">
                     <span className="flex items-center gap-1.5"><i className="size-1.5 rounded-full bg-rose-400" /><i className="size-1.5 rounded-full bg-amber-300" /><i className="size-1.5 rounded-full bg-emerald-400" /></span>
-                    <span className="rounded-md bg-slate-100 px-3 py-1 text-[6px] text-slate-400 sm:px-8 sm:text-[8px]">app.vyapaardwaar.in/dashboard</span>
+                    <span className="rounded-md bg-slate-100 px-3 py-1 text-[6px] text-slate-400 sm:px-8 sm:text-[8px]">store.vyapaardwaar.in/collections/ethnic-wear</span>
                     <span className="size-3 rounded-full bg-slate-100 sm:size-4" />
                   </div>
-                  <div className="grid min-h-[225px] grid-cols-[78px_1fr] sm:min-h-[300px] sm:grid-cols-[112px_1fr]">
-                    <aside className="bg-[#102c45] px-2 py-2.5 text-white sm:px-3 sm:py-4">
-                      <div className="mb-3 flex items-center gap-1.5 border-b border-white/10 pb-2 sm:mb-4 sm:gap-2 sm:pb-3"><span className="flex size-4 items-center justify-center rounded bg-emerald-400 text-[8px] font-black text-slate-900 sm:size-5 sm:text-[10px]">V</span><span className="truncate text-[6px] font-bold sm:text-[8px]">VyapaarDwaar</span></div>
+                  <div className="min-h-[225px] bg-[#f7f8fa] p-2 sm:min-h-[300px] sm:p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0"><p className="text-[5px] font-bold uppercase tracking-[0.16em] text-emerald-700 sm:text-[7px]">WHOLESALE COLLECTION</p><h2 className="truncate text-[9px] font-extrabold text-slate-900 sm:text-sm">Ethnic wear catalogue</h2></div>
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-1 text-[5px] font-bold text-emerald-700 sm:px-2.5 sm:text-[7px]">48 styles</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5 sm:mt-3 sm:gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-[6px] text-slate-400 shadow-sm sm:gap-2 sm:rounded-lg sm:px-2.5 sm:py-2 sm:text-[8px]"><Search className="size-2.5 shrink-0 sm:size-3.5" /><span className="truncate">Search lehengas, kurtis, suits...</span></div>
+                      <div className="flex min-w-0 items-center gap-1 overflow-hidden sm:gap-1.5">
+                        {['All Products', 'Lehengas', 'Kurtis', 'Suits'].map((category, index) => <span key={category} className={`shrink-0 rounded-md px-1.5 py-1 text-[5px] font-semibold sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-[7px] ${index === 0 ? 'bg-[#102c45] text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{category}</span>)}
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1.5 sm:mt-3 sm:grid-cols-4 sm:gap-2.5">
                       {[
-                        { icon: Building2, label: 'Dashboard' },
-                        { icon: Package, label: 'Products' },
-                        { icon: ShoppingBag, label: 'Orders' },
-                        { icon: Users, label: 'Retailers' },
-                        { icon: Boxes, label: 'Inventory' },
-                        { icon: CircleDollarSign, label: 'Sales' },
-                        { icon: BarChart3, label: 'Reports' },
-                        { icon: ShieldCheck, label: 'Settings' },
-                      ].map(({ icon: Icon, label }, index) => <div key={label} className={`mb-1 flex items-center gap-1.5 rounded px-1.5 py-1 text-[6px] sm:mb-1.5 sm:gap-2 sm:px-2 sm:py-1.5 sm:text-[8px] ${index === 0 ? 'bg-emerald-400/15 font-bold text-emerald-200' : 'text-slate-300'}`}><Icon className="size-2.5 shrink-0 sm:size-3" /><span className="truncate">{label}</span></div>)}
-                    </aside>
-                    <div className="min-w-0 p-2 sm:p-4">
-                      <div className="flex items-center justify-between">
-                        <div><p className="text-[6px] text-slate-400 sm:text-[8px]">MONDAY, 24 JUNE 2025</p><p className="mt-0.5 text-[9px] font-extrabold text-slate-800 sm:text-sm">Business Dashboard</p></div>
-                        <div className="flex size-5 items-center justify-center rounded-full bg-emerald-100 text-[7px] font-bold text-emerald-800 sm:size-7 sm:text-[9px]">AK</div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-3 gap-1 sm:mt-3 sm:gap-2">
-                        {[
-                          { icon: ShoppingBag, label: 'Total Orders', value: '1,248', tint: 'bg-sky-50 text-sky-600' },
-                          { icon: CircleDollarSign, label: 'Total Sales', value: '₹8.42L', tint: 'bg-emerald-50 text-emerald-600' },
-                          { icon: Users, label: 'Retailers', value: '386', tint: 'bg-violet-50 text-violet-600' },
-                        ].map(({ icon: Icon, label, value, tint }) => <div key={label} className="min-w-0 rounded-md border border-slate-200 bg-white p-1 sm:rounded-lg sm:p-2"><span className={`flex size-4 items-center justify-center rounded ${tint} sm:size-6`}><Icon className="size-2.5 sm:size-3.5" /></span><p className="mt-1 truncate text-[5px] text-slate-400 sm:text-[7px]">{label}</p><p className="text-[8px] font-extrabold text-slate-800 sm:text-xs">{value}</p></div>)}
-                      </div>
-                      <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-white sm:mt-3 sm:rounded-lg">
-                        <div className="flex items-center justify-between border-b border-slate-100 px-1.5 py-1 sm:px-2.5 sm:py-2"><p className="text-[7px] font-bold text-slate-700 sm:text-[9px]">Recent Orders</p><span className="text-[5px] font-semibold text-emerald-700 sm:text-[7px]">View all</span></div>
-                        <div className="grid grid-cols-[1fr_1.1fr_.8fr_.8fr] gap-1 border-b border-slate-100 bg-slate-50 px-1.5 py-1 text-[5px] font-semibold text-slate-400 sm:px-2.5 sm:text-[6px]"><span>ORDER</span><span>RETAILER</span><span>AMOUNT</span><span>STATUS</span></div>
-                        {[
-                          ['#VD-2481', 'Shree Traders', '₹24,500', 'Delivered', 'bg-emerald-100 text-emerald-700'],
-                          ['#VD-2480', 'Milan Fashion', '₹18,200', 'Processing', 'bg-amber-100 text-amber-700'],
-                          ['#VD-2479', 'City Collection', '₹32,750', 'Shipped', 'bg-sky-100 text-sky-700'],
-                        ].map(([id, retailer, amount, status, statusColor]) => <div key={id} className="grid grid-cols-[1fr_1.1fr_.8fr_.8fr] items-center gap-1 border-b border-slate-50 px-1.5 py-1.5 text-[5px] last:border-0 sm:px-2.5 sm:py-2 sm:text-[7px]"><span className="font-bold text-slate-600">{id}</span><span className="truncate text-slate-500">{retailer}</span><span className="font-semibold text-slate-700">{amount}</span><span className={`w-fit rounded-full px-1 py-0.5 text-[4px] font-bold sm:px-1.5 sm:text-[6px] ${statusColor}`}>{status}</span></div>)}
-                      </div>
+                        { image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=480&q=85', name: 'Royal Lehenga Set', price: '₹2,450', variants: '6 colours', imagePosition: 'center 34%' },
+                        { image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?auto=format&fit=crop&w=480&q=85', name: 'Festive Kurti Set', price: '₹890', variants: '4 colours', imagePosition: 'center 28%' },
+                        { image: '/uploads/products/0b2576f4-6f78-4a57-ae2b-ffefa95a9938.webp', name: 'Embroidered Suit', price: '₹1,750', variants: '5 colours', imagePosition: 'center' },
+                        { image: '/uploads/products/4f0b7afc-ada9-40d1-9a87-e7ade720cc12.webp', name: 'Daily Ethnic Wear', price: '₹1,120', variants: '8 colours', imagePosition: 'center' },
+                      ].map(({ image, name, price, variants, imagePosition }) => (
+                        <article key={name} className="min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm sm:rounded-lg">
+                          <div className="h-[42px] overflow-hidden bg-rose-50 sm:h-[76px]">
+                            <img src={resolveProductImageUrl(image) ?? undefined} alt={name} loading="lazy" className="size-full object-cover" style={{ objectPosition: imagePosition }} />
+                          </div>
+                          <div className="p-1 sm:p-1.5">
+                            <p className="truncate text-[6px] font-bold text-slate-800 sm:text-[8px]">{name}</p>
+                            <div className="mt-0.5 flex items-center justify-between gap-1">
+                              <p className="text-[7px] font-extrabold text-emerald-700 sm:text-[9px]">{price}<span className="ml-0.5 text-[5px] font-medium text-slate-400 sm:text-[6px]">/pc</span></p>
+                              <span className="truncate text-[5px] font-medium text-slate-400 sm:text-[6px]">{variants}</span>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
                     </div>
                   </div>
                 </div>

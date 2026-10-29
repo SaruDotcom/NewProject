@@ -185,8 +185,8 @@ export function CouponsManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Coupons & Subscription Offers"
-        description="Manage promotional codes, discounts, and subscription price reduction offers for Wholesalers."
+        title="Coupons"
+        description="Manage promotional codes and discounts for wholesalers."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={exportCsv}>
@@ -202,7 +202,7 @@ export function CouponsManagementPage() {
                 setEditing({ create: true });
               }}
             >
-              <Plus className="size-4 mr-1.5" /> Create Coupon Code
+              <Plus className="size-4 mr-1.5" /> Add Coupon
             </Button>
           </div>
         }
@@ -297,7 +297,7 @@ export function CouponsManagementPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search coupon code or title..."
+              placeholder="Search coupons..."
               className="pl-9"
             />
           </div>
@@ -306,9 +306,9 @@ export function CouponsManagementPage() {
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active Only</SelectItem>
-              <SelectItem value="inactive">Inactive Only</SelectItem>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -478,8 +478,8 @@ export function CouponsManagementPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PERCENTAGE">% Percentage Off</SelectItem>
-                    <SelectItem value="FLAT">₹ Flat Discount Off</SelectItem>
+                    <SelectItem value="PERCENTAGE">Percentage (%)</SelectItem>
+                    <SelectItem value="FLAT">Flat Amount (₹)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -489,7 +489,7 @@ export function CouponsManagementPage() {
               <label className="block font-bold text-gray-700 mb-1">Offer Title *</label>
               <Input
                 required
-                placeholder="e.g. 50% Off Wholesaler Annual Plan"
+                placeholder="Offer title"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 className="bg-background"
@@ -499,7 +499,7 @@ export function CouponsManagementPage() {
             <div>
               <label className="block font-bold text-gray-700 mb-1">Description</label>
               <Input
-                placeholder="e.g. Special promotion for new wholesalers"
+                placeholder="Coupon description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 className="bg-background"
@@ -573,7 +573,7 @@ export function CouponsManagementPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
-                {saving ? "Saving..." : editing?.create ? "Create Coupon" : "Save Changes"}
+                {saving ? "Saving..." : editing?.create ? "Add Coupon" : "Save"}
               </Button>
             </DialogFooter>
           </form>
@@ -584,7 +584,7 @@ export function CouponsManagementPage() {
         open={Boolean(confirmation)}
         title={`Delete Coupon Code ${confirmation?.code || ""}?`}
         description="This coupon code will be permanently deleted and will no longer be redeemable at checkout."
-        confirmLabel="Delete Coupon"
+        confirmLabel="Delete"
         variant="destructive"
         onCancel={() => !saving && setConfirmation(null)}
         onConfirm={handleDelete}

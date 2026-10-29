@@ -316,6 +316,30 @@ class RetailerService {
 
     const wholesalerUser = relationship.wholesalerId;
     const profile = await RetailerRepository.findWholesalerProfile(wholesalerUser._id);
+    const { normalizeBusinessType, getPresetsForType } = require('../config/businessTypeBanners');
+    const businessCategory = normalizeBusinessType(profile?.businessCategory || profile?.khataBook?.businessType);
+    let banners = profile?.promotionalBanners;
+    if (!banners || !Array.isArray(banners)) {
+      banners = getPresetsForType(businessCategory).map((p, idx) => ({ ...p, isActive: idx < 2 }));
+    }
+    const activeBanners = (banners || [])
+      .filter((b) => b.isActive !== false && b.active !== false)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        subtitle: b.subtitle || '',
+        tag: b.badgeText || b.tag || '',
+        badgeText: b.badgeText || b.tag || '',
+        ctaText: b.buttonText || b.ctaText || 'Shop Trade Deals',
+        buttonText: b.buttonText || b.ctaText || 'Shop Trade Deals',
+        imageUrl: b.imageUrl || '',
+        category: b.targetCategory || b.category || '',
+        targetCategory: b.targetCategory || b.category || '',
+        discountBadge: b.discountBadge || '',
+        gradient: b.gradient || '',
+        active: true,
+        isActive: true,
+      }));
 
     return {
       id: wholesalerUser._id,
@@ -325,6 +349,9 @@ class RetailerService {
       businessName: profile?.businessName || wholesalerUser.name,
       businessLogoUrl: profile?.businessLogoUrl || '',
       description: profile?.description || '',
+      businessCategory,
+      activeStoreTheme: profile?.activeStoreTheme || 'DEFAULT',
+      banners: activeBanners,
       address: profile?.address || {},
       minOrderValue: profile?.minOrderValue || 0,
       relationshipStatus: relationship.status,
@@ -335,6 +362,30 @@ class RetailerService {
   static async getStore(retailerId) {
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
     const profile = await RetailerRepository.findWholesalerProfile(wholesalerUser._id);
+    const { normalizeBusinessType, getPresetsForType } = require('../config/businessTypeBanners');
+    const businessCategory = normalizeBusinessType(profile?.businessCategory || profile?.khataBook?.businessType);
+    let banners = profile?.promotionalBanners;
+    if (!banners || !Array.isArray(banners)) {
+      banners = getPresetsForType(businessCategory).map((p, idx) => ({ ...p, isActive: idx < 2 }));
+    }
+    const activeBanners = (banners || [])
+      .filter((b) => b.isActive !== false && b.active !== false)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        subtitle: b.subtitle || '',
+        tag: b.badgeText || b.tag || '',
+        badgeText: b.badgeText || b.tag || '',
+        ctaText: b.buttonText || b.ctaText || 'Shop Trade Deals',
+        buttonText: b.buttonText || b.ctaText || 'Shop Trade Deals',
+        imageUrl: b.imageUrl || '',
+        category: b.targetCategory || b.category || '',
+        targetCategory: b.targetCategory || b.category || '',
+        discountBadge: b.discountBadge || '',
+        gradient: b.gradient || '',
+        active: true,
+        isActive: true,
+      }));
 
     const [productsCount, categories] = await Promise.all([
       Product.countDocuments({ wholesalerId: wholesalerUser._id, status: 'ACTIVE', isDeleted: false }),
@@ -348,6 +399,9 @@ class RetailerService {
         businessName: profile?.businessName || wholesalerUser.name,
         businessLogoUrl: profile?.businessLogoUrl || '',
         description: profile?.description || '',
+        businessCategory,
+        activeStoreTheme: profile?.activeStoreTheme || 'DEFAULT',
+        banners: activeBanners,
         address: profile?.address || {},
         minOrderValue: profile?.minOrderValue || 0,
       },

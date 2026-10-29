@@ -257,11 +257,11 @@ export default function RetailersPage() {
           <div className="mb-1 flex items-center gap-2">
             <span className="flex items-center gap-1 rounded-full border border-status-success/20 bg-tradeflow-green-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-status-success">
               <ShieldCheck className="h-3 w-3" />
-              <span>Wholesaler CRM Scope: {profile.businessName}</span>
+              <span>{profile.businessName}</span>
             </span>
           </div>
-          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Connected Retailer Network</h1>
-          <p className="text-xs text-gray-500">Share your invite link so retailers can register and connect to your store.</p>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Retailers</h1>
+          <p className="text-xs text-gray-500">Manage connected retailers and your invite link.</p>
         </div>
       </div>
 
@@ -270,9 +270,9 @@ export default function RetailersPage() {
           <div>
             <h2 className="flex items-center gap-2 text-base font-extrabold text-tradeflow-navy">
               <Share2 className="h-4 w-4 text-blue-600" />
-              Your retailer invite link
+              Invite Link
             </h2>
-            <p className="mt-1 text-xs text-gray-500">Retailers can register only through this active invite link.</p>
+            <p className="mt-1 text-xs text-gray-500">Retailers register through this invite link.</p>
           </div>
           {referral && (
             <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${referral.signupsEnabled ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -321,14 +321,13 @@ export default function RetailersPage() {
         </div>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Search retailer, contact, or city..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 py-2 pl-10 pr-4 text-xs focus:border-tradeflow-green focus:outline-none" />
+          <input type="text" placeholder="Search retailers..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 py-2 pl-10 pr-4 text-xs focus:border-tradeflow-green focus:outline-none" />
         </div>
       </div>
 
       <div className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-6 shadow-xs">
         <div>
-          <h2 className="text-base font-bold text-tradeflow-navy">Retailer Accounts ({filteredConnected.length})</h2>
-          <p className="text-xs text-gray-500">Retailers who register with your referral code can access your store catalog and company details.</p>
+          <h2 className="text-base font-bold text-tradeflow-navy">All Retailers ({filteredConnected.length})</h2>
         </div>
 
         {filteredConnected.length === 0 ? (

@@ -19,6 +19,7 @@ import {
   ChevronUp,
   Percent,
   Receipt,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -354,7 +355,7 @@ export function OrdersPage() {
 
       <div className="mt-6 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center justify-between">
         <Input
-          placeholder="Search by Order ID, wholesaler, or product..."
+          placeholder="Search orders..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="sm:max-w-md"
@@ -1040,7 +1041,17 @@ export function CheckoutPage() {
   const [qrExpiresAt, setQrExpiresAt] = useState<number | null>(null);
   const [qrSessionImage, setQrSessionImage] = useState("");
   const [qrSessionLoading, setQrSessionLoading] = useState(false);
+  const [qrImageError, setQrImageError] = useState(false);
   const queryClient = useQueryClient();
+
+  const currentWholesalerId = useMemo(() => {
+    if (linkedWholesaler?.id) return String(linkedWholesaler.id);
+    if (linkedWholesaler?.userId) return String(linkedWholesaler.userId);
+    const cartProduct = products.find((p) => cart.some((c) => c.productId === p.id));
+    if (cartProduct?.wholesalerId) return String(cartProduct.wholesalerId);
+    return "";
+  }, [linkedWholesaler, products, cart]);
+
   const creditQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
     queryFn: async () => (await api.getCreditInfo())?.data ?? null,
@@ -1049,14 +1060,21 @@ export function CheckoutPage() {
   });
   const creditInfo = creditQuery.data;
   const loadingCredit = creditQuery.isLoading;
+
   const paymentOptionsQuery = useQuery({
-    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-options"),
-    queryFn: async () => (await api.getRetailerPaymentOptions()).data,
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", `payment-options-${currentWholesalerId || "default"}`),
+    queryFn: async () => (await api.getRetailerPaymentOptions(currentWholesalerId || undefined)).data,
     enabled: Boolean(currentUser?.id),
-    staleTime: 0,
+    staleTime: 30000,
     refetchOnMount: "always",
   });
   const paymentOptions = paymentOptionsQuery.data;
+
+  // Persistent QR image source:
+  // Prioritizes session image, falls back to saved QR from payment options
+  const activeQrImage = useMemo(() => {
+    return qrSessionImage || paymentOptions?.qrDataUrl || paymentOptions?.qrImageUrl || "";
+  }, [qrSessionImage, paymentOptions?.qrDataUrl, paymentOptions?.qrImageUrl]);
 
   const total = cart.reduce((sum, line) => {
     const product = products.find((item) => item.id === line.productId);
@@ -1089,6 +1107,7 @@ export function CheckoutPage() {
 
   const [agreedToTerms, setAgreedToTerms] = useState(true);
 
+  // Timer effect: counts down session seconds without wiping out the saved QR image
   useEffect(() => {
     if (!qrExpiresAt) return;
     const timer = window.setInterval(() => {
@@ -1096,33 +1115,40 @@ export function CheckoutPage() {
       setQrSecondsLeft(remaining);
       if (remaining === 0) {
         setQrExpiresAt(null);
-        setQrSessionImage("");
+        // PERMANENT FIX: NEVER CLEAR THE QR IMAGE WHEN SESSION EXPIRES!
+        // The QR code remains visible, and the retailer can scan or request a fresh timer.
       }
     }, 1000);
     return () => window.clearInterval(timer);
   }, [qrExpiresAt]);
 
-  const startQrSession = async () => {
+  const startQrSession = useCallback(async () => {
     if (!paymentOptions?.qrPaymentsEnabled || qrSessionLoading) return;
     setQrSessionLoading(true);
+    setQrImageError(false);
     try {
-      const session = (await api.createRetailerQrSession()).data;
+      const session = (await api.createRetailerQrSession(currentWholesalerId || undefined)).data;
       const expiresAt = new Date(session.expiresAt).getTime();
       if (!session.qrDataUrl || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-        throw new Error("The wholesaler QR session could not be loaded. Please try again.");
+        throw new Error("The wholesaler QR session could not be refreshed. Please try again.");
       }
       setQrSessionImage(session.qrDataUrl);
       setQrExpiresAt(expiresAt);
       setQrSecondsLeft(Math.ceil((expiresAt - Date.now()) / 1000));
     } catch (error) {
-      setQrSessionImage("");
-      setQrExpiresAt(null);
-      setQrSecondsLeft(0);
-      toast.error(error instanceof Error ? error.message : "Unable to load the wholesaler QR code.");
+      // NOTE: Do NOT reset active QR image on error. The saved QR remains usable.
+      toast.error(error instanceof Error ? error.message : "Unable to refresh QR session.");
     } finally {
       setQrSessionLoading(false);
     }
-  };
+  }, [paymentOptions?.qrPaymentsEnabled, qrSessionLoading, currentWholesalerId]);
+
+  // Automatically initialize session timer when QR payments are enabled and active QR is loaded
+  useEffect(() => {
+    if (paymentMode === "UPI" && paymentOptions?.qrPaymentsEnabled && !qrExpiresAt && !qrSessionLoading && activeQrImage) {
+      void startQrSession();
+    }
+  }, [paymentMode, paymentOptions?.qrPaymentsEnabled, Boolean(activeQrImage)]);
 
   // Available Coupons & Offers State
   const [couponCodeInput, setCouponCodeInput] = useState("");
@@ -1338,6 +1364,126 @@ export function CheckoutPage() {
     }
   };
 
+  const renderQrSection = () => {
+    if (paymentOptionsQuery.isLoading) {
+      return (
+        <div className="flex items-center justify-center p-6 border rounded-xl bg-background/50 text-muted-foreground text-sm gap-2">
+          <RefreshCw className="size-4 animate-spin text-primary" />
+          <span>Loading wholesaler QR details…</span>
+        </div>
+      );
+    }
+
+    if (paymentOptionsQuery.isError) {
+      return (
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-xs text-destructive flex items-center justify-between">
+          <span>Failed to load payment options from wholesaler.</span>
+          <button
+            type="button"
+            onClick={() => void paymentOptionsQuery.refetch()}
+            className="font-bold underline ml-2"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    if (!paymentOptions?.qrPaymentsEnabled || !activeQrImage) {
+      return (
+        <div className="rounded-xl border bg-background p-4 text-xs text-muted-foreground space-y-1">
+          <p className="font-semibold text-ink">QR Payments Not Available</p>
+          <p>
+            Your connected wholesaler has not uploaded or enabled a QR code.
+            {paymentOptions?.upiIdPaymentsEnabled && paymentOptions.upiId
+              ? " You can still pay using their verified UPI ID above."
+              : " Please contact the wholesaler for alternate payment instructions."}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-xl border border-primary/20 bg-background p-4 space-y-3">
+        <div className="flex items-center justify-between border-b pb-2">
+          <div className="flex items-center gap-1.5">
+            <QrCode className="size-4 text-primary" />
+            <span className="text-xs font-bold text-ink">Wholesaler UPI QR Code</span>
+          </div>
+          {qrSecondsLeft > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700 border border-emerald-500/20">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Session: {Math.floor(qrSecondsLeft / 60)}:{String(qrSecondsLeft % 60).padStart(2, "0")}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-500/20">
+              Session Expired
+            </span>
+          )}
+        </div>
+
+        <div className="text-center py-2">
+          {qrImageError ? (
+            <div className="p-4 border rounded-lg bg-destructive/5 text-destructive text-xs">
+              <p className="font-bold">Unable to render QR image.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setQrImageError(false);
+                  void startQrSession();
+                }}
+                className="mt-2 rounded bg-primary text-primary-foreground px-3 py-1 font-bold text-[11px]"
+              >
+                Retry Loading QR
+              </button>
+            </div>
+          ) : (
+            <div className="relative inline-block mx-auto">
+              <img
+                src={activeQrImage}
+                alt="Wholesaler UPI QR code"
+                onError={() => setQrImageError(true)}
+                className="mx-auto max-h-56 max-w-full rounded-xl border bg-white p-2 shadow-xs object-contain"
+              />
+              {qrSessionLoading && (
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-xs flex items-center justify-center rounded-xl">
+                  <RefreshCw className="size-6 text-primary animate-spin" />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 space-y-1">
+            <p className="text-xs font-semibold text-ink">
+              Scan with any UPI app (GPay, PhonePe, Paytm, BHIM)
+            </p>
+            <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+              {qrSecondsLeft > 0
+                ? `QR display expires in ${Math.floor(qrSecondsLeft / 60)}:${String(qrSecondsLeft % 60).padStart(2, "0")}. Display expiry only closes this session timer; your wholesaler's saved QR remains valid.`
+                : "Display session expired. The saved QR code above is still valid to scan and pay. You can refresh the session timer below."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center pt-1 border-t">
+          <button
+            type="button"
+            onClick={() => void startQrSession()}
+            disabled={qrSessionLoading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-colors disabled:opacity-60"
+          >
+            <RefreshCw className={`size-3.5 ${qrSessionLoading ? "animate-spin" : ""}`} />
+            {qrSessionLoading
+              ? "Refreshing Session…"
+              : qrSecondsLeft > 0
+              ? "Refresh Session Timer"
+              : "Request Fresh QR Session"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (placed) {
     return (
       <main className="shell py-16">
@@ -1358,7 +1504,7 @@ export function CheckoutPage() {
   return (
     <main className="shell py-10">
       <h1 className="text-3xl font-extrabold text-ink">Checkout</h1>
-      <p className="mt-2 text-muted-foreground font-medium font-semibold">Complete your delivery details and choose your payment method.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Select delivery address and payment method.</p>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_380px]">
         <section className="space-y-6">
@@ -1375,24 +1521,66 @@ export function CheckoutPage() {
           </div>
 
           <div className="border bg-card p-6 rounded-2xl shadow-2xs space-y-4">
-            <h2 className="text-xl font-bold text-ink">Select Payment Method</h2>
+            <h2 className="text-xl font-bold text-ink">Payment Method</h2>
 
-            <label
-              className={`flex items-start gap-3 border p-4 rounded-xl transition-all ${
+            <div
+              className={`border p-4 rounded-xl transition-all ${
                 paymentMode === "UPI" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border/80"
               } ${hasDirectUpi ? "cursor-pointer hover:bg-muted/30" : "cursor-not-allowed opacity-60"}`}
               onClick={() => hasDirectUpi && setPaymentMode("UPI")}
             >
-              <input type="radio" name="payment" disabled={!hasDirectUpi} checked={paymentMode === "UPI"} onChange={() => hasDirectUpi && setPaymentMode("UPI")} className="mt-1" />
-              <div>
-                <b className="block text-ink text-sm">Direct UPI / QR Payment</b>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {hasDirectUpi
-                    ? `Pay ${paymentOptions?.accountName || paymentOptions?.businessName || "your wholesaler"} directly, then report the UPI reference for verification.`
-                    : "Your wholesaler has not enabled UPI or QR payments yet."}
-                </span>
+              <div className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="payment"
+                  disabled={!hasDirectUpi}
+                  checked={paymentMode === "UPI"}
+                  onChange={() => hasDirectUpi && setPaymentMode("UPI")}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <b className="block text-ink text-sm">UPI / QR Code</b>
+                    {hasDirectUpi && (
+                      <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700 border border-emerald-500/20">
+                        Scan & Pay
+                      </span>
+                    )}
+                  </div>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {hasDirectUpi
+                      ? `Pay ${paymentOptions?.accountName || paymentOptions?.businessName || "wholesaler"} directly, then enter UPI reference.`
+                      : "UPI / QR payment is not enabled by wholesaler."}
+                  </span>
+
+                  {paymentMode === "UPI" && hasDirectUpi && (
+                    <div className="mt-4 pt-4 border-t border-primary/20 space-y-3" onClick={(e) => e.stopPropagation()}>
+                      {paymentOptions?.upiId && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
+                          <div>
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Wholesaler UPI ID</span>
+                            <span className="text-sm font-bold text-ink">{paymentOptions.upiId}</span>
+                          </div>
+                          {paymentOptions.upiIdPaymentsEnabled && (
+                            <button
+                              type="button"
+                              className="rounded border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-colors"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(paymentOptions.upiId).then(() => toast.success("UPI ID copied."));
+                              }}
+                            >
+                              Copy UPI ID
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {renderQrSection()}
+                    </div>
+                  )}
+                </div>
               </div>
-            </label>
+            </div>
 
             <label
               className={`flex items-start gap-3 border p-4 rounded-xl cursor-pointer transition-all ${
@@ -1403,7 +1591,7 @@ export function CheckoutPage() {
               <input type="radio" name="payment" checked={paymentMode === "COD"} onChange={() => setPaymentMode("COD")} className="mt-1" />
               <div>
                 <b className="block text-ink text-sm">Cash on Delivery</b>
-                <span className="mt-0.5 block text-xs text-muted-foreground">Pay your connected wholesaler on delivery.</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Pay on delivery.</span>
               </div>
             </label>
 
@@ -1428,7 +1616,7 @@ export function CheckoutPage() {
                 />
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <b className="text-ink text-sm">Credit (Pay Later)</b>
+                    <b className="text-ink text-sm">Credit</b>
                     {isCreditEligible ? (
                       <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700 border border-emerald-500/20">
                         {creditPeriodDays} Days Credit
@@ -1441,29 +1629,29 @@ export function CheckoutPage() {
                   </div>
 
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Buy now and pay within <strong>{creditPeriodDays} days</strong> directly to your connected wholesaler.
+                    Buy now and pay within <strong>{creditPeriodDays} days</strong>.
                   </p>
 
                   {isCreditEligible && paymentMode === "CREDIT" && (
                     <div className="mt-3 rounded-xl border border-primary/20 bg-background p-3 text-xs space-y-1.5">
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Payment Due Date:</span>
+                        <span className="text-muted-foreground">Due Date:</span>
                         <strong className="text-ink font-extrabold">{formattedDueDate}</strong>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Approved Credit Limit:</span>
+                        <span className="text-muted-foreground">Credit Limit:</span>
                         <b className="text-ink font-bold">{money(effectiveLimit)}</b>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Current Outstanding:</span>
+                        <span className="text-muted-foreground">Outstanding:</span>
                         <b className="text-ink font-bold">{money(outstanding)}</b>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Available Credit Limit:</span>
+                        <span className="text-muted-foreground">Available Credit:</span>
                         <b className="text-emerald-600 font-bold">{money(availableCredit)}</b>
                       </div>
                       <div className="flex justify-between border-t pt-1.5">
-                        <span className="text-muted-foreground">Remaining Limit After Order:</span>
+                        <span className="text-muted-foreground">Remaining After Order:</span>
                         <b className="text-ink font-bold">{money(Math.max(0, availableCredit - finalTotal))}</b>
                       </div>
 
@@ -1506,37 +1694,25 @@ export function CheckoutPage() {
                   </p>
                 </div>
                 {paymentOptions?.upiId && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3">
-                    <span className="text-sm font-bold text-ink">{paymentOptions.upiId}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Wholesaler UPI ID</span>
+                      <span className="text-sm font-bold text-ink">{paymentOptions.upiId}</span>
+                    </div>
                     {paymentOptions.upiIdPaymentsEnabled && (
-                      <button type="button" className="rounded border px-2 py-1 text-xs font-bold" onClick={() => {
-                        void navigator.clipboard.writeText(paymentOptions.upiId).then(() => toast.success("UPI ID copied."));
-                      }}>Copy UPI ID</button>
-                    )}
-                  </div>
-                )}
-                {!paymentOptions?.qrPaymentsEnabled && (
-                  <p className="rounded-lg border bg-background p-3 text-sm text-muted-foreground">
-                    The wholesaler has not configured an enabled QR code.
-                    {paymentOptions?.upiIdPaymentsEnabled && paymentOptions.upiId
-                      ? <> You can pay using the configured UPI ID above.</>
-                      : <> Please contact the wholesaler for payment instructions.</>}
-                  </p>
-                )}
-                {paymentOptions?.qrPaymentsEnabled && (
-                  <div className="rounded-lg border bg-background p-3">
-                    {qrSecondsLeft > 0 && qrSessionImage ? (
-                      <div className="text-center">
-                        <img src={qrSessionImage} alt="Wholesaler UPI QR code" className="mx-auto max-h-60 max-w-full object-contain" />
-                        <p className="mt-2 text-xs font-semibold text-muted-foreground">QR display expires in {Math.floor(qrSecondsLeft / 60)}:{String(qrSecondsLeft % 60).padStart(2, "0")}. Expiry only closes this app display session; it does not invalidate the underlying QR.</p>
-                      </div>
-                    ) : (
-                      <button type="button" onClick={() => void startQrSession()} disabled={qrSessionLoading} className="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-60">
-                        {qrSessionLoading ? "Loading QR…" : "Show / Request Fresh QR Session"}
+                      <button
+                        type="button"
+                        className="rounded border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-colors"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(paymentOptions.upiId).then(() => toast.success("UPI ID copied."));
+                        }}
+                      >
+                        Copy UPI ID
                       </button>
                     )}
                   </div>
                 )}
+                {renderQrSection()}
                 {!reportSubmitted ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="text-xs font-bold text-ink">Amount paid (₹)
@@ -1823,7 +1999,7 @@ export function CheckoutPage() {
             </div>
             {discountAmount > 0 && (
               <div className="flex justify-between text-emerald-700 font-bold">
-                <span>Coupon Discount ({appliedCoupon?.code}):</span>
+                <span>Discount ({appliedCoupon?.code}):</span>
                 <span>-{money(discountAmount)}</span>
               </div>
             )}
@@ -1842,13 +2018,13 @@ export function CheckoutPage() {
               className="mt-0.5 rounded border-gray-300 accent-primary cursor-pointer"
             />
             <span>
-              I agree to the wholesaler's trade terms, payment due dates & <strong className="text-ink">Privacy Policy</strong>.
+              I agree to trade terms, payment due dates & <strong className="text-ink">Privacy Policy</strong>.
             </span>
           </label>
 
           {!reportedOrder && (
             <Button className="w-full rounded-xl font-extrabold" size="lg" onClick={handlePlaceOrder} disabled={submitting}>
-              {submitting ? "Processing..." : paymentMode === "CREDIT" ? "Place Credit Order" : paymentMode === "UPI" ? "Place Order & Continue to UPI" : "Place COD Order"}
+              {submitting ? "Processing..." : "Place Order"}
             </Button>
           )}
         </aside>
@@ -3521,7 +3697,7 @@ export function CouponsPage() {
                   : "bg-muted/40 text-muted-foreground hover:bg-muted"
               )}
             >
-              {t === "ALL" ? `All Offers (${coupons.length})` : t === "AVAILABLE" ? `Available (${coupons.filter(c => c.isAvailable).length})` : `Unavailable (${coupons.filter(c => !c.isAvailable).length})`}
+              {t === "ALL" ? `All (${coupons.length})` : t === "AVAILABLE" ? `Available (${coupons.filter(c => c.isAvailable).length})` : `Unavailable (${coupons.filter(c => !c.isAvailable).length})`}
             </button>
           ))}
         </div>
@@ -3529,7 +3705,7 @@ export function CouponsPage() {
         <div className="relative w-full sm:w-64">
           <input
             type="text"
-            placeholder="Search offer code or title..."
+            placeholder="Search coupons..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -3540,7 +3716,7 @@ export function CouponsPage() {
       {loading ? (
         <div className="mt-8 text-center py-16 bg-card border rounded-2xl">
           <div className="size-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="mt-3 text-xs font-semibold text-muted-foreground">Loading exclusive offers...</p>
+          <p className="mt-3 text-xs font-semibold text-muted-foreground">Loading coupons...</p>
         </div>
       ) : filteredCoupons.length === 0 ? (
         <div className="mt-8 text-center py-16 bg-card border border-dashed rounded-2xl">

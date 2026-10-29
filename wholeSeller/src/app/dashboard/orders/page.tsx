@@ -124,8 +124,8 @@ export default function OrdersPage() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Retailer Orders Workflow</h1>
-          <p className="text-xs text-gray-500">Track orders placed by connected B2B retailers, update status, and print tax invoices</p>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Orders</h1>
+          <p className="text-xs text-gray-500">Track and manage retailer orders and invoices.</p>
         </div>
       </div>
 
@@ -143,7 +143,7 @@ export default function OrdersPage() {
                   : 'bg-tradeflow-gray-50 text-gray-600 hover:bg-tradeflow-gray-200'
               }`}
             >
-              {status === 'ALL' ? `All Orders (${orders.length})` : status === 'RETURNS' ? `Returns` : status}
+              {status === 'ALL' ? `All (${orders.length})` : status === 'RETURNS' ? `Returns` : status}
             </button>
           ))}
         </div>
@@ -170,7 +170,7 @@ export default function OrdersPage() {
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search order #, retailer, product..."
+              placeholder="Search orders, retailers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-1.5 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green"
@@ -310,8 +310,8 @@ export default function OrdersPage() {
             {/* STATUS UPDATE DROPDOWN SELECTOR */}
             <div className="p-4 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex items-center justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase text-gray-400 block mb-0.5">Order Status Workflow</span>
-                <span className="text-xs text-gray-600 font-medium">Changing to &quot;Confirmed&quot; triggers auto-inventory stock deduction</span>
+                <span className="text-[10px] font-bold uppercase text-gray-400 block mb-0.5">Order Status</span>
+                <span className="text-xs text-gray-600 font-medium">Confirmed status deducts inventory stock.</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -323,7 +323,7 @@ export default function OrdersPage() {
                   className="px-3 py-1.5 bg-white border border-tradeflow-gray-200 rounded-xl font-bold text-xs focus:outline-none focus:border-tradeflow-green cursor-pointer"
                 >
                   <option value="PENDING">Pending</option>
-                  <option value="CONFIRMED">Confirmed (Auto-Deduct Stock)</option>
+                  <option value="CONFIRMED">Confirmed</option>
                   <option value="SHIPPED">Shipped</option>
                   <option value="DELIVERED">Delivered</option>
                   <option value="CANCELLED">Cancelled</option>
@@ -355,7 +355,7 @@ export default function OrdersPage() {
 
             {/* Line Items Table */}
             <div className="space-y-2">
-              <div className="text-xs font-bold text-gray-700">Line Items Breakdown</div>
+              <div className="text-xs font-bold text-gray-700">Items</div>
               <div className="border border-tradeflow-gray-200 rounded-xl overflow-hidden">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-tradeflow-gray-50 text-gray-500 font-bold border-b border-tradeflow-gray-200">
@@ -386,19 +386,19 @@ export default function OrdersPage() {
             {/* Financial Summary */}
             <div className="p-4 rounded-xl bg-tradeflow-gray-50 border border-tradeflow-gray-200 space-y-1.5 text-xs">
               <div className="flex justify-between text-gray-600">
-                <span>Gross Subtotal:</span>
+                <span>Subtotal:</span>
                 <span>₹{((selectedOrder.totalAmount || 0) - (selectedOrder.taxAmount || 0) + (selectedOrder.discountAmount || 0)).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-status-success font-medium">
-                <span>Wholesale Discount Applied:</span>
+                <span>Discount:</span>
                 <span>- ₹{(selectedOrder.discountAmount || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>GST Tax (12%):</span>
+                <span>GST:</span>
                 <span>+ ₹{(selectedOrder.taxAmount || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between font-extrabold text-sm text-tradeflow-navy pt-2 border-t border-tradeflow-gray-200">
-                <span>Total Amount Payable:</span>
+                <span>Total:</span>
                 <span className="text-green-700">₹{(selectedOrder.totalAmount || 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
@@ -410,14 +410,14 @@ export default function OrdersPage() {
                 className="px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs flex items-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print Tax Invoice</span>
+                <span>Print Invoice</span>
               </button>
 
               <button
                 onClick={() => setSelectedOrder(null)}
                 className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover"
               >
-                Close Order Details
+                Close
               </button>
             </div>
           </div>

@@ -75,6 +75,21 @@ export type ApiCategory = {
   imageUrl?: string;
 };
 
+export type ApiBannerSlide = {
+  id?: string;
+  _id?: string;
+  title: string;
+  subtitle?: string;
+  tag?: string;
+  discountBadge?: string;
+  imageUrl?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  category?: string;
+  active?: boolean;
+  order?: number;
+};
+
 export type ApiWholesaler = {
   id?: string;
   _id?: string;
@@ -82,7 +97,10 @@ export type ApiWholesaler = {
   email?: string;
   phone?: string;
   businessName?: string;
+  businessCategory?: string;
   businessLogoUrl?: string;
+  activeStoreTheme?: "DEFAULT" | "ROYAL" | "FESTIVE" | "MINIMAL";
+  banners?: ApiBannerSlide[];
   description?: string;
   address?: Record<string, string>;
   minOrderValue?: number;
@@ -287,7 +305,7 @@ export const api = {
     return queryClient.fetchQuery({
       queryKey: ['public', 'referral', normalizedCode],
       queryFn: () =>
-        request<ApiEnvelope<{ wholesaler: { businessName: string; logo: string; city: string; categories?: string[] } }>>(
+        request<ApiEnvelope<{ wholesaler: { id?: string; businessName: string; logo: string; city: string; categories?: string[]; businessCategory?: string; activeStoreTheme?: ApiWholesaler["activeStoreTheme"]; banners?: ApiBannerSlide[] } }>>(
           `/referral/${encodeURIComponent(normalizedCode)}`,
           { method: 'GET' },
         ),
@@ -519,7 +537,7 @@ export const api = {
       }),
     }),
 
-  getRetailerPaymentOptions: () =>
+  getRetailerPaymentOptions: (wholesalerId?: string) =>
     request<ApiEnvelope<{
       wholesalerId: string;
       businessName: string;
@@ -527,17 +545,19 @@ export const api = {
       qrPaymentsEnabled: boolean;
       hasQrImage: boolean;
       qrDataUrl: string;
+      qrImageUrl?: string;
       upiIdPaymentsEnabled: boolean;
       upiId: string;
       qrSessionMinutes: number;
-    }>>('/retailer/payment-options', { method: 'GET' }),
-  createRetailerQrSession: () =>
+    }>>(`/retailer/payment-options${wholesalerId ? `?wholesalerId=${encodeURIComponent(wholesalerId)}` : ''}`, { method: 'GET' }),
+  createRetailerQrSession: (wholesalerId?: string) =>
     request<ApiEnvelope<{
       wholesalerId: string;
       qrDataUrl: string;
+      qrImageUrl?: string;
       qrSessionMinutes: number;
       expiresAt: string;
-    }>>('/retailer/payment-options/qr-session', { method: 'POST', body: JSON.stringify({}) }),
+    }>>('/retailer/payment-options/qr-session', { method: 'POST', body: JSON.stringify(wholesalerId ? { wholesalerId } : {}) }),
   createPaymentReport: (payload: { orderId?: string; amount: string; transactionReference: string; type?: 'CREDIT_REPAYMENT'; screenshot?: File }) => {
     const formData = new FormData();
     if (payload.orderId) formData.append('orderId', payload.orderId);

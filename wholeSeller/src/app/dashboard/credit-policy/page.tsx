@@ -222,9 +222,9 @@ export default function CreditPolicyPage() {
             <HandCoins className="h-4 w-4" />
             <span>Credit Management</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-tradeflow-navy"> Credit Policy</h1>
+          <h1 className="text-2xl font-extrabold text-tradeflow-navy">Credit Policy</h1>
           <p className="text-xs text-gray-500 mt-1">
-            Set default credit terms, customize per-retailer limits, and track outstanding & overdue payments.
+            Set credit terms, retailer limits, and track outstanding balances.
           </p>
         </div>
         <button
@@ -233,7 +233,7 @@ export default function CreditPolicyPage() {
           className="inline-flex items-center gap-1.5 rounded-xl border border-tradeflow-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-tradeflow-navy shadow-xs hover:bg-tradeflow-gray-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh Data
+          Refresh
         </button>
       </div>
 
@@ -260,8 +260,7 @@ export default function CreditPolicyPage() {
               <HandCoins className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-base font-extrabold text-tradeflow-navy">Wholesaler Credit Terms Config</h2>
-              <p className="text-xs text-gray-500">Allow retailers to purchase goods on credit</p>
+              <h2 className="text-base font-extrabold text-tradeflow-navy">Credit Terms</h2>
             </div>
           </div>
 
@@ -327,7 +326,7 @@ export default function CreditPolicyPage() {
                 +
               </button>
             </div>
-            <p className="mt-1 text-[10px] text-gray-400">Default for all connected retailers (typeable)</p>
+            <p className="mt-1 text-[10px] text-gray-400">Applied to all connected retailers</p>
           </div>
 
           <div>

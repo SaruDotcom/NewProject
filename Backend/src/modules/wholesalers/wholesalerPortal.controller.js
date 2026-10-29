@@ -24,6 +24,10 @@ class WholesalerPortalController {
   });
   listPayouts = asyncHandler(async (req, res) => { const result = await WholesalerPortalService.listPayouts(req.user._id, req.query); return ApiResponse.paginated(res, result.payouts, result.meta, 'Payout history retrieved'); });
   submitHelpRequest = asyncHandler(async (req, res) => { const result = await WholesalerPortalService.submitHelpRequest(req.user._id, req.body); return ApiResponse.success(res, result, 'Help request submitted successfully', 201); });
+  getBanners = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.getBanners(req.user._id), 'Wholesaler banners retrieved'));
+  updateBanners = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.updateBanners(req.user._id, req.body, req.user, req), 'Wholesaler banners updated'));
+  activatePreset = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.activatePreset(req.user._id, req.body.presetId, req.user, req), 'Banner preset activated'));
+  updateBusinessCategory = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.updateBusinessCategory(req.user._id, req.body.businessCategory, req.user, req), 'Business category updated'));
 }
 
 module.exports = new WholesalerPortalController();

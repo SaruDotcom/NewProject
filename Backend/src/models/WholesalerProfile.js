@@ -1,6 +1,23 @@
 const mongoose = require('mongoose');
 const { KYC_STATUS } = require('../config/constants');
 
+const bannerSlideSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true },
+    title: { type: String, required: true, trim: true },
+    subtitle: { type: String, default: '', trim: true },
+    badgeText: { type: String, default: '', trim: true },
+    buttonText: { type: String, default: 'Shop Trade Deals', trim: true },
+    imageUrl: { type: String, default: '', trim: true },
+    targetCategory: { type: String, default: 'All', trim: true },
+    discountBadge: { type: String, default: '', trim: true },
+    gradient: { type: String, default: 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy', trim: true },
+    isActive: { type: Boolean, default: true },
+    businessType: { type: String, default: '', trim: true },
+  },
+  { _id: false, timestamps: true }
+);
+
 const wholesalerProfileSchema = new mongoose.Schema(
   {
     userId: {
@@ -20,6 +37,20 @@ const wholesalerProfileSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    businessCategory: {
+      type: String,
+      enum: ['', 'CLOTHING', 'COSMETICS', 'GENERAL_STORE', 'FOOTWEAR', 'ELECTRONICS', 'OTHER'],
+      default: '',
+    },
+    activeStoreTheme: {
+      type: String,
+      enum: ['DEFAULT', 'ROYAL', 'FESTIVE', 'MINIMAL'],
+      default: 'DEFAULT',
+    },
+    promotionalBanners: {
+      type: [bannerSlideSchema],
+      default: [],
+    },
     retailerReferralCode: {
       type: String,
       uppercase: true,
@@ -35,6 +66,14 @@ const wholesalerProfileSchema = new mongoose.Schema(
     description: {
       type: String,
       default: '',
+    },
+    khataBook: {
+      businessType: {
+        type: String,
+        enum: ['', 'CLOTHING', 'GENERAL_STORE', 'ELECTRONICS', 'FOOTWEAR', 'COSMETICS', 'OTHER'],
+        default: '',
+      },
+      otherBusinessType: { type: String, trim: true, default: '', maxlength: 80 },
     },
     businessType: {
       type: String,

@@ -109,7 +109,7 @@ export default function PaymentSettingsPage() {
         <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green"><QrCode className="h-5 w-5" /></div>
         <div>
           <h1 className="text-2xl font-extrabold text-tradeflow-navy">Payment Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure the UPI details shown only to your connected retailers.</p>
+          <p className="mt-1 text-sm text-gray-500">Configure UPI payment details for your connected retailers.</p>
         </div>
       </header>
 
@@ -122,11 +122,11 @@ export default function PaymentSettingsPage() {
             <input value={upiId} onChange={(event) => setUpiId(event.target.value)} placeholder="business@upi" className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
           </label>
           <label className="block text-sm font-semibold text-tradeflow-navy">
-            Account holder / business name
+            Account Name
             <input value={accountName} onChange={(event) => setAccountName(event.target.value)} className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
           </label>
           <label className="block text-sm font-semibold text-tradeflow-navy">
-            Replace UPI QR image (JPG, PNG, WEBP; max 5 MB)
+            QR Code Image (max 5 MB)
             <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setQrImage(event.target.files?.[0] || null)} className="mt-1 block w-full text-sm font-normal" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -134,14 +134,14 @@ export default function PaymentSettingsPage() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={upiIdPaymentsEnabled} onChange={(event) => setUpiIdPaymentsEnabled(event.target.checked)} /> Enable UPI ID payments</label>
           </div>
           <label className="block text-sm font-semibold text-tradeflow-navy">
-            QR display session (minutes)
+            QR Session (minutes)
             <input type="number" min={1} max={60} value={qrSessionMinutes} onChange={(event) => setQrSessionMinutes(Number(event.target.value))} className="mt-1 block w-28 rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
           </label>
-          <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">The QR image is not automatically verified. Test it with a UPI app before enabling payments. Display expiry only closes the retailer’s in-app QR session; it does not invalidate your underlying UPI QR.</p>
-          <button disabled={busy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving…' : 'Save Payment Settings'}</button>
+          <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Test the QR with a UPI app before enabling. Expiry closes the retailer&apos;s QR session.</p>
+          <button disabled={busy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving...' : 'Save'}</button>
         </section>
         <aside className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 text-center shadow-sm">
-          <h2 className="font-bold text-tradeflow-navy">Current QR</h2>
+          <h2 className="font-bold text-tradeflow-navy">Current QR Code</h2>
           {settings?.qrDataUrl ? <img src={settings.qrDataUrl} alt="Your UPI QR code" className="mx-auto mt-4 max-h-64 max-w-full object-contain" /> : <p className="mt-5 text-sm text-gray-500">No QR image uploaded.</p>}
           {settings?.hasQrImage && <p className="mt-3 flex items-center justify-center gap-1 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" /> Private to you and your linked retailers</p>}
         </aside>
@@ -149,7 +149,7 @@ export default function PaymentSettingsPage() {
 
       <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
-          <div><h2 className="text-lg font-extrabold text-tradeflow-navy">Payment Reports</h2><p className="text-xs text-gray-500">Confirm receipt only after checking your bank or UPI account.</p></div>
+          <div><h2 className="text-lg font-extrabold text-tradeflow-navy">Payment Reports</h2><p className="text-xs text-gray-500">Verify incoming payments from retailers.</p></div>
           <button onClick={() => void reportsQuery.refetch()} className="rounded-lg border p-2" aria-label="Refresh reports"><RefreshCw className="h-4 w-4" /></button>
         </div>
         <div className="mt-4 space-y-3">

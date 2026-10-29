@@ -87,6 +87,20 @@ export type Category = {
   level?: number;
 };
 
+export type BannerSlide = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  tag?: string;
+  discountBadge?: string;
+  imageUrl?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  category?: string;
+  active?: boolean;
+  order?: number;
+};
+
 export type Wholesaler = {
   id: string;
   name: string;
@@ -103,6 +117,9 @@ export type Wholesaler = {
   ownerName?: string;
   description?: string;
   businessName?: string;
+  businessCategory?: string;
+  activeStoreTheme?: "DEFAULT" | "ROYAL" | "FESTIVE" | "MINIMAL";
+  banners?: BannerSlide[];
 };
 
 export type OrderItem = {
@@ -375,21 +392,39 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
   const rawId = String(item._id || item.id || "");
   const businessName = item.businessName || item.name || "Connected wholesaler";
 
+  const rawBanners = Array.isArray(item.banners) ? item.banners : [];
+  const banners: BannerSlide[] = rawBanners.map((b, idx) => ({
+    id: String(b.id || b._id || `banner-${idx}`),
+    title: b.title || "",
+    subtitle: b.subtitle || "",
+    tag: b.tag || "",
+    discountBadge: b.discountBadge || "",
+    imageUrl: b.imageUrl || "",
+    ctaText: b.ctaText || "Explore Catalog",
+    ctaLink: b.ctaLink || "/products",
+    category: b.category || "",
+    active: b.active !== false,
+    order: Number(b.order ?? idx),
+  }));
+
   const result: Wholesaler = {
     id: rawId,
     name: businessName,
     initials: toInitials(businessName),
-    logo: item.businessLogoUrl || "",
+    logo: item.businessLogoUrl || (item as any).logo || "",
     verified: true,
     rating: Number(item.rating || 4.8),
-    location: item.address?.["city"] || item.address?.["state"] || "India",
+    location: item.address?.["city"] || item.address?.["state"] || (item as any).city || "India",
     products: 0,
-    categories: [],
+    categories: Array.isArray((item as any).categories) ? (item as any).categories : [],
     delivery: "1-2 day dispatch",
     relationship: "Connected",
     about: item.description || "Verified wholesaler connected to your retail account.",
     description: item.description || "",
     businessName,
+    businessCategory: item.businessCategory || "",
+    activeStoreTheme: item.activeStoreTheme || "DEFAULT",
+    banners,
   };
 
   if (item.name) result.ownerName = item.name;
@@ -678,15 +713,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
-      const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>) =>
+      const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>, staleTime?: number) =>
         queryClient.fetchQuery({
           queryKey: retailerQueryKeys.resource(userId, resource),
           queryFn,
+          ...(staleTime !== undefined && { staleTime }),
         });
 
       const [dashboardRes, wholesalerRes, productsRes, categoriesRes, cartRes, wishlistRes, ordersRes, notificationsRes, returnsRes] = await Promise.all([
         fetchUserData("dashboard", () => api.getDashboard()).catch(() => null),
-        fetchUserData("wholesaler", () => api.getConnectedWholesaler()).catch(() => null),
+        fetchUserData("wholesaler", () => api.getConnectedWholesaler(), 0).catch(() => null),
         fetchUserData("products", () => api.getProducts({ limit: 200 })).catch(() => ({ data: [] })),
         fetchUserData("categories", () => api.getCategories({ limit: 200 })).catch(() => ({ data: [] })),
         fetchUserData("cart", () => api.getCart()).catch(() => ({ data: { items: [] } })),
@@ -777,6 +813,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser?.id, queryClient]);
 
+  const refreshLinkedWholesaler = useCallback(async () => {
+    try {
+      const token = getAuthToken();
+      if (token) {
+        const response = await api.getConnectedWholesaler();
+        setLinkedWholesaler(mapWholesaler(response?.data ?? null));
+        return;
+      }
+
+      const referralCode = getStoredReferralAttribution()?.code;
+      if (!referralCode) return;
+      const response = await api.getReferral(referralCode);
+      setLinkedWholesaler(mapWholesaler(response?.data?.wholesaler ?? null));
+    } catch (error) {
+      console.warn("Could not refresh the connected wholesaler storefront theme", error);
+    }
+  }, []);
+
   useEffect(() => {
     void syncSession();
 
@@ -784,9 +838,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(() => {
       void refreshOrders();
     }, 30000);
+    const themeInterval = setInterval(() => {
+      void refreshLinkedWholesaler();
+    }, 60000);
 
     const handleFocus = () => {
       void refreshOrders();
+      void refreshLinkedWholesaler();
     };
 
     window.addEventListener("focus", handleFocus);
@@ -794,10 +852,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     return () => {
       clearInterval(interval);
+      clearInterval(themeInterval);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [syncSession, refreshOrders]);
+  }, [syncSession, refreshOrders, refreshLinkedWholesaler]);
 
   const linkedWholesalerId = linkedWholesaler?.id || "";
   const unread = notifications.filter((item) => item.unread).length;

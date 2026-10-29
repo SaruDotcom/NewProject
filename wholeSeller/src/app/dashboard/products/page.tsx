@@ -537,11 +537,11 @@ export default function ProductsPage() {
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green-50 text-status-success border border-status-success/20 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3" />
-              <span>Wholesaler Catalog: {profile.businessName}</span>
+              <span>{profile.businessName}</span>
             </span>
           </div>
           <h1 className="text-2xl font-extrabold text-tradeflow-navy">Products Catalog</h1>
-          <p className="text-xs text-gray-500">Manage category-driven product attributes, wholesale prices, MOQ, and bulk pricing tiers</p>
+          <p className="text-xs text-gray-500">Manage products, pricing, and stock.</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -598,7 +598,7 @@ export default function ProductsPage() {
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search catalog by product title or SKU..."
+            placeholder="Search by title or SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green"
@@ -606,7 +606,7 @@ export default function ProductsPage() {
         </div>
 
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-          <span className="text-xs font-bold text-gray-500 shrink-0">Wholesaler Categories:</span>
+          <span className="text-xs font-bold text-gray-500 shrink-0">Categories:</span>
           <button
             onClick={() => setSelectedCategory('ALL')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
@@ -615,7 +615,7 @@ export default function ProductsPage() {
                 : 'bg-tradeflow-gray-50 text-gray-600 hover:bg-tradeflow-gray-200'
             }`}
           >
-            All Products ({products.length})
+            All ({products.length})
           </button>
           {categories.map((c, idx) => (
             <button
@@ -814,9 +814,9 @@ export default function ProductsPage() {
             <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
               <div>
                 <h2 className="text-lg font-extrabold text-tradeflow-navy">
-                  {editingProduct ? `Edit Product: ${editingProduct.title}` : 'Add New Wholesale Product'}
+                  {editingProduct ? 'Edit Product' : 'Add Product'}
                 </h2>
-                <p className="text-xs text-gray-500">Dynamic category-driven product listing form</p>
+                <p className="text-xs text-gray-500">Enter product details and pricing</p>
               </div>
               <button
                 onClick={() => {
@@ -850,10 +850,10 @@ export default function ProductsPage() {
             )}
 
             <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
-              {/* Universal Section 1: Basic Universal Details */}
+              {/* Basic Details */}
               <div className="space-y-3">
                 <h3 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-1 border-b border-gray-200">
-                  1. Universal Product Details
+                  Product Details
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -881,7 +881,7 @@ export default function ProductsPage() {
                       onChange={(e) => handleCategoryChange(e.target.value)}
                       className={`w-full px-3.5 py-2.5 border rounded-xl bg-tradeflow-gray-50 focus:outline-none font-bold text-gray-800 ${getFieldError('category') || getFieldError('categoryId') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     >
-                      <option value="">-- Select Main Category --</option>
+                      <option value="">Choose category</option>
                       {categories.filter((category) => !category.parentId).map(c => (
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
@@ -898,7 +898,7 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Level 2 Subcategory (Department) */}
                   <div>
-                    <label className="mb-1 block font-bold text-gray-700">Subcategory (Department)</label>
+                    <label className="mb-1 block font-bold text-gray-700">Subcategory</label>
                     <select
                       value={level2CategoryId}
                       onChange={(event) => handleLevel2Change(event.target.value)}
@@ -907,10 +907,10 @@ export default function ProductsPage() {
                     >
                       <option value="">
                         {!categoryName
-                          ? 'Select main category first'
+                          ? 'Choose category first'
                           : availableLevel2Categories.length > 0
-                            ? '-- Select Subcategory (e.g. Kids, Women, Men) --'
-                            : 'No subcategories available'}
+                            ? 'Choose subcategory'
+                            : 'None available'}
                       </option>
                       {availableLevel2Categories.map((sub) => (
                         <option key={sub.id} value={sub.id}>
@@ -922,7 +922,7 @@ export default function ProductsPage() {
 
                   {/* Level 3 Specific Item Type */}
                   <div>
-                    <label className="mb-1 block font-bold text-gray-700">Specific Item Type (Sub-item)</label>
+                    <label className="mb-1 block font-bold text-gray-700">Item Type</label>
                     <select
                       value={level3CategoryId}
                       onChange={(event) => handleLevel3Change(event.target.value)}
@@ -931,10 +931,10 @@ export default function ProductsPage() {
                     >
                       <option value="">
                         {!level2CategoryId
-                          ? 'Select subcategory first'
+                          ? 'Choose subcategory first'
                           : availableLevel3Categories.length > 0
-                            ? '-- Select Specific Item Type --'
-                            : 'No specific item types available'}
+                            ? 'Choose item type'
+                            : 'None available'}
                       </option>
                       {availableLevel3Categories.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -964,7 +964,7 @@ export default function ProductsPage() {
                     )}
                   </div>
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">Product Image (Drag & Drop) <span className="text-tradeflow-navy">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">Product Image <span className="text-tradeflow-navy">*</span></label>
                     <div 
                       className="border-2 border-dashed border-tradeflow-green rounded-xl bg-tradeflow-gray-50 p-4 text-center cursor-pointer hover:bg-red-50 transition"
                       onDragOver={(e) => e.preventDefault()}
@@ -1021,7 +1021,7 @@ export default function ProductsPage() {
                       ) : imageUrl ? (
                         <img src={imageUrl} alt="preview" className="w-16 h-16 object-cover rounded-md border mx-auto mt-2" />
                       ) : (
-                        <span className="text-sm text-gray-500">Drag & drop images here or click to select (max 5)</span>
+                        <span className="text-sm text-gray-500">Upload images (max 5)</span>
                       )}
                     </div>
                   </div>
@@ -1046,7 +1046,6 @@ export default function ProductsPage() {
                           <Sparkles className="w-4 h-4 text-green-700" />
                           <span>Product Options ({attributeCategoryName})</span>
                         </h4>
-                        <p className="text-[10px] text-gray-500">Complete the available options for {attributeCategoryName} products.</p>
                       </div>
                     </div>
 
@@ -1066,7 +1065,7 @@ export default function ProductsPage() {
                                 onChange={(e) => setCategoryAttributes({ ...categoryAttributes, [field.key]: e.target.value })}
                                 className="w-full px-3 py-2 border border-tradeflow-gray-200 rounded-xl bg-white text-xs focus:border-tradeflow-green focus:outline-none font-medium text-gray-800"
                               >
-                                <option value="">-- Select {field.label} --</option>
+                                <option value="">Choose {field.label.toLowerCase()}</option>
                                 {field.options?.map((opt) => (
                                   <option key={opt} value={opt}>{opt}</option>
                                 ))}
@@ -1209,7 +1208,7 @@ export default function ProductsPage() {
                         </div>
                       </div>
                       <label className="mt-3 block cursor-pointer rounded-lg border border-dashed border-tradeflow-green bg-tradeflow-green-50 p-3 text-center text-[11px] font-bold text-green-700">
-                        Add up to 4 JPG, JPEG, PNG or WEBP images (5 MB each)
+                        Add up to 4 images (5 MB each)
                         <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(event) => {
                           const files = Array.from(event.target.files || []).filter((file) => file.size <= 5 * 1024 * 1024).slice(0, 4);
                           if (files.length !== (event.target.files?.length || 0)) setFormError('Color images must be JPG, JPEG, PNG or WEBP and no larger than 5 MB.');
@@ -1226,10 +1225,10 @@ export default function ProductsPage() {
                 </div>
               )}
 
-              {/* Universal Section 3: Pricing & Stock Inventory */}
+              {/* Pricing & Stock Inventory */}
               <div className="space-y-3">
                 <h3 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider pb-1 border-b border-gray-200">
-                  3. Universal Pricing & Stock Inventory
+                  Pricing & Inventory
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1243,7 +1242,7 @@ export default function ProductsPage() {
                       min={0}
                       value={costPrice}
                       onChange={(e) => setCostPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="Acquisition price"
+                      placeholder="Cost price"
                       className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('costPrice') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
                     {getFieldError('costPrice') && (
@@ -1262,7 +1261,7 @@ export default function ProductsPage() {
                       min={0}
                       value={sellingPrice}
                       onChange={(e) => setSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="Retailer price"
+                      placeholder="Wholesale price"
                       className={`w-full px-3 py-2 border rounded-xl bg-white font-mono font-bold text-tradeflow-navy focus:outline-none ${getFieldError('sellingPrice') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-green/40 focus:border-tradeflow-green'}`}
                     />
                     {getFieldError('sellingPrice') && (
@@ -1280,7 +1279,7 @@ export default function ProductsPage() {
                       min={0}
                       value={mrp}
                       onChange={(e) => setMrp(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="e.g. 799 (>= Wholesale)"
+                      placeholder="MRP"
                       className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('mrp') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
                     {getFieldError('mrp') && (
@@ -1299,7 +1298,7 @@ export default function ProductsPage() {
                       min={0}
                       value={stock}
                       onChange={(e) => setStock(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="Total available stock"
+                      placeholder="Stock quantity"
                       className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 focus:outline-none ${getFieldError('stock') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
                     {getFieldError('stock') && (
@@ -1319,7 +1318,7 @@ export default function ProductsPage() {
                       step={1}
                       value={minOrderQty}
                       onChange={(e) => setMinOrderQty(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="Minimum units per order"
+                      placeholder="MOQ"
                       className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('minOrderQty') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
                     {getFieldError('minOrderQty') && (
@@ -1338,7 +1337,7 @@ export default function ProductsPage() {
                       maxLength={40}
                       value={unit}
                       onChange={(e) => setUnit(e.target.value)}
-                      placeholder="piece or set (12 pieces)"
+                      placeholder="e.g. piece or set"
                       className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 focus:outline-none ${getFieldError('unit') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
                     {getFieldError('unit') && (
@@ -1347,7 +1346,6 @@ export default function ProductsPage() {
                         {getFieldError('unit')}
                       </p>
                     )}
-                    <p className="mt-1 text-[10px] text-gray-500">Example: MOQ 1, unit "set (12 pieces)"</p>
                   </div>
                 </div>
               </div>
@@ -1355,7 +1353,7 @@ export default function ProductsPage() {
               <div className="space-y-3 rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-4">
                 <div>
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Tax Details (GST)</h3>
-                  <p className="mt-1 text-[10px] text-gray-500">Optional. Select an IGST slab to auto-fill equal CGST and SGST.</p>
+                  <p className="mt-1 text-[10px] text-gray-500">Optional. Select IGST to auto-fill CGST/SGST.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <input value={hsnCode} onChange={(event) => setHsnCode(event.target.value)} placeholder="HSN Code" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
@@ -1368,28 +1366,28 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              {/* Universal Section 4: Product Description */}
+              {/* Description */}
               <div>
-                <label className="block font-bold text-gray-700 mb-1">Product Description</label>
+                <label className="block font-bold text-gray-700 mb-1">Description</label>
                 <textarea
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Provide product specifications or packaging details..."
+                  placeholder="Product specifications or packaging details..."
                   className="w-full px-3.5 py-2 border border-tradeflow-gray-200 rounded-xl bg-tradeflow-gray-50 focus:border-tradeflow-green focus:outline-none"
                 />
               </div>
 
-              {/* Universal Section 5: Repeatable Bulk Pricing Tiers */}
+              {/* Repeatable Bulk Pricing Tiers */}
               <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="font-extrabold text-amber-500 text-xs uppercase tracking-wider flex items-center gap-1.5">
                       <Tag className="w-4 h-4 text-amber-500" />
-                      <span>Bulk Wholesale Pricing Tiers</span>
+                      <span>Bulk Pricing Tiers</span>
                     </h4>
                     <p className="text-[10px] text-gray-600">
-                      Quantity discount tiers (e.g. 200+ units = ₹180/unit).
+                      Optional volume discounts.
                     </p>
                   </div>
                   <button
@@ -1459,7 +1457,7 @@ export default function ProductsPage() {
                   className="px-5 py-2.5 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-md transition-all flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>{isUploading ? 'Uploading...' : editingProduct ? 'Save Changes' : 'Add Wholesale Product'}</span>
+                  <span>{isUploading ? 'Saving...' : editingProduct ? 'Save' : 'Add Product'}</span>
                 </button>
               </div>
             </form>

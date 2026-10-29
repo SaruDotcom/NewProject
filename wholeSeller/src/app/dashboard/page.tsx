@@ -95,7 +95,7 @@ export default function OverviewPage() {
             {profile.businessName ? `Welcome back, ${profile.businessName}` : 'Welcome to your dashboard'}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Wholesale operational dashboard: track catalog, stock, retailer network, orders, and sales performance.
+            Track products, stock, retailers, and orders.
           </p>
         </div>
 
@@ -130,7 +130,7 @@ export default function OverviewPage() {
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-700" />
             <div>
               <p className="font-bold">Complete KYC before adding products or categories.</p>
-              <p className="mt-0.5 text-xs text-amber-800">Your account is active. Submit your business details for KYC review to unlock catalog creation.</p>
+              <p className="mt-0.5 text-xs text-amber-800">Submit your business details for KYC review to unlock catalog creation.</p>
             </div>
           </div>
           <Link to="/dashboard/profile?tab=kyc" className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">Continue KYC</Link>
@@ -150,7 +150,7 @@ export default function OverviewPage() {
           <div className="mt-4">
             <div className="text-3xl font-black text-tradeflow-navy tracking-tight">{totalProductsCount}</div>
             <div className="text-xs text-gray-500 font-medium mt-1">
-              {products.reduce((acc, p) => acc + p.stock, 0)} total stock units across categories
+              {products.reduce((acc, p) => acc + p.stock, 0)} total units
             </div>
           </div>
         </div>
@@ -167,7 +167,7 @@ export default function OverviewPage() {
             <div className="text-3xl font-black text-tradeflow-navy tracking-tight">{connectedRetailersCount}</div>
             <div className="flex items-center gap-1.5 text-xs text-status-success font-bold mt-1">
               <span className="px-2 py-0.5 rounded-full bg-tradeflow-green-50 text-status-success text-[10px]">
-                Instant Auto-Connected
+                Active
               </span>
             </div>
           </div>

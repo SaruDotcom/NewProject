@@ -37,6 +37,7 @@ const SubscriptionPlanCatalog = require('./SubscriptionPlanCatalog');
 const WholesalerSubscription = require('./WholesalerSubscription');
 const SubscriptionPayment = require('./SubscriptionPayment');
 const RetailerCheckoutPayment = require('./RetailerCheckoutPayment');
+const KhataEntry = require('./KhataEntry');
 
 module.exports = {
   User,
@@ -78,4 +79,5 @@ module.exports = {
   WholesalerSubscription,
   SubscriptionPayment,
   RetailerCheckoutPayment,
+  KhataEntry,
 };

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
 const env = require('../../config/env');
 const logger = require('../../config/logger');
 const {
@@ -72,13 +73,41 @@ async function getProfile(wholesalerId) {
 }
 
 function getQrDataUrl(profile) {
-  const settings = profile.paymentSettings || {};
+  const settings = profile?.paymentSettings || {};
   if (!settings.qrImagePath) return '';
   ensureDirectories();
-  const imagePath = path.join(QR_DIRECTORY, path.basename(settings.qrImagePath));
-  if (!fs.existsSync(imagePath)) return '';
+  const filename = path.basename(settings.qrImagePath);
+  const candidates = [
+    path.join(QR_DIRECTORY, filename),
+    path.join(env.UPLOAD_PATH, settings.qrImagePath),
+    path.join(env.UPLOAD_PATH, 'payment-qr', filename),
+    path.resolve(settings.qrImagePath),
+  ];
+  let imagePath = '';
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      imagePath = candidate;
+      break;
+    }
+  }
+  if (!imagePath) {
+    logger.warn('Payment QR image file not found on disk', {
+      wholesalerId: profile.userId,
+      qrImagePath: settings.qrImagePath,
+      candidates,
+    });
+    return '';
+  }
   const image = fs.readFileSync(imagePath);
-  return `data:${settings.qrImageMimeType};base64,${image.toString('base64')}`;
+  let mimeType = settings.qrImageMimeType;
+  if (!mimeType) {
+    const ext = path.extname(imagePath).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    else mimeType = 'image/png';
+  }
+  return `data:${mimeType};base64,${image.toString('base64')}`;
 }
 
 class PaymentsService {
@@ -86,6 +115,7 @@ class PaymentsService {
     const profile = await getProfile(wholesalerId);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const qrDataUrl = getQrDataUrl(profile);
+    const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
     return {
       upiId: settings.upiId || '',
       accountName: settings.accountName || '',
@@ -94,6 +124,7 @@ class PaymentsService {
       upiIdPaymentsEnabled: Boolean(settings.upiIdPaymentsEnabled),
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
       qrDataUrl,
+      qrImageUrl,
     };
   }
 
@@ -167,12 +198,48 @@ class PaymentsService {
     return this.getSettings(wholesalerId);
   }
 
-  static async getRetailerPaymentOptions(retailerId) {
-    const relationship = await WholesalerRetailerRelationship.findOne({ retailerId, status: 'ACTIVE' });
-    if (!relationship) throw new ForbiddenError('Connect to a wholesaler before viewing payment options.', 'NO_ACTIVE_WHOLESALER');
+  static async resolveWholesalerProfile(retailerId, requestedWholesalerId = null) {
+    let wholesalerUserId = null;
+    if (requestedWholesalerId) {
+      const isOid = mongoose.isValidObjectId(requestedWholesalerId);
+      if (isOid) {
+        const byProfile = await WholesalerProfile.findOne({
+          $or: [{ userId: requestedWholesalerId }, { _id: requestedWholesalerId }],
+        });
+        if (byProfile) {
+          wholesalerUserId = byProfile.userId;
+        } else {
+          wholesalerUserId = requestedWholesalerId;
+        }
+      }
+    }
+
+    let relationship = null;
+    if (wholesalerUserId) {
+      relationship = await WholesalerRetailerRelationship.findOne({
+        retailerId,
+        wholesalerId: wholesalerUserId,
+        status: 'ACTIVE',
+      });
+    }
+
+    if (!relationship) {
+      relationship = await WholesalerRetailerRelationship.findOne({ retailerId, status: 'ACTIVE' });
+    }
+
+    if (!relationship) {
+      throw new ForbiddenError('Connect to a wholesaler before viewing payment options.', 'NO_ACTIVE_WHOLESALER');
+    }
+
     const profile = await getProfile(relationship.wholesalerId);
+    return { relationship, profile };
+  }
+
+  static async getRetailerPaymentOptions(retailerId, requestedWholesalerId = null) {
+    const { relationship, profile } = await this.resolveWholesalerProfile(retailerId, requestedWholesalerId);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const qrDataUrl = settings.qrPaymentsEnabled ? getQrDataUrl(profile) : '';
+    const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
     return {
       wholesalerId: String(relationship.wholesalerId),
       businessName: profile.businessName,
@@ -180,16 +247,15 @@ class PaymentsService {
       qrPaymentsEnabled: Boolean(settings.qrPaymentsEnabled && qrDataUrl),
       hasQrImage: Boolean(qrDataUrl),
       qrDataUrl,
+      qrImageUrl,
       upiIdPaymentsEnabled: Boolean(settings.upiIdPaymentsEnabled && settings.upiId),
       upiId: settings.upiId || '',
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
     };
   }
 
-  static async createRetailerQrSession(retailerId) {
-    const relationship = await WholesalerRetailerRelationship.findOne({ retailerId, status: 'ACTIVE' });
-    if (!relationship) throw new ForbiddenError('Connect to a wholesaler before viewing payment options.', 'NO_ACTIVE_WHOLESALER');
-    const profile = await getProfile(relationship.wholesalerId);
+  static async createRetailerQrSession(retailerId, requestedWholesalerId = null) {
+    const { relationship, profile } = await this.resolveWholesalerProfile(retailerId, requestedWholesalerId);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     if (!settings.qrPaymentsEnabled) {
       throw new BadRequestError('This wholesaler has not enabled QR payments.', 'QR_PAYMENTS_DISABLED');
@@ -201,9 +267,11 @@ class PaymentsService {
     }
 
     const qrSessionMinutes = Number(settings.qrSessionMinutes || 10);
+    const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
     return {
       wholesalerId: String(relationship.wholesalerId),
       qrDataUrl,
+      qrImageUrl,
       qrSessionMinutes,
       expiresAt: new Date(Date.now() + qrSessionMinutes * 60_000).toISOString(),
     };
@@ -225,22 +293,40 @@ class PaymentsService {
       throw new BadRequestError('Enter a valid UPI transaction/reference ID.', 'INVALID_TRANSACTION_REFERENCE');
     }
 
-    const relationship = await WholesalerRetailerRelationship.findOne({ retailerId, status: 'ACTIVE' });
-    if (!relationship) throw new ForbiddenError('No active wholesaler is connected to this retailer.', 'NO_ACTIVE_WHOLESALER');
-    const wholesalerId = relationship.wholesalerId;
-    const profile = await getProfile(wholesalerId);
-    const settings = profile.paymentSettings || {};
     const creditRepayment = payload.type === 'CREDIT_REPAYMENT';
     let order;
     let relatedOrderIds = [];
+    let wholesalerId;
+
+    if (creditRepayment) {
+      const relationship = await WholesalerRetailerRelationship.findOne({
+        retailerId,
+        ...(payload.wholesalerId ? { wholesalerId: payload.wholesalerId } : {}),
+        status: 'ACTIVE',
+      });
+      if (!relationship) throw new ForbiddenError('No active wholesaler is connected to this retailer.', 'NO_ACTIVE_WHOLESALER');
+      wholesalerId = relationship.wholesalerId;
+    } else {
+      const orderId = String(payload.orderId || '');
+      if (!/^[0-9a-fA-F]{24}$/.test(orderId)) throw new BadRequestError('A valid order ID is required.', 'INVALID_ORDER_ID');
+      order = await Order.findOne({ _id: orderId, retailerId });
+      if (!order) throw new NotFoundError('Order not found or does not belong to this retailer.');
+      wholesalerId = order.wholesalerId;
+      const relationship = await WholesalerRetailerRelationship.findOne({ retailerId, wholesalerId, status: 'ACTIVE' });
+      if (!relationship) throw new ForbiddenError('No active wholesaler connection for this order.', 'NO_ACTIVE_WHOLESALER');
+    }
+
+    const profile = await getProfile(wholesalerId);
+    const settings = profile.paymentSettings || {};
     if (!settings.qrPaymentsEnabled && !settings.upiIdPaymentsEnabled) {
       throw new BadRequestError('This wholesaler has not enabled direct UPI payments.', 'DIRECT_UPI_DISABLED');
     }
 
     if (creditRepayment) {
-      const currentOutstandingPaise = Number.isSafeInteger(relationship.currentOutstandingPaise)
-        ? relationship.currentOutstandingPaise
-        : Math.round(Number(relationship.currentOutstandingAmount || 0) * 100);
+      const relForOutstanding = await WholesalerRetailerRelationship.findOne({ retailerId, wholesalerId, status: 'ACTIVE' });
+      const currentOutstandingPaise = Number.isSafeInteger(relForOutstanding?.currentOutstandingPaise)
+        ? relForOutstanding.currentOutstandingPaise
+        : Math.round(Number(relForOutstanding?.currentOutstandingAmount || 0) * 100);
       if (amountPaise > currentOutstandingPaise) {
         throw new BadRequestError('Repayment amount cannot exceed the current outstanding balance.', 'REPAYMENT_EXCEEDS_OUTSTANDING');
       }
@@ -256,10 +342,6 @@ class PaymentsService {
       if (!relatedOrderIds.length) throw new BadRequestError('No outstanding credit orders were found.', 'NO_OUTSTANDING_CREDIT');
       order = openOrders.find((item) => String(item._id) === String(relatedOrderIds[0]));
     } else {
-      const orderId = String(payload.orderId || '');
-      if (!/^[0-9a-fA-F]{24}$/.test(orderId)) throw new BadRequestError('A valid order ID is required.', 'INVALID_ORDER_ID');
-      order = await Order.findOne({ _id: orderId, retailerId, wholesalerId });
-      if (!order) throw new NotFoundError('Order not found or does not belong to this retailer.');
       if (order.isCreditOrder) throw new BadRequestError('Use the credit repayment option for credit orders.', 'CREDIT_REPAYMENT_REQUIRED');
       if (order.paymentStatus === 'PAID') throw new BadRequestError('This order is already paid.', 'ORDER_ALREADY_PAID');
       if (order.paymentMethod !== 'UPI') {

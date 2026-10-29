@@ -26,3 +26,111 @@
   --canvas: var(--color-tradeflow-gray-50);
   --brand-soft: var(--color-tradeflow-green-50);
 }
+
+.storefront-theme[data-store-theme="ROYAL"],
+.storefront-theme-banner[data-store-theme="ROYAL"] {
+  --primary: #6554C0;
+  --primary-foreground: #FFFFFF;
+  --ring: #6554C0;
+  --accent: #F0EDFF;
+  --accent-foreground: #29234F;
+  --ink: #29234F;
+  --foreground: #29234F;
+  --brand-soft: #F0EDFF;
+  --color-tradeflow-green: #6554C0;
+  --color-tradeflow-green-hover: #5443AE;
+  --color-tradeflow-green-pressed: #433493;
+  --color-tradeflow-green-50: #F0EDFF;
+  --color-tradeflow-navy: #29234F;
+  --color-tradeflow-gray-50: #F7F5FF;
+  --color-tradeflow-gray-100: #EFEBFF;
+  --color-tradeflow-gray-200: #DDD6FE;
+  --color-tradeflow-gray-500: #716A86;
+  --color-emerald-500: #6554C0;
+  --color-emerald-600: #5443AE;
+  --color-emerald-700: #433493;
+}
+
+.storefront-theme[data-store-theme="FESTIVE"],
+.storefront-theme-banner[data-store-theme="FESTIVE"] {
+  --primary: #A52B43;
+  --primary-foreground: #FFFFFF;
+  --ring: #A52B43;
+  --accent: #FCEEF0;
+  --accent-foreground: #5C1F2D;
+  --ink: #5C1F2D;
+  --foreground: #5C1F2D;
+  --brand-soft: #FCEEF0;
+  --color-tradeflow-green: #A52B43;
+  --color-tradeflow-green-hover: #8E2339;
+  --color-tradeflow-green-pressed: #741C30;
+  --color-tradeflow-green-50: #FCEEF0;
+  --color-tradeflow-navy: #5C1F2D;
+  --color-tradeflow-gray-50: #FFF8F0;
+  --color-tradeflow-gray-100: #F9EEE3;
+  --color-tradeflow-gray-200: #EAD9C9;
+  --color-tradeflow-gray-500: #806D62;
+  --color-emerald-500: #A52B43;
+  --color-emerald-600: #8E2339;
+  --color-emerald-700: #741C30;
+}
+
+.storefront-theme[data-store-theme="MINIMAL"],
+.storefront-theme-banner[data-store-theme="MINIMAL"] {
+  --primary: #2877A5;
+  --primary-foreground: #FFFFFF;
+  --ring: #2877A5;
+  --accent: #EAF4FA;
+  --accent-foreground: #243B4A;
+  --ink: #243B4A;
+  --foreground: #243B4A;
+  --brand-soft: #EAF4FA;
+  --color-tradeflow-green: #2877A5;
+  --color-tradeflow-green-hover: #21668E;
+  --color-tradeflow-green-pressed: #1B5577;
+  --color-tradeflow-green-50: #EAF4FA;
+  --color-tradeflow-navy: #243B4A;
+  --color-tradeflow-gray-50: #F3F7FA;
+  --color-tradeflow-gray-100: #E8EEF2;
+  --color-tradeflow-gray-200: #D4E0E7;
+  --color-tradeflow-gray-500: #60727E;
+  --color-emerald-500: #2877A5;
+  --color-emerald-600: #21668E;
+  --color-emerald-700: #1B5577;
+}
+
+.storefront-theme[data-store-theme="FESTIVE"] .storefront-hero {
+  border-bottom: 5px solid #D9A441;
+}
+
+.storefront-theme[data-store-theme="FESTIVE"] .storefront-featured-products article.group {
+  border-radius: 1.25rem;
+  box-shadow: 0 8px 24px rgb(92 31 45 / 10%);
+}
+
+.storefront-theme[data-store-theme="MINIMAL"] .storefront-featured-products article.group {
+  border-radius: 0.75rem;
+  box-shadow: none;
+}
+
+.storefront-theme-banner[data-store-theme="ROYAL"] .storefront-banner-overlay {
+  background-image: linear-gradient(to right, #29234F, #44378B 55%, #6554C0);
+}
+
+.storefront-theme-banner[data-store-theme="FESTIVE"] .storefront-banner-overlay {
+  background-image: linear-gradient(to right, #5C1F2D, #8E2339 55%, #A52B43);
+}
+
+.storefront-theme-banner[data-store-theme="MINIMAL"] .storefront-banner-overlay {
+  background-image: linear-gradient(to right, #243B4A, #21668E 55%, #2877A5);
+}
+
+@media (min-width: 1024px) {
+  .storefront-theme[data-store-theme="ROYAL"] .storefront-category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .storefront-theme[data-store-theme="MINIMAL"] .storefront-category-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

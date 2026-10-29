@@ -282,8 +282,8 @@ export function WholesalerManagementPage() {
     return (
         <div className="space-y-6">
             <PageHeader
-                title="Wholesaler Management"
-                description="Review, approve, and manage every supply partner."
+                title="Wholesalers"
+                description="Manage and approve wholesalers."
                 action={<Button onClick={openCreate}><Plus /> Add Wholesaler</Button>}
             />
             <section className="admin-card overflow-hidden">
@@ -293,28 +293,28 @@ export function WholesalerManagementPage() {
                         <Input
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search name, email, phone, or business..."
+                            placeholder="Search wholesalers..."
                             className="pl-9 shadow-none"
                         />
                     </div>
                     <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
                         <SelectTrigger className="w-full lg:w-36"><SelectValue placeholder="Status" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All statuses</SelectItem>
+                            <SelectItem value="all">All</SelectItem>
                             {statusOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     <Select value={city} onValueChange={(value) => { setCity(value); setPage(1); }}>
                         <SelectTrigger className="w-full lg:w-36"><SelectValue placeholder="City" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All cities</SelectItem>
+                            <SelectItem value="all">All</SelectItem>
                             {result.cities.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     <Select value={state} onValueChange={(value) => { setState(value); setPage(1); }}>
                         <SelectTrigger className="w-full lg:w-36"><SelectValue placeholder="State" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All states</SelectItem>
+                            <SelectItem value="all">All</SelectItem>
                             {result.states.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
                         </SelectContent>
                     </Select>

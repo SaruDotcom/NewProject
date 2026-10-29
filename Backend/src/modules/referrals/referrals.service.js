@@ -136,6 +136,31 @@ class ReferralService {
       categories = [];
     }
 
+    const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
+    const businessCategory = normalizeBusinessType(profile.businessCategory || profile.khataBook?.businessType);
+    let banners = profile.promotionalBanners;
+    if (!banners || !Array.isArray(banners)) {
+      banners = getPresetsForType(businessCategory).map((p, idx) => ({ ...p, isActive: idx < 2 }));
+    }
+    const activeBanners = (banners || [])
+      .filter((b) => b.isActive !== false && b.active !== false)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        subtitle: b.subtitle || '',
+        tag: b.badgeText || b.tag || '',
+        badgeText: b.badgeText || b.tag || '',
+        ctaText: b.buttonText || b.ctaText || 'Shop Trade Deals',
+        buttonText: b.buttonText || b.ctaText || 'Shop Trade Deals',
+        imageUrl: b.imageUrl || '',
+        category: b.targetCategory || b.category || '',
+        targetCategory: b.targetCategory || b.category || '',
+        discountBadge: b.discountBadge || '',
+        gradient: b.gradient || '',
+        active: true,
+        isActive: true,
+      }));
+
     return {
       _id: String(profile.userId),
       id: String(profile.userId),
@@ -144,6 +169,9 @@ class ReferralService {
       logo: profile.businessLogoUrl || '',
       city: profile.address?.city || '',
       categories,
+      businessCategory,
+      activeStoreTheme: profile.activeStoreTheme || 'DEFAULT',
+      banners: activeBanners,
     };
   }
 

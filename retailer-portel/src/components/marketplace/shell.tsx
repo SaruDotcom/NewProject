@@ -36,13 +36,13 @@ import { FeedbackModal } from "./FeedbackModal";
 const primary = [
   { to: "/products" as const, label: "Products" },
   { to: "/categories" as const, label: "Categories" },
-  { to: "/coupons" as const, label: "Coupons & Offers" },
+  { to: "/coupons" as const, label: "Coupons" },
   { to: "/orders" as const, label: "Orders" },
 ];
 
 const account = [
   { to: "/dashboard" as const, label: "Dashboard", icon: Dashboard },
-  { to: "/coupons" as const, label: "Coupons & Offers", icon: LocalOffer },
+  { to: "/coupons" as const, label: "Coupons", icon: LocalOffer },
   { to: "/orders" as const, label: "Orders", icon: Assignment },
   { to: "/wishlist" as const, label: "Wishlist", icon: Favorite },
   {
@@ -50,8 +50,8 @@ const account = [
     label: "Notifications",
     icon: Notifications,
   },
-  { to: "/support" as const, label: "Help & Support", icon: SupportAgent },
-  { to: "/profile" as const, label: "Business profile", icon: Person },
+  { to: "/support" as const, label: "Support", icon: SupportAgent },
+  { to: "/profile" as const, label: "Profile", icon: Person },
   { to: "/addresses" as const, label: "Addresses", icon: LocationOn },
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
@@ -74,7 +74,7 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search trade products..."
+        placeholder="Search products..."
         className={cn(
           "w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 transition-all min-h-[44px]",
           hero && "py-3 text-base rounded-2xl shadow-lg border-primary/20"

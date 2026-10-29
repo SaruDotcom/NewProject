@@ -47,6 +47,64 @@ export class ApiError extends Error {
   }
 }
 
+export type KhataBusinessType =
+  | 'CLOTHING'
+  | 'GENERAL_STORE'
+  | 'ELECTRONICS'
+  | 'FOOTWEAR'
+  | 'COSMETICS'
+  | 'OTHER';
+
+export type WholesalerStoreTheme = 'DEFAULT' | 'ROYAL' | 'FESTIVE' | 'MINIMAL';
+
+export interface KhataEntry {
+  _id: string;
+  date: string;
+  productName: string;
+  category: string;
+  size: string;
+  colour: string;
+  unit: string;
+  brandModel: string;
+  counterpartyName: string;
+  quantity: number;
+  purchaseRate: number;
+  purchaseAmount: number;
+  paidAmount: number;
+  pendingAmount: number;
+  paymentStatus: 'PAID' | 'PARTIAL' | 'PENDING';
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KhataSummary {
+  totalPurchase: number;
+  totalPaid: number;
+  totalPending: number;
+}
+
+export interface KhataEntryInput {
+  date: string;
+  productName: string;
+  category: string;
+  size: string;
+  colour: string;
+  unit: string;
+  brandModel: string;
+  counterpartyName: string;
+  quantity: number;
+  purchaseRate: number;
+  paidAmount: number;
+  notes: string;
+}
+
+export interface KhataBookSettings {
+  businessName: string;
+  businessType: KhataBusinessType | '';
+  otherBusinessType: string;
+}
+
 export interface WholesalerAnalyticsProduct {
   _id: string;
   name: string;
@@ -249,6 +307,61 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
 }
 
 export const api = {
+  getKhataSettings: () =>
+    request<{ success: boolean; data: KhataBookSettings }>('/wholesaler/khata-book/settings', { method: 'GET' }),
+  updateKhataSettings: (settings: Pick<KhataBookSettings, 'businessType' | 'otherBusinessType'>) =>
+    request<{ success: boolean; data: KhataBookSettings }>('/wholesaler/khata-book/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+
+  getKhataEntries: (filters: Record<string, string>) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    return request<{ success: boolean; data: { items: KhataEntry[]; summary: KhataSummary } }>(
+      `/wholesaler/khata-book${query ? `?${query}` : ''}`,
+      { method: 'GET' },
+    );
+  },
+  createKhataEntry: (entry: KhataEntryInput) =>
+    request<{ success: boolean; data: KhataEntry }>('/wholesaler/khata-book', {
+      method: 'POST',
+      body: JSON.stringify(entry),
+    }),
+  updateKhataEntry: (id: string, entry: KhataEntryInput) =>
+    request<{ success: boolean; data: KhataEntry }>(`/wholesaler/khata-book/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(entry),
+    }),
+  deleteKhataEntry: (id: string) =>
+    request<{ success: boolean; data: { id: string } }>(`/wholesaler/khata-book/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  downloadKhataReport: async (format: 'xlsx' | 'pdf', filters: Record<string, string>): Promise<Blob> => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    const token = getAuthToken();
+    const response = await fetch(
+      buildApiUrl(`/wholesaler/khata-book/export/${format}${query ? `?${query}` : ''}`),
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      if (response.status === 401 && typeof window !== 'undefined') {
+        clearAuthToken();
+        if (!window.location.pathname.startsWith('/login')) window.location.href = '/login?expired=1';
+      }
+      throw new ApiError(body?.message || 'Unable to download the Khata Book report.', response.status, body?.code, body?.errors);
+    }
+    return response.blob();
+  },
+
   // Auth
   login: (credentials: { email?: string; loginId?: string; mobile?: string; phone?: string; password?: string; role?: string }) =>
     request<{ success: boolean; data: { token?: string; user?: any; requiresTwoFactor?: boolean; challengeToken?: string; maskedEmail?: string; resendAfterSeconds?: number } }>('/auth/login', {
@@ -326,6 +439,69 @@ export const api = {
 
   getMe: () =>
     request<{ success: boolean; data: any }>('/auth/me', { method: 'GET' }),
+
+  updateStoreTheme: (activeStoreTheme: WholesalerStoreTheme) =>
+    request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ activeStoreTheme }),
+    }),
+
+  getBanners: () =>
+    request<{
+      success: boolean;
+      data: {
+        banners: any[];
+        businessCategory: string;
+        presetOptions: any[];
+        activeStoreTheme: WholesalerStoreTheme;
+        businessName: string;
+      };
+    }>('/wholesaler/banners', { method: 'GET' }),
+
+  updateBanners: (banners: any[], businessCategory?: string) =>
+    request<{
+      success: boolean;
+      data: {
+        banners: any[];
+        businessCategory: string;
+        presetOptions: any[];
+        activeStoreTheme: WholesalerStoreTheme;
+        businessName: string;
+      };
+    }>('/wholesaler/banners', {
+      method: 'PUT',
+      body: JSON.stringify({ banners, businessCategory }),
+    }),
+
+  activatePreset: (presetId: string) =>
+    request<{
+      success: boolean;
+      data: {
+        banners: any[];
+        businessCategory: string;
+        presetOptions: any[];
+        activeStoreTheme: WholesalerStoreTheme;
+        businessName: string;
+      };
+    }>('/wholesaler/banners/activate-preset', {
+      method: 'POST',
+      body: JSON.stringify({ presetId }),
+    }),
+
+  updateBusinessCategory: (businessCategory: string) =>
+    request<{
+      success: boolean;
+      data: {
+        banners: any[];
+        businessCategory: string;
+        presetOptions: any[];
+        activeStoreTheme: WholesalerStoreTheme;
+        businessName: string;
+      };
+    }>('/wholesaler/business-category', {
+      method: 'PATCH',
+      body: JSON.stringify({ businessCategory }),
+    }),
 
   getPublicSubscriptionPlan: () =>
     request<{ success: boolean; data: { plans: SubscriptionPlan[] } }>('/subscription-plan', { method: 'GET' }),

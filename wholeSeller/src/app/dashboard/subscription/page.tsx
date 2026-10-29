@@ -97,6 +97,10 @@ export default function SubscriptionPage() {
         name: 'TradeFlow',
         description: `${plan.name} · ${billingLabel(plan.billingPeriod)}`,
         order_id: order.id,
+        method: {
+          upi: true,
+          netbanking: true,
+        },
         prefill: {
           name: profile.ownerName,
           email: profile.email,

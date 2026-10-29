@@ -43,6 +43,7 @@ app.use('/api', apiRateLimiter);
 const path = require('path');
 const env = require('./config/env');
 app.use('/uploads/products', express.static(path.join(env.UPLOAD_PATH, 'products')));
+app.use('/uploads/payment-qr', express.static(path.join(env.UPLOAD_PATH, 'payment-qr')));
 
 // Serve MongoDB GridFS product images
 app.get('/product-images/:id', async (req, res) => {

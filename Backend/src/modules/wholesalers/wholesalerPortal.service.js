@@ -10,6 +10,7 @@ const AuditService = require('../../services/audit.service');
 const WholesalerReportsService = require('../../services/wholesalerReports.service');
 const SupportService = require('../support/support.service');
 const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
+const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
 
 class WholesalerPortalService {
   static formatRetailerRelationship(row) {
@@ -68,7 +69,7 @@ class WholesalerPortalService {
 
   static async updateProfile(userId, payload, actor, req) {
     const allowedUser = ['name', 'phone'];
-    const allowedProfile = ['businessName', 'businessLogoUrl', 'description', 'businessType', 'address', 'bankDetails', 'minOrderValue'];
+    const allowedProfile = ['businessName', 'businessLogoUrl', 'description', 'businessType', 'businessCategory', 'address', 'bankDetails', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
     const userUpdate = Object.fromEntries(allowedUser.filter((key) => payload[key] !== undefined).map((key) => [key, payload[key]]));
     
     if (userUpdate.phone) {
@@ -263,6 +264,171 @@ class WholesalerPortalService {
       priority: 'High',
       callbackPhone,
     });
+  }
+
+  static async resolveBusinessCategory(profile, wholesalerUserId) {
+    if (profile.businessCategory) {
+      return normalizeBusinessType(profile.businessCategory);
+    }
+    if (profile.khataBook?.businessType) {
+      return normalizeBusinessType(profile.khataBook.businessType);
+    }
+    try {
+      const distinctCats = await Product.distinct('categoryName', {
+        wholesalerId: wholesalerUserId,
+        isDeleted: false,
+      });
+      const catText = (distinctCats || []).join(' ').toLowerCase();
+      if (/cloth|apparel|saree|kurti|lehenga|ethnic|suit|dress|western|shirt|garment/.test(catText)) return 'CLOTHING';
+      if (/cosmetic|beauty|skincare|makeup|serum|lipstick|lotion/.test(catText)) return 'COSMETICS';
+      if (/grocery|kirana|staple|rice|pulse|snack|fmcg|beverage/.test(catText)) return 'GENERAL_STORE';
+      if (/footwear|shoe|sandal|slipper|juttis|sneaker/.test(catText)) return 'FOOTWEAR';
+      if (/electronic|gadget|mobile|cable|charger|appliance|headphone|audio/.test(catText)) return 'ELECTRONICS';
+    } catch {
+      // fallback
+    }
+    return 'CLOTHING';
+  }
+
+  static async getBanners(userId) {
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false });
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+
+    const businessCategory = await this.resolveBusinessCategory(profile, userId);
+    const presetOptions = getPresetsForType(businessCategory);
+
+    // If profile has no banners saved, initialize with presets for this business category
+    if (!profile.promotionalBanners || profile.promotionalBanners.length === 0) {
+      profile.promotionalBanners = presetOptions.map((p, idx) => ({
+        ...p,
+        isActive: idx < 2, // Activate first 2 options by default
+      }));
+      profile.businessCategory = businessCategory;
+      await profile.save();
+    }
+
+    return {
+      banners: (profile.promotionalBanners || []).map((b) => ({
+        id: b.id,
+        title: b.title,
+        subtitle: b.subtitle || '',
+        badgeText: b.badgeText || '',
+        tag: b.badgeText || '',
+        buttonText: b.buttonText || 'Shop Trade Deals',
+        ctaText: b.buttonText || 'Shop Trade Deals',
+        imageUrl: b.imageUrl || '',
+        targetCategory: b.targetCategory || 'All',
+        category: b.targetCategory || 'All',
+        discountBadge: b.discountBadge || '',
+        gradient: b.gradient || '',
+        isActive: b.isActive !== false,
+        active: b.isActive !== false,
+        businessType: b.businessType || businessCategory,
+      })),
+      businessCategory,
+      presetOptions,
+      activeStoreTheme: profile.activeStoreTheme || 'DEFAULT',
+      businessName: profile.businessName,
+    };
+  }
+
+  static async updateBanners(userId, payload, actor, req) {
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false });
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+
+    const { banners, businessCategory, activeStoreTheme } = payload;
+    if (businessCategory) {
+      profile.businessCategory = normalizeBusinessType(businessCategory);
+    }
+    if (activeStoreTheme) {
+      profile.activeStoreTheme = activeStoreTheme;
+    }
+
+    if (Array.isArray(banners)) {
+      profile.promotionalBanners = banners.map((b, index) => {
+        const isActiveVal = (b.isActive !== undefined) ? Boolean(b.isActive) : (b.active !== undefined ? Boolean(b.active) : true);
+        return {
+          id: b.id || `slide-${Date.now()}-${index}`,
+          title: String(b.title || '').trim(),
+          subtitle: String(b.subtitle || '').trim(),
+          badgeText: String(b.badgeText || b.tag || '').trim(),
+          buttonText: String(b.buttonText || b.ctaText || 'Shop Trade Deals').trim(),
+          imageUrl: String(b.imageUrl || '').trim(),
+          targetCategory: String(b.targetCategory || b.category || 'All').trim(),
+          discountBadge: String(b.discountBadge || '').trim(),
+          gradient: String(b.gradient || 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy').trim(),
+          isActive: isActiveVal,
+          businessType: b.businessType || profile.businessCategory || 'CLOTHING',
+        };
+      });
+    }
+
+    await profile.save();
+    if (actor?._id) {
+      await AuditService.log({
+        actorId: actor._id,
+        actorRole: actor.role,
+        action: 'UPDATE',
+        entityType: 'WholesalerProfile',
+        entityId: profile._id,
+        metadata: { action: 'updateBanners', bannerCount: profile.promotionalBanners.length },
+        req,
+      });
+    }
+
+    return this.getBanners(userId);
+  }
+
+  static async activatePreset(userId, presetId, actor, req) {
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false });
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+
+    const businessCategory = await this.resolveBusinessCategory(profile, userId);
+    const presets = getPresetsForType(businessCategory);
+    const targetPreset = presets.find((p) => p.id === presetId);
+    if (!targetPreset) throw new NotFoundError('Preset banner option not found');
+
+    if (!Array.isArray(profile.promotionalBanners)) {
+      profile.promotionalBanners = [];
+    }
+
+    const existingIndex = profile.promotionalBanners.findIndex((b) => b.id === presetId);
+    if (existingIndex >= 0) {
+      profile.promotionalBanners[existingIndex].isActive = true;
+    } else {
+      profile.promotionalBanners.push({ ...targetPreset, isActive: true });
+    }
+
+    await profile.save();
+    return this.getBanners(userId);
+  }
+
+  static async updateBusinessCategory(userId, businessCategory, actor, req) {
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false });
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+
+    const normalized = normalizeBusinessType(businessCategory);
+    profile.businessCategory = normalized;
+
+    // Load new presets for the new business type
+    const presets = getPresetsForType(normalized);
+    profile.promotionalBanners = presets.map((p, idx) => ({
+      ...p,
+      isActive: idx < 2,
+    }));
+    await profile.save();
+
+    await AuditService.log({
+      actorId: actor._id,
+      actorRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'WholesalerProfile',
+      entityId: profile._id,
+      metadata: { action: 'updateBusinessCategory', businessCategory: normalized },
+      req,
+    });
+
+    return this.getBanners(userId);
   }
 }
 module.exports = WholesalerPortalService;

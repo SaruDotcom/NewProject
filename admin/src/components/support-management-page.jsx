@@ -194,7 +194,7 @@ export function SupportManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Support Requests"
+        title="Support"
         description="Review and respond to wholesaler and retailer support tickets."
       />
 
@@ -238,7 +238,7 @@ export function SupportManagementPage() {
               onChange={(event) =>
                 setFilters({ ...filters, search: event.target.value })
               }
-              placeholder="Ticket no, business, subject"
+              placeholder="Search tickets..."
               className="pl-9"
             />
           </div>
@@ -250,7 +250,7 @@ export function SupportManagementPage() {
               <SelectValue placeholder="Role" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All roles</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="WHOLESALER">Wholesaler</SelectItem>
               <SelectItem value="RETAILER">Retailer</SelectItem>
             </SelectContent>
@@ -263,7 +263,7 @@ export function SupportManagementPage() {
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               {statusOptions.map((value) => (
                 <SelectItem key={value} value={value}>
                   {value}
@@ -279,7 +279,7 @@ export function SupportManagementPage() {
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               {ticketTypes.map((value) => (
                 <SelectItem key={value} value={value}>
                   {value}
@@ -297,7 +297,7 @@ export function SupportManagementPage() {
               <SelectValue placeholder="Priority" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All priorities</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               {priorityOptions.map((value) => (
                 <SelectItem key={value} value={value}>
                   {value}

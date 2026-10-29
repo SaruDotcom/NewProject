@@ -9,7 +9,6 @@ import {
   AutoAwesome,
   ChevronRight,
 } from "@mui/icons-material";
-import hero from "@/assets/nexora-hero.jpg";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/state/store";
 import { ProductGrid, SectionHeading, WholesalerCard } from "./primitives";
@@ -26,6 +25,7 @@ const trustSignals: Array<[typeof VerifiedUser, string, string]> = [
 
 export function HomePage() {
   const { connectedWholesalers, relationships, recentlyViewed, linkedWholesaler, products, categories, retailerProfile } = useStore();
+  const activeStoreTheme = linkedWholesaler?.activeStoreTheme || "DEFAULT";
 
   const retailerName = retailerProfile?.businessName?.trim();
   const heroHeading = retailerName
@@ -48,18 +48,11 @@ export function HomePage() {
   const primaryWholesalerName = connectedWholesalers[0]?.name || "Verified Wholesalers";
 
   return (
-    <main>
+    <main className="storefront-theme" data-store-theme={activeStoreTheme}>
       {/* Hero Banner */}
-      <section className="relative min-h-[480px] sm:min-h-[560px] lg:min-h-[600px] overflow-hidden bg-ink">
-        <img
-          src={hero}
-          width={1600}
-          height={900}
-          alt="Independent retailer in a modern, fully stocked shop"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/85 sm:via-ink/75 to-ink/40 sm:to-transparent" />
-        <div className="shell relative flex min-h-[480px] sm:min-h-[560px] lg:min-h-[600px] items-center py-12 sm:py-16">
+      <section className="storefront-hero relative min-h-[420px] sm:min-h-[430px] lg:min-h-[440px] overflow-hidden bg-ink">
+        <WholesalerBannerCarousel />
+        <div className="shell relative z-10 flex min-h-[420px] sm:min-h-[430px] lg:min-h-[610px] items-center py-10 sm:py-12">
           <div className="max-w-2xl text-primary-foreground text-center sm:text-left mx-auto sm:mx-0">
             <span className="inline-flex items-center gap-2 border border-primary-foreground/25 bg-ink/50 px-3 py-1.5 text-[11px] sm:text-xs font-bold uppercase backdrop-blur rounded-full">
               Direct Wholesaler Network • {connectedWholesalers.length} Connected Partner{connectedWholesalers.length === 1 ? "" : "s"}
@@ -84,9 +77,6 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Wholesaler Provided Interactive Banner Carousel */}
-      <WholesalerBannerCarousel />
-
       {/* Trust Signals */}
       <section className="border-b bg-card">
         <div className="shell grid grid-cols-2 gap-4 py-6 sm:gap-6 lg:grid-cols-4">
@@ -101,6 +91,20 @@ export function HomePage() {
           ))}
         </div>
       </section>
+
+       {/* Recommended from approved partners */}
+      {connectedProducts.length > 0 && (
+        <section className="border-t border-border/60 bg-card py-12 sm:py-16 lg:py-20">
+          <div className="shell">
+            <SectionHeading
+              title="Recommended from approved partners"
+              subtitle="Products from your connected wholesalers"
+              href="/products"
+            />
+            <ProductGrid products={connectedProducts.slice(0, 8)} className="storefront-featured-products" />
+          </div>
+        </section>
+      )}
 
       {/* Popular Categories */}
       <section className="bg-canvas py-12 sm:py-16 lg:py-20">
@@ -122,7 +126,7 @@ export function HomePage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:gap-8">
+          <div className="storefront-category-grid grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:gap-8">
             {connectedCategories.slice(0, 6).map((c, i) => {
               const catProductsCount = connectedProducts.filter((p) => p.category === c.name).length;
               return (
@@ -187,20 +191,6 @@ export function HomePage() {
         </section>
       )}
 
-      {/* Recommended from approved partners */}
-      {connectedProducts.length > 0 && (
-        <section className="border-t border-border/60 bg-card py-12 sm:py-16 lg:py-20">
-          <div className="shell">
-            <SectionHeading
-              title="Recommended from approved partners"
-              subtitle="Products from your connected wholesalers"
-              href="/products"
-            />
-            <ProductGrid products={connectedProducts.slice(0, 8)} />
-          </div>
-        </section>
-      )}
-
       {/* Promo Banner ("Save up to 18%") */}
       <section className="shell py-12 sm:py-16 lg:py-20">
         <div className="grid grid-cols-1 overflow-hidden rounded-2xl bg-primary text-primary-foreground md:grid-cols-[1.5fr_1fr] shadow-md">
@@ -232,7 +222,7 @@ export function HomePage() {
         <section className="bg-canvas py-12 sm:py-16 lg:py-20">
           <div className="shell">
             <SectionHeading title="Recently viewed from your network" subtitle="Items you recently looked at from approved partners" />
-            <ProductGrid products={recentlyViewedProducts.slice(0, 4)} />
+            <ProductGrid products={recentlyViewedProducts.slice(0, 4)} className="storefront-featured-products" />
           </div>
         </section>
       )}

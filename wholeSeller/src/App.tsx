@@ -21,6 +21,8 @@ import CreditPolicyPage from './app/dashboard/credit-policy/page';
 import CouponsPage from './app/dashboard/coupons/page';
 import SupportPage from './app/dashboard/support/page';
 import PaymentSettingsPage from './app/dashboard/payment-settings/page';
+import KhataBookPage from './app/dashboard/khata-book/page';
+import StoreThemePage from './app/dashboard/store-theme/page';
 
 const LandingPage = lazy(() => import('./app/landing/page'));
 
@@ -44,6 +46,8 @@ export function App() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="credit-policy" element={<CreditPolicyPage />} />
         <Route path="payment-settings" element={<PaymentSettingsPage />} />
+        <Route path="store-theme" element={<StoreThemePage />} />
+        <Route path="khata-book" element={<KhataBookPage />} />
         <Route path="coupons" element={<CouponsPage />} />
         <Route path="wallet" element={<WalletPage />} />
         <Route path="profile" element={<WholesalerProfilePage />} />

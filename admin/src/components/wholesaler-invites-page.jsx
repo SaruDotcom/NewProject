@@ -515,7 +515,7 @@ export function WholesalerInvitesPage() {
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Wholesalers who completed registration using the Super Admin registration link.
+                Wholesalers registered through the admin invite link.
               </p>
             </div>
 
@@ -537,7 +537,7 @@ export function WholesalerInvitesPage() {
               <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
               <Input
                 className="h-9 pl-9 text-xs"
-                placeholder="Search business, contact, mobile, city"
+                placeholder="Search registered wholesalers..."
                 value={regSearch}
                 onChange={(e) => {
                   setRegPage(1);
@@ -556,7 +556,7 @@ export function WholesalerInvitesPage() {
                 }}
                 aria-label="Filter KYC status"
               >
-                <option value="ALL">All KYC statuses</option>
+                <option value="ALL">All KYC</option>
                 <option value="DRAFT">DRAFT</option>
                 <option value="SUBMITTED">SUBMITTED</option>
                 <option value="IN_REVIEW">IN_REVIEW</option>

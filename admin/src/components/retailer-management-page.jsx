@@ -251,30 +251,30 @@ export function RetailerManagementPage() {
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
                     <Users className="size-3.5" /> Retailer network
                 </div>
-                <PageHeader title="Retailer Management" description="Manage retailer accounts, purchases, and wholesaler connections." />
+                <PageHeader title="Retailers" description="Manage retailer accounts and connections." />
             </div>
             <section className="admin-card overflow-hidden shadow-sm">
                 <div className="space-y-3 border-b bg-muted/15 p-4">
                     <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(240px,1fr)_140px_minmax(170px,0.8fr)_140px_140px]">
                         <div className="relative min-w-0">
                             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-                            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, phone, or business..." className="h-10 bg-card pl-9 shadow-none" />
+                            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search retailers..." className="h-10 bg-card pl-9 shadow-none" />
                         </div>
                         <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
                             <SelectTrigger className="h-10 bg-card"><SelectValue placeholder="Status" /></SelectTrigger>
-                            <SelectContent><SelectItem value="all">All statuses</SelectItem>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                            <SelectContent><SelectItem value="all">All</SelectItem>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
                         </Select>
                         <Select value={wholesaler} onValueChange={(value) => { setWholesaler(value); setPage(1); }}>
                             <SelectTrigger className="h-10 bg-card"><SelectValue placeholder="Wholesaler" /></SelectTrigger>
-                            <SelectContent><SelectItem value="all">All wholesalers</SelectItem>{wholesalers.map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.businessName || row.name}</SelectItem>)}</SelectContent>
+                            <SelectContent><SelectItem value="all">All</SelectItem>{wholesalers.map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.businessName || row.name}</SelectItem>)}</SelectContent>
                         </Select>
                         <Select value={city} onValueChange={(value) => { setCity(value); setPage(1); }}>
                             <SelectTrigger className="h-10 bg-card"><SelectValue placeholder="City" /></SelectTrigger>
-                            <SelectContent><SelectItem value="all">All cities</SelectItem>{(filterOptions.cities || []).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                            <SelectContent><SelectItem value="all">All</SelectItem>{(filterOptions.cities || []).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                         </Select>
                         <Select value={state} onValueChange={(value) => { setState(value); setPage(1); }}>
                             <SelectTrigger className="h-10 bg-card"><SelectValue placeholder="State" /></SelectTrigger>
-                            <SelectContent><SelectItem value="all">All states</SelectItem>{(filterOptions.states || []).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                            <SelectContent><SelectItem value="all">All</SelectItem>{(filterOptions.states || []).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
                     <div className="flex flex-col gap-2 border-t border-border/70 pt-3 sm:flex-row sm:items-center">
@@ -344,8 +344,8 @@ export function RetailerManagementPage() {
                 <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && !actionLoading && setEditing(null)}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Edit retailer</DialogTitle>
-                            <DialogDescription>Update the retailer profile details.</DialogDescription>
+                            <DialogTitle>Edit Retailer</DialogTitle>
+                            <DialogDescription>Update retailer profile details.</DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-3 sm:grid-cols-2">
                             {["name", "businessName", "company", "email", "phone", "city", "state"].map((field) => (
@@ -356,17 +356,17 @@ export function RetailerManagementPage() {
                                 </label>
                             ))}
                         </div>
-                        <DialogFooter><Button variant="outline" onClick={() => setEditing(null)} disabled={actionLoading}>Cancel</Button><Button onClick={saveEdit} disabled={actionLoading}>{actionLoading ? "Saving..." : "Save changes"}</Button></DialogFooter>
+                        <DialogFooter><Button variant="outline" onClick={() => setEditing(null)} disabled={actionLoading}>Cancel</Button><Button onClick={saveEdit} disabled={actionLoading}>{actionLoading ? "Saving..." : "Save"}</Button></DialogFooter>
                     </DialogContent>
                 </Dialog>
                 <Dialog open={Boolean(changingWholesaler)} onOpenChange={(open) => !open && setChangingWholesaler(null)}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Change wholesaler</DialogTitle>
-                            <DialogDescription>Select an active wholesaler. The change is blocked when unfinished orders remain with the current wholesaler.</DialogDescription>
+                            <DialogTitle>Change Wholesaler</DialogTitle>
+                            <DialogDescription>Select an active wholesaler. Blocked if active orders remain.</DialogDescription>
                         </DialogHeader>
                         <Select value={selectedWholesalerId} onValueChange={setSelectedWholesalerId}>
-                            <SelectTrigger><SelectValue placeholder="Select active wholesaler" /></SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Choose wholesaler" /></SelectTrigger>
                             <SelectContent>{activeWholesalers.filter((row) => String(row.id) !== String(changingWholesaler?.wholesaler?.id)).map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.businessName || row.name}</SelectItem>)}</SelectContent>
                         </Select>
                         <DialogFooter>

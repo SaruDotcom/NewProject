@@ -231,10 +231,10 @@ export function KycManagementPage() {
   };
 
   const filterTabs = [
-    { id: "all", label: "All Requests", count: counts.total },
+    { id: "all", label: "All", count: counts.total },
     {
       id: "PENDING",
-      label: "Pending Review",
+      label: "Pending",
       count: counts.pending,
       badgeColor:
         counts.pending > 0
@@ -249,7 +249,7 @@ export function KycManagementPage() {
     },
     {
       id: "RESUBMISSION_REQUIRED",
-      label: "Resubmit Requested",
+      label: "Resubmission",
       count: counts.resubmit,
       badgeColor: "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20",
     },
@@ -283,7 +283,7 @@ export function KycManagementPage() {
               KYC Review
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Review wholesaler identity, tax credentials, and business registrations before enabling catalog creation.
+              Review wholesaler identity and business documents.
             </p>
           </div>
 
@@ -315,7 +315,7 @@ export function KycManagementPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Total Dossiers
+                Total Applications
               </span>
               <div className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200">
                 <Building2 className="size-4" />
@@ -436,7 +436,7 @@ export function KycManagementPage() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search business, owner, PAN, or GSTIN..."
+                placeholder="Search KYC applications..."
                 className="pl-9 pr-8 text-sm shadow-none h-9.5 bg-background border-border/80 focus-visible:ring-1 focus-visible:ring-primary"
               />
               {search && (

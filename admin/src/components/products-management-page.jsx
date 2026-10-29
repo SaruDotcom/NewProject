@@ -73,8 +73,8 @@ export function ProductsManagementPage() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Product Management"
-          description="Control catalog quality, stock visibility, and marketplace listings."
+          title="Products"
+          description="Manage catalog quality, stock, and listings."
           action={
             <div className="flex gap-2">
               <Button variant="outline" onClick={exportCsv}>
@@ -96,7 +96,7 @@ export function ProductsManagementPage() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search product name or SKU..."
+                placeholder="Search by name or SKU..."
                 className="pl-9"
               />
             </div>

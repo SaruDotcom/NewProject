@@ -218,8 +218,8 @@ export function CategoriesManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Category Catalog Management"
-        description="Organize catalog categories with visual cards, images, and hierarchy settings."
+        title="Categories"
+        description="Organize marketplace categories and hierarchy."
         action={
           <div className="flex items-center gap-2">
             {/* View Mode Toggle */}
@@ -229,9 +229,9 @@ export function CategoriesManagementPage() {
                 size="sm"
                 className="h-8 px-2.5 text-xs font-bold"
                 onClick={() => setViewMode("GRID")}
-                title="Grid Cards View"
+                title="Grid View"
               >
-                <LayoutGrid className="mr-1.5 size-3.5" /> Grid Cards
+                <LayoutGrid className="mr-1.5 size-3.5" /> Grid
               </Button>
               <Button
                 variant={viewMode === "TABLE" ? "secondary" : "ghost"}
@@ -273,7 +273,7 @@ export function CategoriesManagementPage() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search category name..."
+              placeholder="Search categories..."
               className="pl-9"
             />
           </div>
@@ -286,11 +286,11 @@ export function CategoriesManagementPage() {
             }}
           >
             <SelectTrigger className="w-full lg:w-48">
-              <SelectValue placeholder="Parent Filter" />
+              <SelectValue placeholder="Parent" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              <SelectItem value="root">Root categories only</SelectItem>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="root">Root only</SelectItem>
               {filters.parents.map((item) => (
                 <SelectItem key={item._id} value={String(item._id)}>
                   {item.displayPath || item.name}
@@ -485,7 +485,7 @@ export function CategoriesManagementPage() {
               <Input
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="e.g. Electronics, Women Ethnic, Footwear..."
+                placeholder="Category name"
                 required
               />
             </div>
@@ -498,10 +498,10 @@ export function CategoriesManagementPage() {
                 onValueChange={(value) => setForm((current) => ({ ...current, parent: value === "none" ? "" : value }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Parent category" />
+                  <SelectValue placeholder="Choose parent" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Root Category (No Parent)</SelectItem>
+                  <SelectItem value="none">Root (No Parent)</SelectItem>
                   {filters.parents
                     .filter((item) => String(item._id) !== String(editing?.id))
                     .map((item) => (
@@ -522,7 +522,7 @@ export function CategoriesManagementPage() {
               <Input
                 value={form.imageUrl}
                 onChange={(event) => setForm((current) => ({ ...current, imageUrl: event.target.value }))}
-                placeholder="https://images.unsplash.com/photo-..."
+                placeholder="https://..."
               />
               {form.imageUrl && (
                 <div className="mt-2 relative h-24 w-full rounded-xl overflow-hidden border bg-muted">
@@ -548,7 +548,7 @@ export function CategoriesManagementPage() {
                 rows={3}
                 value={form.description}
                 onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                placeholder="Short description for retail catalog & store front..."
+                placeholder="Category description..."
                 className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 resize-none"
               />
             </div>
@@ -559,7 +559,7 @@ export function CategoriesManagementPage() {
               Cancel
             </Button>
             <Button onClick={save} disabled={saving} className="rounded-xl font-bold">
-              {saving ? "Saving..." : "Save Category"}
+              {saving ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -570,7 +570,7 @@ export function CategoriesManagementPage() {
         open={Boolean(confirmation)}
         title={`Delete ${confirmation?.name || "category"}?`}
         description="Categories with active products or subcategories cannot be deleted."
-        confirmLabel="Delete Category"
+        confirmLabel="Delete"
         variant="destructive"
         onCancel={() => !saving && setConfirmation(null)}
         onConfirm={remove}

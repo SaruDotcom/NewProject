@@ -337,7 +337,7 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
 
       <div className="mt-6 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center">
         <Input
-          placeholder="Search connected products..."
+          placeholder="Search products..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="sm:max-w-md"
@@ -360,7 +360,7 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
           {!isAllSelected &&
             selectedCategories.map((cat) => (
               <Badge key={cat} variant="secondary" className="gap-1 rounded-md">
-                Category: {cat}
+                {cat}
                 <button onClick={() => handleToggleCategory(cat)} className="ml-1 font-bold hover:text-destructive">×</button>
               </Badge>
             ))}
@@ -1032,7 +1032,7 @@ export function WholesalersPage() {
 export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }) {
   const { linkedWholesalerId, linkedWholesaler, products } = useStore();
   const targetId = wholesalerId || linkedWholesalerId;
-  const w = linkedWholesaler && (!targetId || linkedWholesaler.id === targetId || targetId === "connected-wholesaler") ? linkedWholesaler : linkedWholesaler;
+  const w = linkedWholesaler && (!targetId || linkedWholesaler.id === targetId || targetId === "connected-wholesaler") ? linkedWholesaler : null;
   if (!w) {
     return (
       <main className="shell py-16 text-center">
@@ -1046,7 +1046,7 @@ export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }
   const productCategories = Array.from(new Set(visibleProducts.map((item) => item.category).filter(Boolean)));
 
   return (
-    <main className="min-h-screen bg-canvas pb-16">
+    <main className="storefront-theme min-h-screen bg-canvas pb-16" data-store-theme={w.activeStoreTheme || "DEFAULT"}>
       {/* Dark Header Section with Subtle Radial Gradient */}
       <section className="relative overflow-hidden border-b border-primary/20 bg-gradient-to-br from-ink via-ink/95 to-ink/90 text-primary-foreground shadow-lg">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent opacity-70 pointer-events-none" />
@@ -1195,7 +1195,7 @@ export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }
             </div>
 
             {/* Product Grid with Premium Cards */}
-            <ProductGrid products={visibleProducts.slice(0, 8)} premium />
+            <ProductGrid products={visibleProducts.slice(0, 8)} premium className="storefront-featured-products" />
 
             <Button asChild size="lg" className="mt-8 rounded-xl font-bold shadow-md">
               <Link to="/products">
@@ -1269,7 +1269,7 @@ export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }
 
 export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }) {
   const { relationships, linkedWholesaler, products } = useStore();
-  const w = linkedWholesaler && (!wholesalerId || linkedWholesaler.id === wholesalerId || wholesalerId === "connected-wholesaler") ? linkedWholesaler : linkedWholesaler;
+  const w = linkedWholesaler && (!wholesalerId || linkedWholesaler.id === wholesalerId || wholesalerId === "connected-wholesaler") ? linkedWholesaler : null;
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -1362,7 +1362,7 @@ export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }
   }
 
   return (
-    <main className="min-h-screen bg-canvas pb-20">
+    <main className="storefront-theme min-h-screen bg-canvas pb-20" data-store-theme={w.activeStoreTheme || "DEFAULT"}>
       {/* 1. Wholesaler Business Profile Header (Full-width Banner Strip) */}
       <section className="relative overflow-hidden bg-gradient-to-br from-ink via-ink/95 to-ink/90 text-primary-foreground border-b border-primary/20 shadow-lg">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/25 via-transparent to-transparent opacity-80 pointer-events-none" />
@@ -1591,7 +1591,7 @@ export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }
               </div>
 
               {/* Product Grid with Stagger Fade Animation */}
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+              <div className="storefront-featured-products grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
                 {catProds.map((p, index) => (
                   <div
                     key={p.id}

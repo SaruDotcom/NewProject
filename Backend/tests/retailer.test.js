@@ -17,6 +17,7 @@ const {
   Wallet,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS, RELATIONSHIP_STATUS } = require('../src/config/constants');
+const AuthService = require('../src/modules/auth/auth.service');
 
 setupTestDB();
 
@@ -56,6 +57,7 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
       commissionRate: 5.0,
       minOrderValue: 100,
     });
+    wholesalerToken = AuthService.generateTokens(wholesalerUser).accessToken;
 
     // 3. Retailer User & Profile
     const retHash = await User.hashPassword('Retailer123');
@@ -198,13 +200,60 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
 
   describe('2. Storefront, Catalog & Products', () => {
     it('should get connected wholesaler storefront and catalog', async () => {
+      const themeUpdateRes = await request(app)
+        .patch('/api/v1/wholesaler/profile')
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({ activeStoreTheme: 'ROYAL' });
+      expect(themeUpdateRes.status).toBe(200);
+      expect(themeUpdateRes.body.data.profile.activeStoreTheme).toBe('ROYAL');
+
+      const connectedWholesalerRes = await request(app)
+        .get('/api/v1/retailer/wholesaler')
+        .set('Authorization', `Bearer ${retailerToken}`);
+      expect(connectedWholesalerRes.status).toBe(200);
+      expect(connectedWholesalerRes.body.data.activeStoreTheme).toBe('ROYAL');
+
       const storeRes = await request(app)
         .get('/api/v1/retailer/store')
         .set('Authorization', `Bearer ${retailerToken}`);
 
       expect(storeRes.status).toBe(200);
       expect(storeRes.body.data.wholesaler.businessName).toBe('Alpha Wholesale Corp');
+      expect(storeRes.body.data.wholesaler.activeStoreTheme).toBe('ROYAL');
       expect(storeRes.body.data.productsCount).toBe(1);
+
+      const themeSwitchRes = await request(app)
+        .patch('/api/v1/wholesaler/profile')
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({ activeStoreTheme: 'MINIMAL' });
+      expect(themeSwitchRes.status).toBe(200);
+      const switchedThemeRes = await request(app)
+        .get('/api/v1/retailer/wholesaler')
+        .set('Authorization', `Bearer ${retailerToken}`);
+      expect(switchedThemeRes.body.data.activeStoreTheme).toBe('MINIMAL');
+
+      const anotherWholesaler = await User.create({
+        name: 'Beta Wholesale Corp',
+        email: 'beta@wholesaler.com',
+        passwordHash: await User.hashPassword('Wholesaler123'),
+        role: ROLES.WHOLESALER,
+        status: USER_STATUS.ACTIVE,
+      });
+      await WholesalerProfile.create({
+        userId: anotherWholesaler._id,
+        businessName: 'Beta Wholesale Corp',
+        activeStoreTheme: 'FESTIVE',
+      });
+      await WholesalerRetailerRelationship.create({
+        wholesalerId: anotherWholesaler._id,
+        retailerId: retailerUser2._id,
+        status: RELATIONSHIP_STATUS.ACTIVE,
+      });
+      const otherRetailerWholesalerRes = await request(app)
+        .get('/api/v1/retailer/wholesaler')
+        .set('Authorization', `Bearer ${retailerToken2}`);
+      expect(otherRetailerWholesalerRes.status).toBe(200);
+      expect(otherRetailerWholesalerRes.body.data.activeStoreTheme).toBe('FESTIVE');
 
       const catRes = await request(app)
         .get('/api/v1/retailer/categories')

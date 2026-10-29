@@ -22,8 +22,8 @@ class AuditService {
       let userAgent = '';
 
       if (req) {
-        ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
-        userAgent = req.headers['user-agent'] || '';
+        ipAddress = req.ip || req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '';
+        userAgent = req.headers?.['user-agent'] || '';
         if (!actorId && req.user) {
           actorId = req.user._id;
           actorRole = req.user.role;

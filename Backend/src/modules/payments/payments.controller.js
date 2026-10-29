@@ -14,12 +14,14 @@ module.exports = {
   }),
 
   getRetailerOptions: asyncHandler(async (req, res) => {
-    const options = await PaymentsService.getRetailerPaymentOptions(req.user._id);
+    const wholesalerId = req.query.wholesalerId || req.query.wholesaler || null;
+    const options = await PaymentsService.getRetailerPaymentOptions(req.user._id, wholesalerId);
     return ApiResponse.success(res, options, 'Wholesaler payment options retrieved');
   }),
 
   createRetailerQrSession: asyncHandler(async (req, res) => {
-    const session = await PaymentsService.createRetailerQrSession(req.user._id);
+    const wholesalerId = req.body?.wholesalerId || req.query?.wholesalerId || req.query?.wholesaler || null;
+    const session = await PaymentsService.createRetailerQrSession(req.user._id, wholesalerId);
     res.set('Cache-Control', 'no-store');
     return ApiResponse.success(res, session, 'Payment QR session created');
   }),

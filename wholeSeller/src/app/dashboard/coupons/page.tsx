@@ -227,10 +227,10 @@ export default function CouponsPage() {
             <span className="p-2 bg-tradeflow-green-50 text-green-700 rounded-xl font-bold">
               <Ticket className="w-6 h-6" />
             </span>
-            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Coupons & Offers</h1>
+            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Coupons</h1>
           </div>
           <p className="mt-1 text-sm text-gray-500">
-            Create and manage promotional discount coupons for your connected retailers to boost sales.
+            Create and manage discount coupons for retailers.
           </p>
         </div>
 
@@ -239,7 +239,7 @@ export default function CouponsPage() {
           className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-tradeflow-green hover:bg-tradeflow-green-hover text-tradeflow-navy font-bold rounded-xl shadow-md transition-all transform hover:scale-[1.02]"
         >
           <Plus className="w-5 h-5" />
-          <span>Create New Coupon</span>
+          <span>Add Coupon</span>
         </button>
       </div>
 
@@ -287,7 +287,7 @@ export default function CouponsPage() {
                 : 'text-gray-600 hover:text-tradeflow-navy'
             }`}
           >
-            All Coupons ({coupons.length})
+            All ({coupons.length})
           </button>
           <button
             onClick={() => setActiveTab('ACTIVE')}
@@ -315,7 +315,7 @@ export default function CouponsPage() {
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search coupon code or title..."
+            placeholder="Search coupons..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-xs border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-tradeflow-green/20 focus:border-tradeflow-green"
@@ -346,7 +346,7 @@ export default function CouponsPage() {
               className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl text-xs"
             >
               <Plus className="w-4 h-4" />
-              Create First Coupon
+              Add Coupon
             </button>
           )}
         </div>

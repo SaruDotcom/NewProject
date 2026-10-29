@@ -22,6 +22,8 @@ import {
   Ticket,
   FileText,
   QrCode,
+  BookOpen,
+  Palette,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
@@ -36,6 +38,8 @@ const NAV_ITEMS = [
   { name: 'Retailers', path: '/dashboard/retailers', icon: Users },
   { name: 'Credit Policy', path: '/dashboard/credit-policy', icon: HandCoins, badge: 'Credit' },
   { name: 'Payment Settings', path: '/dashboard/payment-settings', icon: QrCode },
+  { name: 'Store Theme', path: '/dashboard/store-theme', icon: Palette },
+  { name: 'Khata Book', path: '/dashboard/khata-book', icon: BookOpen },
   { name: 'Coupons & Offers', path: '/dashboard/coupons', icon: Ticket, badge: 'Offers' },
   { name: 'Retailer Banner Slides', path: '/dashboard/banner-slides', icon: Sliders, badge: 'New' },
   { name: 'Orders', path: '/dashboard/orders', icon: ShoppingBag, badge: 'New' },

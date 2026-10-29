@@ -53,12 +53,25 @@ describe('Wholesaler referral-only retailer registration', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.wholesaler).toEqual({
+      _id: String(wholesaler._id),
+      id: String(wholesaler._id),
+      wholesalerId: String(wholesaler._id),
       businessName: 'Safe Business Name',
       logo: 'https://example.test/logo.png',
       city: 'Pune',
       categories: [],
+      activeStoreTheme: 'DEFAULT',
     });
-    expect(Object.keys(response.body.data.wholesaler).sort()).toEqual(['businessName', 'categories', 'city', 'logo']);
+    expect(Object.keys(response.body.data.wholesaler).sort()).toEqual([
+      '_id',
+      'activeStoreTheme',
+      'businessName',
+      'categories',
+      'city',
+      'id',
+      'logo',
+      'wholesalerId',
+    ]);
     expect(JSON.stringify(response.body)).not.toMatch(/Private Owner Name|private-owner@example\.test|9876543210|gstin|kyc/i);
   });
 

@@ -159,8 +159,8 @@ export function ReportsManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title=" Reports & Analytics"
-        description="Comprehensive business analytics, tax ledgers, payout logs, top earners, and sales performance."
+        title="Reports"
+        description="Track sales, tax ledgers, payouts, and performance."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Select value={days} onValueChange={setDays}>
@@ -176,7 +176,7 @@ export function ReportsManagementPage() {
             </Select>
 
             <Button variant="outline" onClick={exportCurrentTabCsv}>
-              <Download className="size-4 mr-1.5" /> Export CSV
+              <Download className="size-4 mr-1.5" /> Export
             </Button>
             <Button variant="outline" onClick={() => setRefreshKey((prev) => prev + 1)}>
               <RefreshCw className="size-4 mr-1.5" /> Refresh
@@ -187,7 +187,7 @@ export function ReportsManagementPage() {
 
       {loading ? (
         <div className="p-12 text-center rounded-xl border border-dashed bg-card text-sm text-muted-foreground">
-          Loading report analytics and tax ledgers...
+          Loading reports...
         </div>
       ) : error ? (
         <div className="p-6 rounded-xl border border-destructive/30 bg-destructive/5 text-sm text-destructive">
@@ -198,27 +198,27 @@ export function ReportsManagementPage() {
           <TabsList className="flex h-auto w-full justify-start overflow-x-auto rounded-xl border bg-card p-1 shadow-xs">
             <TabsTrigger value="sales" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
               <TrendingUp className="size-4 text-primary" />
-              <span>Sales Report</span>
+              <span>Sales</span>
             </TabsTrigger>
             <TabsTrigger value="products" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
               <Package className="size-4 text-status-info" />
-              <span>Products Report</span>
+              <span>Products</span>
             </TabsTrigger>
             <TabsTrigger value="gst" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
               <FileText className="size-4 text-emerald-600" />
-              <span>GST Report (18%)</span>
+              <span>GST</span>
             </TabsTrigger>
             <TabsTrigger value="tds" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
               <Percent className="size-4 text-amber-600" />
-              <span>TDS Report (Sec 194-O)</span>
+              <span>TDS</span>
             </TabsTrigger>
             <TabsTrigger value="earners" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
               <Award className="size-4 text-amber-600" />
-              <span>Top Earners & Buyers</span>
+              <span>Top Earners</span>
             </TabsTrigger>
             <TabsTrigger value="payouts" className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold">
               <CreditCard className="size-4 text-blue-600" />
-              <span>Payouts Report</span>
+              <span>Payouts</span>
             </TabsTrigger>
           </TabsList>
 
