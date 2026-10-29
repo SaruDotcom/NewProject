@@ -831,6 +831,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshCatalog = useCallback(async () => {
+    const token = getAuthToken();
+    const userId =
+      currentUser?.id ||
+      localStorage.getItem("nexora_retailer_user_id");
+    if (!token || !userId) return;
+
+    try {
+      const [productsRes, categoriesRes] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: retailerQueryKeys.resource(userId, "products"),
+          queryFn: () => api.getProducts({ limit: 200 }),
+        }),
+        queryClient.fetchQuery({
+          queryKey: retailerQueryKeys.resource(userId, "categories"),
+          queryFn: () => api.getCategories({ limit: 200 }),
+        }),
+      ]);
+      const nextCategories = Array.isArray(categoriesRes?.data)
+        ? categoriesRes.data.map(mapCategory)
+        : [];
+      setCategories(nextCategories);
+
+      const categoryMap = new Map<string, string>();
+      nextCategories.forEach((category) => {
+        categoryMap.set(category.id, category.name);
+        categoryMap.set(category.id.toLowerCase(), category.name);
+        categoryMap.set(category.name, category.name);
+        categoryMap.set(category.name.toLowerCase(), category.name);
+      });
+
+      const nextProducts = Array.isArray(productsRes?.data)
+        ? productsRes.data.map((item, index) => {
+            const product = mapProduct(item, index, categoryMap);
+            return {
+              ...product,
+              wholesalerId:
+                product.wholesalerId === "connected-wholesaler"
+                  ? linkedWholesaler?.id || ""
+                  : product.wholesalerId,
+            };
+          })
+        : [];
+      setProducts(nextProducts);
+    } catch (error) {
+      console.warn("Could not refresh the retailer catalog", error);
+    }
+  }, [currentUser?.id, linkedWholesaler?.id, queryClient]);
+
   useEffect(() => {
     void syncSession();
 
@@ -841,10 +890,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const themeInterval = setInterval(() => {
       void refreshLinkedWholesaler();
     }, 60000);
+    const catalogInterval = setInterval(() => {
+      void refreshCatalog();
+    }, 30000);
 
     const handleFocus = () => {
+      if (document.visibilityState === "hidden") return;
       void refreshOrders();
       void refreshLinkedWholesaler();
+      void refreshCatalog();
     };
 
     window.addEventListener("focus", handleFocus);
@@ -853,10 +907,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       clearInterval(interval);
       clearInterval(themeInterval);
+      clearInterval(catalogInterval);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [syncSession, refreshOrders, refreshLinkedWholesaler]);
+  }, [syncSession, refreshOrders, refreshLinkedWholesaler, refreshCatalog]);
 
   const linkedWholesalerId = linkedWholesaler?.id || "";
   const unread = notifications.filter((item) => item.unread).length;

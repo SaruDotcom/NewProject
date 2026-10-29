@@ -9,7 +9,8 @@ export default function WalletPage() {
   const { profile } = useWholesaler();
   const walletQuery = useQuery({
     queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'wallet'),
-    staleTime: 30 * 1000,
+    staleTime: 0,
+    gcTime: 0,
     queryFn: async () => {
       const [walletRes, txRes] = await Promise.all([
         api.getWallet(),

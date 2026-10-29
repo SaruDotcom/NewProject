@@ -181,12 +181,16 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-options"),
     queryFn: async () => (await api.getRetailerPaymentOptions()).data,
     enabled: Boolean(currentUser?.id),
+    staleTime: 0,
+    gcTime: 0,
   });
   const options = paymentOptionsQuery.data;
   const reportsQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-reports"),
     queryFn: async () => (await api.getRetailerPaymentReports()).data || [],
     enabled: Boolean(currentUser?.id),
+    staleTime: 0,
+    gcTime: 0,
   });
 
   useEffect(() => {
@@ -1065,7 +1069,8 @@ export function CheckoutPage() {
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", `payment-options-${currentWholesalerId || "default"}`),
     queryFn: async () => (await api.getRetailerPaymentOptions(currentWholesalerId || undefined)).data,
     enabled: Boolean(currentUser?.id),
-    staleTime: 30000,
+    staleTime: 0,
+    gcTime: 0,
     refetchOnMount: "always",
   });
   const paymentOptions = paymentOptionsQuery.data;

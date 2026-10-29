@@ -53,6 +53,8 @@ export default function KycPage() {
     queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'kyc'),
     queryFn: () => api.getMyKyc(),
     enabled: Boolean(profile.id),
+    staleTime: 0,
+    gcTime: 0,
   });
   const loading = kycQuery.isLoading;
 

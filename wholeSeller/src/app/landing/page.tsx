@@ -138,7 +138,7 @@ function AuthModal({
         aria-labelledby="auth-modal-heading"
         className="relative max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white shadow-2xl"
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-tradeflow-gray-200 bg-white/95 px-5 py-3 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-tradeflow-gray-200 bg-white/95 px-5 py-3 pr-14 backdrop-blur">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-tradeflow-green">Welcome to {BRAND_NAME}</p>
             <h2 id="auth-modal-heading" className="text-lg font-extrabold text-tradeflow-navy">
@@ -154,8 +154,8 @@ function AuthModal({
               <div className="mt-2 grid grid-cols-2 gap-1.5"><div className="rounded-md border bg-white p-2"><span className="block h-7 rounded bg-amber-100" /><span className="mt-1 block h-1.5 w-4/5 rounded bg-gray-200" /></div><div className="rounded-md border bg-white p-2"><span className="block h-7 rounded bg-sky-100" /><span className="mt-1 block h-1.5 w-4/5 rounded bg-gray-200" /></div></div>
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close sign-in dialog" className="rounded-full p-2 text-tradeflow-navy hover:bg-tradeflow-gray-100">
-            <X className="size-5" />
+          <button type="button" onClick={onClose} aria-label="Close sign-in dialog" className="absolute right-3 top-2 z-40 rounded-full p-2 text-tradeflow-navy hover:bg-tradeflow-gray-100">
+            <span aria-hidden="true" className="text-2xl leading-5">×</span>
           </button>
         </div>
         {tab === 'welcome' ? (
@@ -218,6 +218,7 @@ function LandingContent() {
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [subscriptionPlanError, setSubscriptionPlanError] = useState('');
   const [subscriptionPlanLoading, setSubscriptionPlanLoading] = useState(true);
+  const authPopupHandled = useRef(false);
   const loggedIn = authStatus === 'loggedIn';
   const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
 
@@ -324,22 +325,33 @@ function LandingContent() {
 
   useEffect(() => {
     if (authStatus !== 'loggedOut' || modalTab !== null) return;
-    let lastDismissedAt = 0;
+    if (authPopupHandled.current) return;
     try {
-      lastDismissedAt = Number(localStorage.getItem('wholesaler-auth-dismissed-at') || 0);
+      if (sessionStorage.getItem('wholesaler-auth-popup-shown') === 'true') {
+        authPopupHandled.current = true;
+        return;
+      }
     } catch (error) {
-      console.error('Unable to read the authentication dialog dismissal.', error);
+      console.error('Unable to read the authentication dialog session state.', error);
     }
-    if (lastDismissedAt && Date.now() - lastDismissedAt < 24 * 60 * 60 * 1000) return;
-    const timer = window.setTimeout(() => setModalTab('welcome'), 3000);
+    const timer = window.setTimeout(() => {
+      authPopupHandled.current = true;
+      try {
+        sessionStorage.setItem('wholesaler-auth-popup-shown', 'true');
+      } catch (error) {
+        console.error('Unable to save the authentication dialog session state.', error);
+      }
+      setModalTab('welcome');
+    }, 3000);
     return () => window.clearTimeout(timer);
   }, [authStatus, modalTab]);
 
   const dismissModal = () => {
+    authPopupHandled.current = true;
     try {
-      localStorage.setItem('wholesaler-auth-dismissed-at', String(Date.now()));
+      sessionStorage.setItem('wholesaler-auth-popup-shown', 'true');
     } catch (error) {
-      console.error('Unable to save the authentication dialog dismissal.', error);
+      console.error('Unable to save the authentication dialog session state.', error);
     }
     setModalTab(null);
   };
@@ -350,6 +362,12 @@ function LandingContent() {
   };
 
   const showModal = (tab: 'register' | 'login') => {
+    authPopupHandled.current = true;
+    try {
+      sessionStorage.setItem('wholesaler-auth-popup-shown', 'true');
+    } catch (error) {
+      console.error('Unable to save the authentication dialog session state.', error);
+    }
     setModalTab(tab);
     setMobileMenuOpen(false);
   };

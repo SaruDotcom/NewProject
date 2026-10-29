@@ -129,7 +129,10 @@ export default function RetailersPage() {
   const [isReferralLoading, setIsReferralLoading] = useState(true);
   const [isReferralUpdating, setIsReferralUpdating] = useState(false);
   const [referralError, setReferralError] = useState('');
-  const retailerAppOrigin = new URL(import.meta.env.VITE_RETAILER_URL || 'http://localhost:5174').origin;
+  const retailerAppOrigin = new URL(
+    import.meta.env.VITE_RETAILER_URL ||
+      (import.meta.env.DEV ? 'http://localhost:5174' : window.location.origin),
+  ).origin;
   const referralUrl = referral
     ? `${retailerAppOrigin}/?ref=${encodeURIComponent(referral.code)}`
     : '';

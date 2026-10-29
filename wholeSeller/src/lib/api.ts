@@ -223,6 +223,7 @@ export function getAuthToken(): string | null {
 }
 
 export function setAuthToken(token: string) {
+  if (getAuthToken() !== token) queryClient.clear();
   if (typeof window === 'undefined') return;
   localStorage.setItem(TOKEN_KEY, token);
 }
@@ -239,32 +240,46 @@ function invalidateMutation(endpoint: string) {
   const userId = getWholesalerId();
   if (userId === 'unknown') return;
 
-  let resources: string[] = [];
-  if (path.startsWith('/support/tickets')) resources = ['support'];
-  else if (path.startsWith('/wholesaler/products')) resources = ['products', 'inventory', 'analytics'];
-  else if (path.startsWith('/wholesaler/categories')) resources = ['categories', 'products'];
-  else if (path.startsWith('/orders/returns') || path.startsWith('/wholesaler/returns')) resources = ['returns', 'orders', 'wallet'];
-  else if (path.startsWith('/wholesaler/orders') || path.startsWith('/orders/')) resources = ['orders', 'analytics', 'wallet'];
-  else if (path.startsWith('/wholesaler/retailers')) resources = ['retailers', 'credit-overview'];
-  else if (path.startsWith('/wholesaler/inventory')) resources = ['inventory', 'products', 'analytics'];
-  else if (path.startsWith('/wholesaler/kyc')) resources = ['kyc'];
-  else if (path.startsWith('/wholesaler/coupons')) resources = ['coupons'];
-  else if (path.startsWith('/wholesaler/credit-policy')) resources = ['credit-overview'];
-  else if (path.startsWith('/payouts/')) resources = ['wallet'];
-  else if (path.startsWith('/reviews')) resources = ['reviews'];
-  else if (path.startsWith('/notifications')) resources = ['notifications'];
-  else if (path.startsWith('/wholesaler/invite-links')) resources = ['invite-links'];
-
-  resources.forEach((resource) => {
+  getWholesalerResources(path).forEach((resource) => {
     void queryClient.invalidateQueries({
       queryKey: wholesalerQueryKeys.resource(userId, resource),
     });
   });
 }
 
+function getWholesalerResources(path: string): string[] {
+  if (path.startsWith('/support/tickets')) return ['support'];
+  if (path.startsWith('/wholesaler/products')) return ['products', 'inventory', 'analytics'];
+  if (path.startsWith('/wholesaler/categories')) return ['categories', 'products'];
+  if (path.startsWith('/orders/returns') || path.startsWith('/wholesaler/returns')) return ['returns', 'orders', 'wallet'];
+  if (path.startsWith('/wholesaler/orders') || path.startsWith('/orders/')) return ['orders', 'analytics', 'wallet'];
+  if (path.startsWith('/wholesaler/retailers')) return ['retailers', 'credit-overview'];
+  if (path.startsWith('/wholesaler/inventory')) return ['inventory', 'products', 'analytics'];
+  if (path.startsWith('/wholesaler/banners') || path.startsWith('/wholesaler/store-theme')) return ['banners', 'products'];
+  if (path.startsWith('/wholesaler/profile')) return ['profile'];
+  if (path.startsWith('/wholesaler/khata-book')) return ['khata-book'];
+  if (path.startsWith('/wholesaler/referral')) return ['referral'];
+  if (path.startsWith('/wholesaler/kyc')) return ['kyc'];
+  if (path.startsWith('/wholesaler/coupons')) return ['coupons'];
+  if (path.startsWith('/wholesaler/credit-policy') || path.startsWith('/wholesaler/credit-overview')) return ['credit-overview'];
+  if (path.startsWith('/payouts/') || path.startsWith('/wallets/')) return ['wallet'];
+  if (path.startsWith('/reviews')) return ['reviews'];
+  if (path.startsWith('/notifications')) return ['notifications'];
+  if (path.startsWith('/wholesaler/invite-links')) return ['invite-links'];
+  if (path.startsWith('/wholesaler/subscription')) return ['subscription'];
+  return ['api'];
+}
+
+function isUncachedWholesalerRead(path: string): boolean {
+  return path.startsWith('/auth/') ||
+    /\/(payment|payments|payout|payouts|wallet|wallets|kyc|security|documents?)(\/|$|-)/i.test(path);
+}
+
 export async function request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = buildApiUrl(endpoint);
   const token = getAuthToken();
+  const method = (options.method || 'GET').toUpperCase();
+  const path = endpoint.split('?')[0];
 
   const headers: Record<string, string> = {
     ...(typeof FormData !== 'undefined' && options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -276,34 +291,55 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  const fetchResponse = async (): Promise<T> => {
+    const response = await fetch(url, {
+      ...options,
+      cache: 'no-store',
+      headers,
+    });
 
-  const isJson = response.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await response.json() : null;
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await response.json() : null;
 
-  if (!response.ok) {
-    if (
-      response.status === 401 &&
-      typeof window !== 'undefined' &&
-      !endpoint.startsWith('/auth/')
-    ) {
-      clearAuthToken();
-      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
-        window.location.href = '/login?expired=1';
+    if (!response.ok) {
+      if (
+        response.status === 401 &&
+        typeof window !== 'undefined' &&
+        !endpoint.startsWith('/auth/')
+      ) {
+        clearAuthToken();
+        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+          window.location.href = '/login?expired=1';
+        }
       }
+      const errorMsg = data?.message || `HTTP ${response.status}: ${response.statusText}`;
+      throw new ApiError(errorMsg, response.status, data?.code, data?.errors);
     }
-    const errorMsg = data?.message || `HTTP ${response.status}: ${response.statusText}`;
-    throw new ApiError(errorMsg, response.status, data?.code, data?.errors);
-  }
 
-  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
-    invalidateMutation(endpoint);
-  }
+    if (!['GET', 'HEAD'].includes(method)) invalidateMutation(endpoint);
+    return data as T;
+  };
 
-  return data;
+  if (!['GET', 'HEAD'].includes(method)) return fetchResponse();
+  if (path === '/subscription-plan') {
+    return queryClient.fetchQuery({
+      queryKey: ['public', 'subscription-plan'],
+      queryFn: fetchResponse,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+    });
+  }
+  if (!token || isUncachedWholesalerRead(path)) return fetchResponse();
+
+  const userId = getWholesalerId();
+  if (userId === 'unknown') return fetchResponse();
+  const resource = getWholesalerResources(path)[0];
+  return queryClient.fetchQuery({
+    queryKey: wholesalerQueryKeys.resource(userId, resource, endpoint),
+    queryFn: fetchResponse,
+    staleTime: 30 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
 }
 
 export const api = {

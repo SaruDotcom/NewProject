@@ -186,6 +186,10 @@ export function getAuthToken(): string | null {
 }
 
 export function setAuthToken(token: string) {
+  if (getAuthToken() !== token) {
+    queryClient.clear();
+    localStorage.removeItem(USER_ID_KEY);
+  }
   localStorage.setItem(TOKEN_KEY, token);
 }
 
@@ -200,27 +204,60 @@ function invalidateMutation(endpoint: string) {
   const userId = localStorage.getItem(USER_ID_KEY);
   if (!userId) return;
 
-  let resources: string[] = [];
-  if (path.startsWith('/retailer/cart')) resources = ['cart'];
-  else if (path.startsWith('/retailer/wishlist')) resources = ['wishlist'];
-  else if (path === '/retailer/checkout') resources = ['cart', 'orders', 'dashboard'];
-  else if (path.startsWith('/retailer/payments/reports')) resources = ['payment-reports', 'orders', 'credit'];
-  else if (path === '/retailer/credit-request') resources = ['credit'];
-  else if (path.startsWith('/retailer/orders')) resources = ['orders', 'dashboard'];
-  else if (path.startsWith('/retailer/returns')) resources = ['returns', 'orders'];
-  else if (path.startsWith('/retailer/profile')) resources = ['profile', 'dashboard'];
-  else if (path.startsWith('/retailer-identity/')) resources = ['profile', 'dashboard'];
-  else if (path.startsWith('/retailer/addresses')) resources = ['addresses'];
-  else if (path.startsWith('/retailer/notifications')) resources = ['notifications'];
-  else if (path.startsWith('/retailer/invitations')) resources = ['wholesaler', 'products', 'categories', 'dashboard'];
-  else if (path.startsWith('/support/tickets')) resources = ['support'];
-  else if (path.startsWith('/reviews')) resources = ['reviews'];
-
-  resources.forEach((resource) => {
+  getRetailerResources(path).forEach((resource) => {
     void queryClient.invalidateQueries({
       queryKey: retailerQueryKeys.resource(userId, resource),
     });
   });
+}
+
+function getRetailerResources(path: string): string[] {
+  if (path.startsWith("/retailer/cart")) return ["cart"];
+  if (path.startsWith("/retailer/wishlist")) return ["wishlist"];
+  if (path === "/retailer/checkout") return ["cart", "orders", "dashboard"];
+  if (path.startsWith("/retailer/payments/reports")) {
+    return ["payment-reports", "orders", "credit"];
+  }
+  if (path === "/retailer/credit-request") return ["credit"];
+  if (path.startsWith("/retailer/orders")) return ["orders", "dashboard"];
+  if (path.startsWith("/retailer/returns")) return ["returns", "orders"];
+  if (
+    path.startsWith("/retailer/profile") ||
+    path.startsWith("/retailer-identity/")
+  ) {
+    return ["profile", "dashboard"];
+  }
+  if (path.startsWith("/retailer/addresses")) return ["addresses"];
+  if (path.startsWith("/retailer/notifications")) return ["notifications"];
+  if (path.startsWith("/retailer/invitations")) {
+    return ["wholesaler", "products", "categories", "dashboard"];
+  }
+  if (path.startsWith("/support/tickets")) return ["support"];
+  if (path.startsWith("/reviews")) return ["reviews"];
+  if (path.startsWith("/retailer/dashboard")) return ["dashboard"];
+  if (
+    path.startsWith("/retailer/wholesaler") ||
+    path.startsWith("/retailer/store") ||
+    path.startsWith("/retailer/connections")
+  ) {
+    return ["wholesaler"];
+  }
+  if (path.startsWith("/retailer/categories")) return ["categories"];
+  if (path.startsWith("/retailer/products")) return ["products"];
+  if (path.startsWith("/retailer/coupons")) return ["coupons"];
+  if (path.startsWith("/retailer/credit-info")) return ["credit"];
+  return ["api"];
+}
+
+function isUncachedRetailerRead(path: string): boolean {
+  return (
+    path.startsWith("/auth/") ||
+    path.startsWith("/retailer-identity/") ||
+    /^\/retailer\/orders\/[^/]+/.test(path) ||
+    /\/(payment|payments|checkout|transaction|transactions|document|documents|aadhaar|pan)(\/|$|-)/i.test(
+      path,
+    )
+  );
 }
 
 export class ApiError extends Error {
@@ -247,48 +284,69 @@ function buildQueryString(params?: Record<string, string | number | boolean | nu
 async function request<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
   const token = getAuthToken();
+  const method = (options.method || "GET").toUpperCase();
+  const path = endpoint.split("?")[0];
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
-    headers['Content-Type'] = 'application/json';
+  if (!headers["Content-Type"] && !(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
   }
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    cache: 'no-store', // Prevent browser caching across sessions (critical for data isolation)
-    ...options,
-    headers,
-  });
+  const fetchResponse = async (): Promise<T> => {
+    const response = await fetch(url, {
+      cache: "no-store",
+      ...options,
+      headers,
+    });
 
-  const contentType = response.headers.get('content-type') || '';
-  const data = contentType.includes('application/json') ? await response.json() : null;
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await response.json()
+      : null;
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearAuthToken();
+    if (!response.ok) {
+      if (response.status === 401) clearAuthToken();
+      const validationDetails = Array.isArray(data?.errors)
+        ? data.errors
+            .map((item: { field?: string; message?: string }) =>
+              [item.field, item.message].filter(Boolean).join(": "),
+            )
+            .filter(Boolean)
+            .join("; ")
+        : "";
+      const errorMessage = validationDetails
+        ? `${data?.message || "Request validation failed"}: ${validationDetails}`
+        : data?.message || `HTTP ${response.status}: ${response.statusText}`;
+      throw new ApiError(errorMessage, response.status, data);
     }
-    const validationDetails = Array.isArray(data?.errors)
-      ? data.errors
-        .map((item: { field?: string; message?: string }) => [item.field, item.message].filter(Boolean).join(': '))
-        .filter(Boolean)
-        .join('; ')
-      : '';
-    const errorMessage = validationDetails
-      ? `${data?.message || 'Request validation failed'}: ${validationDetails}`
-      : data?.message || `HTTP ${response.status}: ${response.statusText}`;
-    throw new ApiError(errorMessage, response.status, data);
+
+    if (!["GET", "HEAD"].includes(method)) invalidateMutation(endpoint);
+    return (data ?? null) as T;
+  };
+
+  if (
+    !["GET", "HEAD"].includes(method) ||
+    !token ||
+    isUncachedRetailerRead(path)
+  ) {
+    return fetchResponse();
   }
 
-  if (!['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase())) {
-    invalidateMutation(endpoint);
-  }
-
-  return (data ?? null) as T;
+  const userId = localStorage.getItem(USER_ID_KEY);
+  if (!userId) return fetchResponse();
+  const resource = getRetailerResources(path)[0];
+  return queryClient.fetchQuery({
+    queryKey: retailerQueryKeys.resource(userId, resource, endpoint),
+    queryFn: fetchResponse,
+    staleTime: 30 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
 }
 
 export const api = {
@@ -309,7 +367,8 @@ export const api = {
           `/referral/${encodeURIComponent(normalizedCode)}`,
           { method: 'GET' },
         ),
-      staleTime: 0,
+      staleTime: 30_000,
+      gcTime: 10 * 60 * 1000,
       retry: false,
     });
   },
@@ -323,7 +382,8 @@ export const api = {
           `/referral/${encodeURIComponent(normalizedCode)}/products${buildQueryString(params)}`,
           { method: 'GET' },
         ),
-      staleTime: 60_000,
+      staleTime: 30_000,
+      gcTime: 10 * 60 * 1000,
       retry: false,
     });
   },
