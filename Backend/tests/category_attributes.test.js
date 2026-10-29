@@ -165,6 +165,21 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
   });
 
   test('Wholesaler category names are unique within their own categories', async () => {
+    await Category.create({ name: 'Clothes', slug: 'clothes' });
+
+    const firstCategory = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({
+        name: 'clothes',
+        description: 'clothes',
+        imageUrl: 'https://example.test/category.jpg',
+        parentId: null,
+      });
+
+    expect(firstCategory.status).toBe(201);
+    expect(String(firstCategory.body.data.wholesalerId)).toBe(String(wholesalerUser._id));
+
     const betaCategory = await request(app)
       .post('/api/v1/wholesaler/categories')
       .set('Authorization', `Bearer ${otherWholesalerToken}`)

@@ -22,7 +22,7 @@ import {
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Category } from '@/lib/types';
 import { CategoryCard } from '@/components/categories/CategoryCard';
-import api from '@/lib/api';
+import api, { ApiError } from '@/lib/api';
 import { Link } from 'react-router-dom';
 
 // Helper to determine the nesting depth of a category (Level 1: Root, Level 2: Subcategory, Level 3: Sub-subcategory)
@@ -205,7 +205,10 @@ export default function CategoriesPage() {
       setParentId('');
     } catch (err: any) {
       console.error('Failed to save category:', err);
-      setFormError(err?.message || 'Failed to save category. Please try again.');
+      const validationDetails = err instanceof ApiError
+        ? err.errors.map(({ field, message }) => `${field}: ${message}`).join(' ')
+        : '';
+      setFormError(validationDetails || err?.message || 'Failed to save category. Please try again.');
     }
   };
 
