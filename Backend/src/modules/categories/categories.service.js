@@ -5,6 +5,12 @@ const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const { AUDIT_ACTION, KYC_STATUS } = require('../../config/constants');
 
+const getDuplicateCategoryScope = (wholesalerId) => (
+  wholesalerId
+    ? { wholesalerId }
+    : { wholesalerId: null }
+);
+
 class CategoryService {
   static async validateParentCategory(parentId, user, categoryId = null) {
     if (!parentId) return null;
@@ -279,6 +285,7 @@ class CategoryService {
       name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       parentId: targetParentId,
       isDeleted: false,
+      ...getDuplicateCategoryScope(user.role === 'WHOLESALER' ? user._id : null),
     });
 
     if (duplicateCategory) {
@@ -336,6 +343,7 @@ class CategoryService {
         name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
         parentId: targetParentId,
         isDeleted: false,
+        ...getDuplicateCategoryScope(category.wholesalerId),
       });
 
       if (duplicateCategory) {

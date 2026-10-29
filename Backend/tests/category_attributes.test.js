@@ -164,6 +164,46 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
     expect(res.body.code).toBe('KYC_APPROVAL_REQUIRED');
   });
 
+  test('Wholesaler category names are unique within their own categories', async () => {
+    const betaCategory = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${otherWholesalerToken}`)
+      .send({ name: 'Shared Apparel' });
+
+    expect(betaCategory.status).toBe(201);
+
+    const alphaCategory = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Shared Apparel' });
+
+    expect(alphaCategory.status).toBe(201);
+    expect(String(alphaCategory.body.data.wholesalerId)).toBe(String(wholesalerUser._id));
+    expect(String(betaCategory.body.data.wholesalerId)).toBe(String(otherWholesalerUser._id));
+
+    const ownDuplicate = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Shared Apparel' });
+
+    expect(ownDuplicate.status).toBe(409);
+
+    const globalDuplicate = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Electronics' });
+
+    expect(globalDuplicate.status).toBe(201);
+    expect(String(globalDuplicate.body.data.wholesalerId)).toBe(String(wholesalerUser._id));
+
+    const ownElectronicsDuplicate = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Electronics' });
+
+    expect(ownElectronicsDuplicate.status).toBe(409);
+  });
+
   test('5. Wholesaler cannot edit another wholesaler product (returns 403 Forbidden)', async () => {
     // Wholesaler 1 creates a product
     const createRes = await request(app)
