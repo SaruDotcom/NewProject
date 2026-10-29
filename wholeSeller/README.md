@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Retailer invite links
+
+Set `VITE_RETAILER_URL` in the wholesaler portal's Vite environment to the retailer portal's base URL before building. Add the example setting from `.env.example` to your existing local `.env` for development; `.env.production` configures the deployed retailer portal URL for production builds. Invite links are disabled when this value is missing or invalid; do not use the wholesaler portal URL for it.
+
 ## Getting Started
 
 First, run the development server:

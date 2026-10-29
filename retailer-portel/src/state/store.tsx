@@ -14,7 +14,11 @@ import {
   type ApiWholesaler,
 } from "@/api/api";
 import { retailerQueryKeys } from "@/lib/query-client";
-import { getStoredReferralAttribution } from "@/lib/referral-attribution";
+import {
+  getReferralAttributionFromUrl,
+  getStoredReferralAttribution,
+  saveReferralAttribution,
+} from "@/lib/referral-attribution";
 
 const GUEST_CART_KEY = "nexora_retailer_guest_cart";
 
@@ -632,8 +636,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cartRef.current = localCart;
 
       // Check if user came with a referral attribution
-      const storedRef = getStoredReferralAttribution();
+      const urlAttribution =
+        typeof window !== "undefined"
+          ? getReferralAttributionFromUrl(new URL(window.location.href))
+          : null;
+      if (urlAttribution) saveReferralAttribution(urlAttribution);
+      const storedRef = urlAttribution || getStoredReferralAttribution();
       if (storedRef?.code) {
+        setProducts([]);
+        setCategories([]);
+        setLinkedWholesaler(null);
+        setRelationships({});
         try {
           if (!silent) setIsLoading(true);
           const [refRes, prodRes] = await Promise.all([
@@ -653,20 +666,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ? (prodRes as any).data.products
               : [];
 
-          if (rawProducts.length > 0) {
-            const wsId = String(mappedWs?.id || rawProducts[0]?.wholesalerId || "connected-wholesaler");
-            if (mappedWs) {
-              mappedWs.id = wsId;
-            }
+          if (mappedWs) {
+            const wsId = String(mappedWs.id);
+            mappedWs.id = wsId;
             setRelationships({ [wsId]: "Connected" });
 
-            const publicProducts = rawProducts.map((item: any, idx: number) => {
-              const mapped = mapProduct(item, idx);
-              return {
-                ...mapped,
-                wholesalerId: wsId,
-              };
-            });
+            const publicProducts = rawProducts
+              .filter((item: ApiProduct & { wholesaler?: { id?: string; _id?: string } }) => {
+                const rawWholesalerId = item.wholesalerId;
+                const productWholesalerId =
+                  typeof rawWholesalerId === "object" && rawWholesalerId !== null
+                    ? rawWholesalerId._id || rawWholesalerId.id
+                    : rawWholesalerId || item.wholesaler?._id || item.wholesaler?.id;
+                return !productWholesalerId || String(productWholesalerId) === wsId;
+              })
+              .map((item: ApiProduct, idx: number) => {
+                const mapped = mapProduct(item, idx);
+                return {
+                  ...mapped,
+                  wholesalerId: wsId,
+                };
+              });
             setProducts(publicProducts);
 
             const catNames = Array.from(new Set(publicProducts.map((p: any) => p.category).filter(Boolean)));
@@ -676,8 +696,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               description: `${name} category`,
             }));
             setCategories(publicCategories);
-          } else if (mappedWs) {
-            setRelationships({ [mappedWs.id]: "Connected" });
+          } else {
+            setProducts([]);
+            setCategories([]);
+            setRelationships({});
           }
         } catch (e) {
           console.warn("Could not load referral public catalog", e);
@@ -685,6 +707,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (!silent) setIsLoading(false);
         }
       } else {
+        setProducts([]);
+        setCategories([]);
         setLinkedWholesaler(null);
         setRelationships({});
       }

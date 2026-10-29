@@ -6,6 +6,8 @@ const {
   WholesalerProfile,
   RetailerProfile,
   WholesalerRetailerRelationship,
+  Category,
+  Product,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
@@ -73,6 +75,49 @@ describe('Wholesaler referral-only retailer registration', () => {
       'wholesalerId',
     ]);
     expect(JSON.stringify(response.body)).not.toMatch(/Private Owner Name|private-owner@example\.test|9876543210|gstin|kyc/i);
+  });
+
+  test('each public referral code returns only its wholesaler products', async () => {
+    const secondWholesaler = await User.create({
+      name: 'Second Wholesaler',
+      email: 'second-wholesaler@example.test',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerProfile.create({
+      userId: secondWholesaler._id,
+      businessName: 'Second Wholesale Business',
+      kycStatus: KYC_STATUS.APPROVED,
+      retailerReferralCode: 'ZX90YU',
+    });
+    const category = await Category.create({ name: 'Staples', slug: 'staples' });
+    await Product.create([
+      {
+        wholesalerId: wholesaler._id,
+        name: 'First wholesaler product',
+        slug: 'first-wholesaler-product',
+        sku: 'FIRST-REF-PRODUCT',
+        categoryId: category._id,
+        wholesalePrice: 100,
+      },
+      {
+        wholesalerId: secondWholesaler._id,
+        name: 'Second wholesaler product',
+        slug: 'second-wholesaler-product',
+        sku: 'SECOND-REF-PRODUCT',
+        categoryId: category._id,
+        wholesalePrice: 200,
+      },
+    ]);
+
+    const firstCatalog = await request(app).get(`/api/v1/referral/${referralCode}/products?limit=200`);
+    const secondCatalog = await request(app).get('/api/v1/referral/ZX90YU/products?limit=200');
+
+    expect(firstCatalog.status).toBe(200);
+    expect(firstCatalog.body.data.map((product) => product.name)).toEqual(['First wholesaler product']);
+    expect(secondCatalog.status).toBe(200);
+    expect(secondCatalog.body.data.map((product) => product.name)).toEqual(['Second wholesaler product']);
   });
 
   test('registration rejects a missing or invalid code without creating an account', async () => {

@@ -1,5 +1,5 @@
-import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from './app/login/page';
 import RegisterPage from './app/register/page';
 import DashboardLayout from './app/dashboard/layout';
@@ -26,10 +26,55 @@ import StoreThemePage from './app/dashboard/store-theme/page';
 
 const LandingPage = lazy(() => import('./app/landing/page'));
 
+function LandingRoute() {
+  const location = useLocation();
+  const referralCode = new URLSearchParams(location.search).get('ref')?.trim();
+  const retailerPortalUrl = import.meta.env.VITE_RETAILER_URL?.trim();
+  let retailerRedirectUrl = '';
+  let referralError = '';
+
+  if (referralCode) {
+    if (!retailerPortalUrl) {
+      referralError = 'Retailer portal URL is not configured. Please open this link from the retailer portal.';
+    } else {
+      try {
+        const retailerUrl = new URL(retailerPortalUrl);
+        if (retailerUrl.protocol !== 'http:' && retailerUrl.protocol !== 'https:') {
+          throw new Error('Unsupported retailer portal URL protocol');
+        }
+        const destination = new URL('/', retailerUrl);
+        destination.search = location.search;
+        destination.searchParams.set('ref', referralCode);
+        retailerRedirectUrl = destination.toString();
+      } catch {
+        referralError = 'Retailer portal URL is invalid. Please open this link from the retailer portal.';
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (retailerRedirectUrl) window.location.replace(retailerRedirectUrl);
+  }, [retailerRedirectUrl]);
+
+  if (referralCode) {
+    return referralError ? (
+      <main role="alert" className="flex min-h-screen items-center justify-center p-6 text-center text-sm font-semibold text-red-700">
+        {referralError}
+      </main>
+    ) : (
+      <main className="flex min-h-screen items-center justify-center p-6 text-sm text-gray-600">
+        Opening the retailer portal...
+      </main>
+    );
+  }
+
+  return <Suspense fallback={<div className="min-h-screen bg-white" />}><LandingPage /></Suspense>;
+}
+
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Suspense fallback={<div className="min-h-screen bg-white" />}><LandingPage /></Suspense>} />
+      <Route path="/" element={<LandingRoute />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       

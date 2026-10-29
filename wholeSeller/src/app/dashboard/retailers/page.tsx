@@ -129,11 +129,23 @@ export default function RetailersPage() {
   const [isReferralLoading, setIsReferralLoading] = useState(true);
   const [isReferralUpdating, setIsReferralUpdating] = useState(false);
   const [referralError, setReferralError] = useState('');
-  const retailerAppOrigin = new URL(
-    import.meta.env.VITE_RETAILER_URL ||
-      (import.meta.env.DEV ? 'http://localhost:5174' : window.location.origin),
-  ).origin;
-  const referralUrl = referral
+  const retailerPortalUrl = import.meta.env.VITE_RETAILER_URL?.trim() || '';
+  let retailerAppOrigin = '';
+  let retailerUrlError = '';
+  if (retailerPortalUrl) {
+    try {
+      const retailerUrl = new URL(retailerPortalUrl);
+      if (retailerUrl.protocol !== 'http:' && retailerUrl.protocol !== 'https:') {
+        throw new Error('Unsupported retailer portal URL protocol');
+      }
+      retailerAppOrigin = retailerUrl.origin;
+    } catch {
+      retailerUrlError = 'Configure VITE_RETAILER_URL with a valid retailer portal URL.';
+    }
+  } else {
+    retailerUrlError = 'Configure VITE_RETAILER_URL with the retailer portal URL to enable invite links.';
+  }
+  const referralUrl = referral && retailerAppOrigin
     ? `${retailerAppOrigin}/?ref=${encodeURIComponent(referral.code)}`
     : '';
 
@@ -285,6 +297,7 @@ export default function RetailersPage() {
         </div>
 
         {referralError && <p role="alert" className="text-xs font-semibold text-red-600">{referralError}</p>}
+        {referral && retailerUrlError && <p role="alert" className="text-xs font-semibold text-red-600">{retailerUrlError}</p>}
         {isReferralLoading ? (
           <p className="text-xs text-gray-500">Loading referral settings...</p>
         ) : referral ? (
@@ -292,16 +305,16 @@ export default function RetailersPage() {
             <div>
               <label className="mb-1 block text-[10px] font-extrabold uppercase text-gray-400">Invite link</label>
               <div className="break-all rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3 font-mono text-[11px] font-bold text-gray-700">
-                {referralUrl}
+                {referralUrl || 'Invite link unavailable'}
               </div>
             </div>
             <p className="text-xs font-semibold text-gray-700">{referral.joinedCount} retailer{referral.joinedCount === 1 ? '' : 's'} joined through your referral.</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => copyCredential(referralUrl)} className="flex items-center justify-center gap-2 rounded-xl bg-tradeflow-navy px-4 py-2.5 text-xs font-black text-white hover:bg-black">
+              <button type="button" onClick={() => referralUrl && copyCredential(referralUrl)} disabled={!referralUrl} className="flex items-center justify-center gap-2 rounded-xl bg-tradeflow-navy px-4 py-2.5 text-xs font-black text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50">
                 {copiedCredential === referralUrl ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
                 Copy Link
               </button>
-              <button type="button" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(referralUrl)}`, '_blank', 'noopener,noreferrer')} className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-xs font-black text-white hover:bg-green-700">
+              <button type="button" onClick={() => referralUrl && window.open(`https://wa.me/?text=${encodeURIComponent(referralUrl)}`, '_blank', 'noopener,noreferrer')} disabled={!referralUrl} className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-xs font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50">
                 <MessageCircle className="h-4 w-4" />
                 Share via WhatsApp
               </button>
