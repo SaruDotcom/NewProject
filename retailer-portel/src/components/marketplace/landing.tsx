@@ -212,11 +212,17 @@ export function LandingPage() {
       return;
     }
 
+    const trimmedLoginId = regLoginId.trim().toUpperCase();
+    if (trimmedLoginId && !/^[A-Z0-9_-]{4,32}$/.test(trimmedLoginId)) {
+      toast.error("Retailer login ID must be 4-32 letters, numbers, underscores, or hyphens.");
+      return;
+    }
+
     setIsSubmittingReg(true);
     try {
       const res = await api.register({
         name: regName.trim(),
-        loginId: regLoginId.trim().toUpperCase(),
+        loginId: trimmedLoginId || undefined,
         businessName: regBusinessName.trim() || `${regName.trim()}'s Store`,
         phone: regPhone.trim(),
         email: regEmail.trim(),
@@ -1221,15 +1227,14 @@ export function LandingPage() {
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-[#12304A] mb-1">
-                        Retailer Login ID *
+                        Retailer Login ID <span className="font-normal text-[#647782]">(Optional)</span>
                       </label>
                       <input
                         type="text"
                         value={regLoginId}
-                        onChange={(e) => setRegLoginId(e.target.value.toUpperCase())}
-                        placeholder="e.g. RAMESH01"
+                        onChange={(e) => setRegLoginId(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32))}
+                        placeholder={regPhone ? `RET${regPhone.slice(-6)}` : "e.g. RAMESH01"}
                         className="w-full px-3 py-2 bg-[#F4F7F8] border border-[#D8E1E5] rounded-lg text-xs uppercase font-mono text-[#12304A] focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#20A66A]"
-                        required
                       />
                     </div>
                   </div>

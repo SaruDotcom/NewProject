@@ -372,8 +372,32 @@ describe('Wholesaler referral-only retailer registration', () => {
     const passwordReset = await request(app)
       .patch(`/api/v1/wholesaler/retailers/${relationship._id}/password`)
       .set('Authorization', `Bearer ${wholesalerToken}`)
-      .send({ password: 'NewPassword123' });
     expect(passwordReset.status).toBe(404);
+
+    // Verify registration succeeds when loginId is omitted or empty string
+    const noLoginIdPayload = {
+      ...payload,
+      email: 'retailer-no-loginid@example.test',
+      phone: '9345678901',
+    };
+    delete noLoginIdPayload.loginId;
+    const withoutLoginId = await request(app).post('/api/v1/auth/register').send(noLoginIdPayload);
+    expect(withoutLoginId.status).toBe(201);
+    const createdNoLoginId = await User.findOne({ email: noLoginIdPayload.email });
+    expect(createdNoLoginId.loginId).toBeDefined();
+    expect(createdNoLoginId.loginId).toMatch(/^RET[A-Z0-9_-]{4,20}$/);
+
+    const emptyLoginIdPayload = {
+      ...payload,
+      email: 'retailer-empty-loginid@example.test',
+      phone: '9456789012',
+      loginId: '',
+    };
+    const withEmptyLoginId = await request(app).post('/api/v1/auth/register').send(emptyLoginIdPayload);
+    expect(withEmptyLoginId.status).toBe(201);
+    const createdEmptyLoginId = await User.findOne({ email: emptyLoginIdPayload.email });
+    expect(createdEmptyLoginId.loginId).toBeDefined();
+    expect(createdEmptyLoginId.loginId).toMatch(/^RET[A-Z0-9_-]{4,20}$/);
   });
 
   test('invalid, paused, unapproved, or suspended wholesaler referrals cannot be looked up', async () => {

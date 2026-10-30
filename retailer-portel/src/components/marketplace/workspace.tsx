@@ -2797,8 +2797,10 @@ export function AuthPage({
           );
           return;
         }
-        if (!/^[A-Z0-9_-]{4,32}$/.test(loginId.trim().toUpperCase())) {
+        const trimmedLoginId = loginId.trim().toUpperCase();
+        if (trimmedLoginId && !/^[A-Z0-9_-]{4,32}$/.test(trimmedLoginId)) {
           toast.error("Choose a login ID with 4-32 letters, numbers, underscores, or hyphens.");
+          setIsSubmitting(false);
           return;
         }
         if (!/^[6-9]\d{9}$/.test(phone.trim())) {
@@ -2842,7 +2844,7 @@ export function AuthPage({
 
         const res = await api.register({
           name: name.trim(),
-          loginId: loginId.trim().toUpperCase(),
+          loginId: trimmedLoginId || undefined,
           businessName: businessName.trim(),
           businessType: businessType.trim(),
           address: address.trim(),
@@ -3214,21 +3216,19 @@ export function AuthPage({
 
                     {/* Retailer Login ID */}
                     <label className="block text-xs font-bold text-[#12304A]">
-                      Retailer Login ID (Username) <span className="text-red-500">*</span>
+                      Retailer Login ID (Username) <span className="text-muted-foreground text-[11px] font-normal">(Optional)</span>
                       <Input
                         className="mt-1.5 uppercase font-mono tracking-wide"
                         type="text"
                         autoComplete="username"
-                        minLength={4}
                         maxLength={32}
                         pattern="[A-Za-z0-9_-]{4,32}"
-                        placeholder="e.g. SARITA123 or FASHION_STORE"
+                        placeholder={phone ? `e.g. RET${phone.slice(-6)} (leave blank to auto-generate)` : "e.g. SARITA123 (or auto-generated)"}
                         value={loginId}
                         onChange={(e) => setLoginId(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32))}
-                        required
                       />
                       <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                        Letters, numbers, and dashes only (no @ or dots). This is your login username.
+                        Optional. Leave blank to auto-generate. You can also sign in with your mobile number or email.
                       </span>
                     </label>
 
@@ -3374,7 +3374,7 @@ export function AuthPage({
                         </button>
                       </div>
                       <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                        Minimum 6 characters. You will use this with your Retailer ID to sign in.
+                        Minimum 6 characters. You will use this with your Retailer ID, mobile number, or email to sign in.
                       </span>
                     </label>
                   </div>

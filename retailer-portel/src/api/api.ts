@@ -396,7 +396,7 @@ export const api = {
     name: string;
     email: string;
     password: string;
-    loginId: string;
+    loginId?: string;
     phone?: string;
     role?: string;
     businessName?: string;
@@ -424,7 +424,12 @@ export const api = {
     utmContent?: string;
     firstLandingAt?: string | undefined;
   }) => {
-    const requestPayload = { ...payload, role: payload.role || 'retailer' };
+    const requestPayload: Record<string, any> = { ...payload, role: payload.role || 'retailer' };
+    if (!requestPayload.loginId || !String(requestPayload.loginId).trim()) {
+      delete requestPayload.loginId;
+    } else {
+      requestPayload.loginId = String(requestPayload.loginId).trim().toUpperCase();
+    }
     const files = [
       requestPayload.shopPhoto,
       requestPayload.panImage,

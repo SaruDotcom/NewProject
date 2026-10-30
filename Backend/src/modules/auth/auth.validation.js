@@ -26,11 +26,8 @@ const registerSchema = Joi.object({
     .trim()
     .uppercase()
     .pattern(/^[A-Z0-9_-]{4,32}$/)
-    .when('role', {
-      is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),
-      then: Joi.optional(),
-      otherwise: Joi.required(),
-    }),
+    .optional()
+    .allow('', null),
   role: Joi.string()
     .valid(ROLES.WHOLESALER, ROLES.RETAILER, 'wholesaler', 'retailer')
     .default(ROLES.RETAILER),

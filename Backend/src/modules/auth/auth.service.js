@@ -217,10 +217,6 @@ class AuthService {
       throw new ForbiddenError('Only wholesaler and retailer accounts can self-register.', 'INVALID_REGISTRATION_ROLE');
     }
 
-    if (role === ROLES.RETAILER && !loginId) {
-      throw new BadRequestError('A retailer login ID is required.', 'LOGIN_ID_REQUIRED');
-    }
-
     if (role === ROLES.RETAILER && !phone) {
       throw new BadRequestError('A valid mobile number is required to register.', 'INVALID_PHONE');
     }
@@ -258,9 +254,19 @@ class AuthService {
       throw new ConflictError('User with this email already exists', 'EMAIL_ALREADY_EXISTS');
     }
 
-    const normalizedLoginId = role === ROLES.RETAILER ? loginId.trim().toUpperCase() : undefined;
-    if (normalizedLoginId && await User.findOne({ loginId: normalizedLoginId })) {
-      throw new ConflictError('This retailer ID is already registered. Please choose another ID.', 'LOGIN_ID_ALREADY_EXISTS');
+    let normalizedLoginId;
+    if (role === ROLES.RETAILER) {
+      if (loginId && String(loginId).trim()) {
+        normalizedLoginId = String(loginId).trim().toUpperCase();
+        if (!/^[A-Z0-9_-]{4,32}$/.test(normalizedLoginId)) {
+          throw new BadRequestError('Retailer login ID must be 4 to 32 characters using letters, numbers, underscores, or hyphens.', 'INVALID_LOGIN_ID');
+        }
+        if (await User.findOne({ loginId: normalizedLoginId })) {
+          throw new ConflictError('This retailer ID is already registered. Please choose another ID.', 'LOGIN_ID_ALREADY_EXISTS');
+        }
+      } else {
+        normalizedLoginId = await AuthService.generateUniqueRetailerLoginId(normalizedPhone || name);
+      }
     }
 
     const adminRefCode = String(ref || adminCode || '').trim();
@@ -583,6 +589,21 @@ class AuthService {
    */
   static async resetPassword(token, newPassword) {
     return PasswordResetService.resetPassword(token, newPassword);
+  }
+
+  /**
+   * Auto-generate a clean, unique retailer login ID if not provided
+   */
+  static async generateUniqueRetailerLoginId(hint = '') {
+    const cleanHint = String(hint || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const prefix = cleanHint.length >= 4 ? cleanHint.slice(-6) : 'RET';
+    for (let i = 0; i < 15; i++) {
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const candidate = `RET${prefix}${randomSuffix}`.slice(0, 20);
+      const exists = await User.findOne({ loginId: candidate });
+      if (!exists) return candidate;
+    }
+    return `RET${Date.now().toString().slice(-8)}`;
   }
 
 }
