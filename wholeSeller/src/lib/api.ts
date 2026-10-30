@@ -256,10 +256,10 @@ function getWholesalerResources(path: string): string[] {
   if (path.startsWith('/wholesaler/retailers')) return ['retailers', 'credit-overview'];
   if (path.startsWith('/wholesaler/inventory')) return ['inventory', 'products', 'analytics'];
   if (path.startsWith('/wholesaler/banners') || path.startsWith('/wholesaler/store-theme')) return ['banners', 'products'];
-  if (path.startsWith('/wholesaler/profile')) return ['profile'];
+  if (path.startsWith('/wholesaler/profile')) return ['profile', 'kyc'];
   if (path.startsWith('/wholesaler/khata-book')) return ['khata-book'];
   if (path.startsWith('/wholesaler/referral')) return ['referral'];
-  if (path.startsWith('/wholesaler/kyc')) return ['kyc'];
+  if (path.startsWith('/wholesaler/kyc')) return ['kyc', 'profile'];
   if (path.startsWith('/wholesaler/coupons')) return ['coupons'];
   if (path.startsWith('/wholesaler/credit-policy') || path.startsWith('/wholesaler/credit-overview')) return ['credit-overview'];
   if (path.startsWith('/payouts/') || path.startsWith('/wallets/')) return ['wallet'];

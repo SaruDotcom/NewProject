@@ -60,4 +60,28 @@ function uploadProductImage(file, req = null) {
   });
 }
 
-module.exports = { uploadProductImage };
+async function deleteUploadedProductImage(publicId) {
+  if (!publicId) return;
+
+  const hasCloudinary = Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET);
+  if (hasCloudinary) {
+    const result = await getClient().uploader.destroy(publicId, {
+      resource_type: 'image',
+      invalidate: true,
+    });
+    if (!['deleted', 'not found'].includes(result.result)) {
+      throw new Error(`Image provider did not confirm deletion for asset ${publicId}.`);
+    }
+    return;
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(publicId)) {
+    throw new Error('Image asset cannot be deleted because no configured storage provider recognizes it.');
+  }
+  const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'productImages' });
+  const fileId = new mongoose.Types.ObjectId(publicId);
+  const [file] = await bucket.find({ _id: fileId }).toArray();
+  if (file) await bucket.delete(fileId);
+}
+
+module.exports = { uploadProductImage, deleteUploadedProductImage };

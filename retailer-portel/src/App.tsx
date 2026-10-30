@@ -79,7 +79,7 @@ function RouterView() {
   }
 
   // Validate token with backend before showing store: prevent flash of store content
-  if (isLoading && Boolean(token) && !isLoggedIn) {
+  if (isLoading && Boolean(token) && (!isLoggedIn || !isBusinessSetupComplete(retailerProfile))) {
     return (
       <div className="min-h-screen bg-[#F4F7F8] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">

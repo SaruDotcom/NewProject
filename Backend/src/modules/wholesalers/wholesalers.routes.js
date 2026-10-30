@@ -11,7 +11,8 @@ router.use(authenticate, authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
 router.get('/', wholesalerController.listWholesalers);
 router.get('/:id', wholesalerController.getWholesalerById);
 router.patch('/:id', wholesalerController.updateWholesaler);
+router.patch('/:id/block', authorize(ROLES.SUPER_ADMIN), wholesalerController.setBlocked);
 router.patch('/:id/status', wholesalerController.updateStatus);
-router.delete('/:id', wholesalerController.deleteWholesaler);
+router.delete('/:id', authorize(ROLES.SUPER_ADMIN), wholesalerController.deleteWholesaler);
 
 module.exports = router;

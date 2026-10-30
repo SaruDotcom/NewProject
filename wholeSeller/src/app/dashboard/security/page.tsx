@@ -192,7 +192,15 @@ export default function SecurityPage() {
             {profile.accountStatus === 'ACTIVE' ? (
               <div className="flex items-center gap-1.5 text-status-success font-semibold">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Your account is active. Complete KYC before adding products or categories.</span>
+                {profile.kycStatus === 'APPROVED' ? (
+                  <span>Your account is active and verified. Catalog and product management are unlocked.</span>
+                ) : profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW' ? (
+                  <span className="text-amber-800">Your account is active. KYC verification is currently under review.</span>
+                ) : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED' ? (
+                  <span className="text-red-700">Your account is active. KYC requires correction and resubmission.</span>
+                ) : (
+                  <span className="text-amber-800">Your account is active. Complete KYC before adding products or categories.</span>
+                )}
               </div>
             ) : profile.accountStatus === 'SUSPENDED' || profile.accountStatus === 'BLOCKED' ? (
               <div className="flex items-center gap-1.5 text-red-700 font-semibold">

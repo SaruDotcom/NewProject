@@ -19,11 +19,10 @@ class CategoryService {
     }
 
     const parent = String(parentId).match(/^[0-9a-fA-F]{24}$/)
-      ? await Category.findOne({ _id: parentId, isDemo: { $ne: true } })
+      ? await Category.findById(parentId)
       : await Category.findOne({
         $or: [{ slug: parentId }, { name: parentId }],
         isDeleted: false,
-        isDemo: { $ne: true },
       });
     if (!parent || parent.isDeleted) {
       throw new NotFoundError('Parent category not found');
@@ -79,7 +78,7 @@ class CategoryService {
    * Get full 3-level nested category tree in one API call
    */
   static async getCategoryTree(wholesalerId = null) {
-    const filter = { isDeleted: false, isDemo: { $ne: true } };
+    const filter = { isDeleted: false };
     if (wholesalerId) {
       filter.$or = [{ wholesalerId: null }, { wholesalerId: wholesalerId }];
     }
@@ -119,7 +118,7 @@ class CategoryService {
    * List categories (supports tree / flat / wholesaler-scoped / admin)
    */
   static async listCategories(query = {}) {
-    const categoryFilter = { isDeleted: false, isDemo: { $ne: true } };
+    const categoryFilter = { isDeleted: false };
     if (query.wholesalerId) {
       categoryFilter.$or = [{ wholesalerId: null }, { wholesalerId: query.wholesalerId }];
     }
@@ -186,7 +185,6 @@ class CategoryService {
         const subCount = await Category.countDocuments({
           parentId: cat._id,
           isDeleted: false,
-          isDemo: { $ne: true },
         });
         const productFilter = {
           $or: [
@@ -196,7 +194,6 @@ class CategoryService {
             { subSubcategoryId: cat._id },
           ],
           isDeleted: false,
-          isDemo: { $ne: true },
         };
         if (query.wholesalerId) productFilter.wholesalerId = query.wholesalerId;
         const prodCount = await Product.countDocuments({
@@ -249,20 +246,19 @@ class CategoryService {
   static async getCategoryById(idOrSlug) {
     let category;
     if (idOrSlug.match(/^[0-9a-fA-F]{24}$/)) {
-      category = await Category.findOne({ _id: idOrSlug, isDemo: { $ne: true } }).populate('parentId', 'name slug');
+      category = await Category.findById(idOrSlug).populate('parentId', 'name slug');
     } else {
-      category = await Category.findOne({ slug: idOrSlug, isDeleted: false, isDemo: { $ne: true } }).populate('parentId', 'name slug');
+      category = await Category.findOne({ slug: idOrSlug, isDeleted: false }).populate('parentId', 'name slug');
     }
 
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
 
-    const subcategories = await Category.find({ parentId: category._id, isDeleted: false, isDemo: { $ne: true } });
+    const subcategories = await Category.find({ parentId: category._id, isDeleted: false });
     const productCount = await Product.countDocuments({
       $or: [{ categoryId: category._id }, { subcategoryId: category._id }],
       isDeleted: false,
-      isDemo: { $ne: true },
     });
 
     return {
@@ -303,7 +299,6 @@ class CategoryService {
       name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       parentId: targetParentId,
       isDeleted: false,
-      isDemo: { $ne: true },
       ...getDuplicateCategoryScope(user.role === 'WHOLESALER' ? user._id : null),
     });
 
@@ -357,18 +352,17 @@ class CategoryService {
   static async updateCategory(categoryId, updateData, user, req = null) {
     updateData = updateData || {};
     const category = String(categoryId).match(/^[0-9a-fA-F]{24}$/)
-      ? await Category.findOne({ _id: categoryId, isDemo: { $ne: true } })
+      ? await Category.findById(categoryId)
       : await Category.findOne({
         $or: [{ slug: categoryId }, { name: categoryId }],
         isDeleted: false,
-        isDemo: { $ne: true },
       });
 
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
-    if (user.role === 'WHOLESALER' && String(category.wholesalerId) !== String(user._id)) {
-      throw new ForbiddenError('You can only manage your own categories');
+    if (user && user.role === 'WHOLESALER' && category.wholesalerId && String(category.wholesalerId) !== String(user._id)) {
+      throw new ForbiddenError('You can only manage your own or global categories');
     }
 
     const beforeState = category.toJSON();
@@ -389,7 +383,6 @@ class CategoryService {
           name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
           parentId: targetParentId,
           isDeleted: false,
-          isDemo: { $ne: true },
           ...getDuplicateCategoryScope(category.wholesalerId),
         });
 
@@ -420,73 +413,124 @@ class CategoryService {
 
     await category.save();
 
-    await AuditService.log({
-      actorId: user._id,
-      actorRole: user.role,
-      action: AUDIT_ACTION.UPDATE,
-      entityType: 'Category',
-      entityId: category._id,
-      before: beforeState,
-      after: category.toJSON(),
-      req,
-    });
+    if (user) {
+      await AuditService.log({
+        actorId: user._id,
+        actorRole: user.role,
+        action: AUDIT_ACTION.UPDATE,
+        entityType: 'Category',
+        entityId: category._id,
+        before: beforeState,
+        after: category.toJSON(),
+        req,
+      });
+    }
 
     return category;
   }
 
   /**
-   * Safe delete category: checks if active products or child subcategories depend on it
+   * Safe delete category: safely unlinks assigned products without deleting them,
+   * cascades to child subcategories, and allows deleting global or wholesaler-owned categories.
    */
   static async deleteCategory(categoryId, user, req = null) {
     const category = String(categoryId).match(/^[0-9a-fA-F]{24}$/)
-      ? await Category.findOne({ _id: categoryId, isDemo: { $ne: true } })
+      ? await Category.findById(categoryId)
       : await Category.findOne({
         $or: [{ slug: categoryId }, { name: categoryId }],
         isDeleted: false,
-        isDemo: { $ne: true },
       });
 
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
-    if (user.role === 'WHOLESALER' && String(category.wholesalerId) !== String(user._id)) {
-      throw new ForbiddenError('You can only manage your own categories');
+    if (user && user.role === 'WHOLESALER' && category.wholesalerId && String(category.wholesalerId) !== String(user._id)) {
+      throw new ForbiddenError('You can only manage your own or global categories');
     }
 
-    // Check if child subcategories exist
-    const childCategoriesCount = await Category.countDocuments({ parentId: category._id, isDeleted: false, isDemo: { $ne: true } });
-    if (childCategoriesCount > 0) {
-      throw new ConflictError(
-        `Cannot delete category. There are ${childCategoriesCount} subcategories attached to it. Please reassign or delete subcategories first.`,
-        'CATEGORY_HAS_CHILDREN'
-      );
+    // Recursively collect this category and all descendant categories
+    const allCategoryIds = [category._id];
+    let toProcess = [category._id];
+    while (toProcess.length > 0) {
+      const currentParentId = toProcess.shift();
+      const children = await Category.find({
+        $or: [{ parentId: currentParentId }, { parentCategoryId: currentParentId }],
+        isDeleted: false,
+      }).select('_id');
+      const childIds = children.map((c) => c._id);
+      if (childIds.length > 0) {
+        allCategoryIds.push(...childIds);
+        toProcess.push(...childIds);
+      }
     }
 
-    // Check if active products depend on this category
-    const activeProductsCount = await Product.countDocuments({
-      $or: [{ categoryId: category._id }, { subcategoryId: category._id }],
-      isDeleted: false,
-      isDemo: { $ne: true },
-    });
+    // Safely remove category references from existing products without deleting products
+    await Product.updateMany(
+      {
+        $or: [
+          { categoryId: { $in: allCategoryIds } },
+          { category: { $in: allCategoryIds } },
+        ],
+      },
+      {
+        $set: {
+          categoryId: null,
+          category: null,
+          categoryName: '',
+          subcategoryId: null,
+          subCategory: null,
+          subcategoryName: '',
+          subSubcategoryId: null,
+          subSubcategoryName: '',
+        },
+      }
+    );
 
-    if (activeProductsCount > 0) {
-      throw new ConflictError(
-        `Cannot delete category. There are ${activeProductsCount} products currently assigned to this category.`,
-        'CATEGORY_IN_USE'
-      );
-    }
+    await Product.updateMany(
+      {
+        $or: [
+          { subcategoryId: { $in: allCategoryIds } },
+          { subCategory: { $in: allCategoryIds } },
+        ],
+      },
+      {
+        $set: {
+          subcategoryId: null,
+          subCategory: null,
+          subcategoryName: '',
+          subSubcategoryId: null,
+          subSubcategoryName: '',
+        },
+      }
+    );
 
+    await Product.updateMany(
+      { subSubcategoryId: { $in: allCategoryIds } },
+      {
+        $set: {
+          subSubcategoryId: null,
+          subSubcategoryName: '',
+        },
+      }
+    );
+
+    // Soft delete this category and all descendant categories
+    await Category.updateMany(
+      { _id: { $in: allCategoryIds } },
+      { $set: { isDeleted: true } }
+    );
     category.isDeleted = true;
-    await category.save();
 
-    await AuditService.log({
-      actorId: user._id,
-      actorRole: user.role,
-      action: AUDIT_ACTION.DELETE,
-      entityType: 'Category',
-      entityId: category._id,
-      req,
-    });
+    if (user) {
+      await AuditService.log({
+        actorId: user._id,
+        actorRole: user.role,
+        action: AUDIT_ACTION.DELETE,
+        entityType: 'Category',
+        entityId: category._id,
+        req,
+      });
+    }
 
     return { message: 'Category deleted successfully' };
   }

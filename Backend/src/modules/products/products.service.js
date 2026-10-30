@@ -24,6 +24,7 @@ const {
 } = require('../../utils/errors');
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
+const { assertWholesalerAvailable } = require('../../services/wholesaler-access.service');
 
 function validateTaxDetails(tax) {
   const { cgst, sgst, igst } = tax;
@@ -312,6 +313,7 @@ class ProductService {
     }
 
     const wholesalerId = relationship.wholesalerId;
+    await assertWholesalerAvailable(wholesalerId);
     const { page, limit, skip, sort } = parsePagination(query);
     const filter = {
       wholesalerId,

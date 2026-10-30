@@ -604,11 +604,27 @@ export function resolveWholesalerId(input?: string | null): string {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
-  const currentUserRef = useRef<UserSession | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
+    if (typeof window === "undefined") return null;
+    const token = getAuthToken();
+    const userId = localStorage.getItem("nexora_retailer_user_id");
+    return token && userId ? { id: userId, email: "" } : null;
+  });
+  const currentUserRef = useRef<UserSession | null>(currentUser);
   currentUserRef.current = currentUser;
-  const [isLoading, setIsLoading] = useState(false);
-  const [profile, setProfile] = useState<RetailerProfile>(emptyProfile);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return Boolean(getAuthToken());
+  });
+  const [profile, setProfile] = useState<RetailerProfile>(() => {
+    if (typeof window === "undefined") return emptyProfile;
+    try {
+      const cached = localStorage.getItem("nexora_retailer_profile");
+      return cached ? JSON.parse(cached) : emptyProfile;
+    } catch {
+      return emptyProfile;
+    }
+  });
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -734,7 +750,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const session = { id: userId, email };
         currentUserRef.current = session;
         setCurrentUser(session);
-        setProfile(normalizeProfile(user));
+        const norm = normalizeProfile(user);
+        setProfile(norm);
+        try {
+          localStorage.setItem("nexora_retailer_profile", JSON.stringify(norm));
+        } catch {}
       }
 
       // Sync any guest cart items added before logging in
@@ -854,6 +874,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.warn("Unable to sync retailer session", error);
       clearAuthToken();
+      localStorage.removeItem("nexora_retailer_profile");
+      localStorage.removeItem("nexora_retailer_user_id");
       setCurrentUser(null);
       setProfile(emptyProfile);
       setDashboard(null);
@@ -1048,6 +1070,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       queryClient.clear();
       clearAuthToken();
+      localStorage.removeItem("nexora_retailer_profile");
+      localStorage.removeItem("nexora_retailer_user_id");
       localStorage.clear();
       sessionStorage.clear();
       setCurrentUser(null);
@@ -1234,6 +1258,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const saveProfile = useCallback(async (profileInput: RetailerProfile) => {
     setProfile(profileInput);
+    try {
+      localStorage.setItem("nexora_retailer_profile", JSON.stringify(profileInput));
+    } catch {}
     await api.updateBusinessProfile({
       ownerName: profileInput.ownerName,
       phone: profileInput.phone,

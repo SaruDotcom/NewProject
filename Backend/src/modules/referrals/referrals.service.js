@@ -33,10 +33,13 @@ class ReferralService {
     const wholesaler = await User.findOne({
       _id: profile.userId,
       role: ROLES.WHOLESALER,
-      status: USER_STATUS.ACTIVE,
       isDeleted: false,
-    }).select('_id').lean();
+    }).select('_id status').lean();
     if (!wholesaler) throw this.invalidReferral();
+    if (wholesaler.status === USER_STATUS.BLOCKED || wholesaler.status === USER_STATUS.SUSPENDED) {
+      throw new ForbiddenError('This wholesaler is currently unavailable.', 'WHOLESALER_UNAVAILABLE');
+    }
+    if (wholesaler.status !== USER_STATUS.ACTIVE) throw this.invalidReferral();
 
     return { profile, wholesaler };
   }
@@ -114,11 +117,11 @@ class ReferralService {
     const { profile } = await this.resolveActiveCode(code);
     const { Category, Product } = require('../../models');
 
-    const productCategoryIds = await Product.distinct('categoryId', {
+    const productCategoryIds = (await Product.distinct('categoryId', {
       wholesalerId: profile.userId,
       status: { $ne: 'INACTIVE' },
       isDeleted: false,
-    });
+    })).filter(Boolean);
     const categoryDetails = productCategoryIds.length > 0
       ? await Category.find({
         _id: { $in: productCategoryIds },

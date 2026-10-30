@@ -24,15 +24,18 @@ const productImageUrls = (images: unknown, imageUrl?: unknown): string[] => {
 
 function getWholesalerPageResources(pathname: string): Set<string> {
   if (pathname === '/dashboard') {
-    return new Set(['categories', 'products', 'retailers', 'orders', 'returns']);
+    return new Set(['categories', 'products', 'retailers', 'orders', 'returns', 'profile', 'kyc']);
   }
-  if (pathname === '/dashboard/products') return new Set(['categories', 'products']);
-  if (pathname === '/dashboard/categories') return new Set(['categories', 'products']);
+  if (pathname === '/dashboard/products') return new Set(['categories', 'products', 'profile', 'kyc']);
+  if (pathname === '/dashboard/categories') return new Set(['categories', 'products', 'profile', 'kyc']);
   if (pathname.startsWith('/dashboard/inventory')) return new Set(['products']);
   if (pathname === '/dashboard/retailers') return new Set(['retailers']);
   if (pathname === '/dashboard/orders') return new Set(['orders', 'returns']);
   if (pathname === '/dashboard/analytics' || pathname === '/dashboard/reports') {
     return new Set(['products', 'retailers', 'orders']);
+  }
+  if (pathname.startsWith('/dashboard/profile') || pathname.startsWith('/dashboard/kyc')) {
+    return new Set(['profile', 'kyc']);
   }
   return new Set();
 }
@@ -139,6 +142,7 @@ interface WholesalerContextType {
   auditLogs: AuditLog[];
   notifications: WholesalerNotification[];
   isLoading: boolean;
+  isProfileLoaded: boolean;
 
   // Actions
   updateReturnStatus: (returnId: string, status: 'APPROVED' | 'REJECTED') => Promise<void>;
@@ -212,10 +216,26 @@ export const DEFAULT_PROFILE: WholesalerProfile = {
   kycStatus: ''
 };
 
+const getInitialProfile = (): WholesalerProfile => {
+  if (typeof window === 'undefined') return DEFAULT_PROFILE;
+  try {
+    const cachedKyc = localStorage.getItem('wholesaler_kyc_status') || '';
+    const cachedProfileRaw = localStorage.getItem('wholesaler_cached_profile');
+    const cachedProfile = cachedProfileRaw ? JSON.parse(cachedProfileRaw) : null;
+    return {
+      ...DEFAULT_PROFILE,
+      ...(cachedProfile || {}),
+      kycStatus: cachedKyc || cachedProfile?.kycStatus || '',
+    };
+  } catch {
+    return DEFAULT_PROFILE;
+  }
+};
+
 export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [profile, setProfile] = useState<WholesalerProfile>(DEFAULT_PROFILE);
+  const [profile, setProfile] = useState<WholesalerProfile>(getInitialProfile);
   const profileRef = useRef(profile);
   profileRef.current = profile;
   const [rawProducts, setRawProducts] = useState<Product[]>([]);
@@ -226,7 +246,16 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>([]);
   const [sessions, setSessions] = useState<SecuritySession[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(getAuthToken());
+  });
+  const [isProfileLoaded, setIsProfileLoaded] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const token = getAuthToken();
+    if (!token) return true;
+    return localStorage.getItem('wholesaler_kyc_status') !== null;
+  });
   const [notifications, setNotifications] = useState<WholesalerNotification[]>([]);
   const refreshDataRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
@@ -262,6 +291,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const token = getAuthToken();
     if (!token) {
       setProfile(DEFAULT_PROFILE);
+      setIsProfileLoaded(true);
       setRawProducts([]);
       setRawCategories([]);
       setRawRetailers([]);
@@ -271,6 +301,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setSessions([]);
       setAuditLogs([]);
       setNotifications([]);
+      if (!silent) setIsLoading(false);
       return;
     }
 
@@ -278,44 +309,58 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!silent) setIsLoading(true);
       const resources = getWholesalerPageResources(location.pathname);
 
-      // 1. Get the profile on first load; keep subsequent route visits on the cached session state.
+      // 1. Get the profile on first load or when profile/kyc is needed
       let userId = profileRef.current.id || getWholesalerId();
-      if (!profileRef.current.id) {
-        const meRes = await api.getMe();
+      if (!profileRef.current.id || !isProfileLoaded || resources.has('profile') || resources.has('kyc')) {
+        const meRes = await queryClient.fetchQuery({
+          queryKey: wholesalerQueryKeys.resource(userId, 'profile'),
+          queryFn: () => api.getMe(),
+        });
         userId = String(meRes?.data?.id || meRes?.data?._id || userId || 'unknown');
         if (userId !== 'unknown') localStorage.setItem('wholesaler_user_id', userId);
         if (meRes?.data) {
           const u = meRes.data;
-        const wp = u.wholesalerProfile || {};
-        setProfile((prev) => ({
-          ...prev,
-          id: u.id || u._id || prev.id,
-          accountStatus: u.status === 'SUSPENDED' || u.status === 'BLOCKED' ? u.status : 'ACTIVE',
-          businessName: wp.businessName || u.businessName || prev.businessName,
-          businessLogoUrl: wp.businessLogoUrl || prev.businessLogoUrl,
-          activeStoreTheme: wp.activeStoreTheme || 'DEFAULT',
-          businessType: wp.businessType || prev.businessType,
-          ownerName: u.name || prev.ownerName,
-          email: u.email || prev.email,
-          phone: u.phone || prev.phone,
-          gstin: wp.gstin || prev.gstin,
-          isGstRegistered: wp.gstStatus ? wp.gstStatus === 'REGISTERED' : prev.isGstRegistered,
-          tradeLicense: wp.registrationDetails?.tradeLicense || prev.tradeLicense,
-          streetAddress: wp.address?.street || prev.streetAddress,
-          city: wp.address?.city || prev.city,
-          state: wp.address?.state || prev.state,
-          pincode: wp.address?.pincode || prev.pincode,
-          sameAsBusinessAddress: wp.pickupAddress?.sameAsBusinessAddress ?? prev.sameAsBusinessAddress,
-          pickupStreetAddress: wp.pickupAddress?.street || prev.pickupStreetAddress,
-          pickupCity: wp.pickupAddress?.city || prev.pickupCity,
-          pickupState: wp.pickupAddress?.state || prev.pickupState,
-          pickupPincode: wp.pickupAddress?.pincode || prev.pickupPincode,
-          bankName: wp.bankDetails?.bankName || prev.bankName,
-          accountNumber: wp.bankDetails?.accountNumber || prev.accountNumber,
-          ifscCode: wp.bankDetails?.ifscCode || prev.ifscCode,
-          kycStatus: wp.kycStatus || prev.kycStatus,
-          twoFactorEnabled: Boolean(wp.twoFactorEnabled),
-        }));
+          const wp = u.wholesalerProfile || {};
+          const resolvedKyc = wp.kycStatus || '';
+          if (resolvedKyc) {
+            localStorage.setItem('wholesaler_kyc_status', resolvedKyc);
+          }
+          setProfile((prev) => {
+            const nextProfile: WholesalerProfile = {
+              ...prev,
+              id: u.id || u._id || prev.id,
+              accountStatus: u.status === 'SUSPENDED' || u.status === 'BLOCKED' ? u.status : 'ACTIVE',
+              businessName: wp.businessName || u.businessName || prev.businessName,
+              businessLogoUrl: wp.businessLogoUrl || prev.businessLogoUrl,
+              activeStoreTheme: wp.activeStoreTheme || 'DEFAULT',
+              businessType: wp.businessType || prev.businessType,
+              ownerName: u.name || prev.ownerName,
+              email: u.email || prev.email,
+              phone: u.phone || prev.phone,
+              gstin: wp.gstin || prev.gstin,
+              isGstRegistered: wp.gstStatus ? wp.gstStatus === 'REGISTERED' : prev.isGstRegistered,
+              tradeLicense: wp.registrationDetails?.tradeLicense || prev.tradeLicense,
+              streetAddress: wp.address?.street || prev.streetAddress,
+              city: wp.address?.city || prev.city,
+              state: wp.address?.state || prev.state,
+              pincode: wp.address?.pincode || prev.pincode,
+              sameAsBusinessAddress: wp.pickupAddress?.sameAsBusinessAddress ?? prev.sameAsBusinessAddress,
+              pickupStreetAddress: wp.pickupAddress?.street || prev.pickupStreetAddress,
+              pickupCity: wp.pickupAddress?.city || prev.pickupCity,
+              pickupState: wp.pickupAddress?.state || prev.pickupState,
+              pickupPincode: wp.pickupAddress?.pincode || prev.pickupPincode,
+              bankName: wp.bankDetails?.bankName || prev.bankName,
+              accountNumber: wp.bankDetails?.accountNumber || prev.accountNumber,
+              ifscCode: wp.bankDetails?.ifscCode || prev.ifscCode,
+              kycStatus: resolvedKyc || prev.kycStatus,
+              twoFactorEnabled: Boolean(wp.twoFactorEnabled),
+            };
+            try {
+              localStorage.setItem('wholesaler_cached_profile', JSON.stringify(nextProfile));
+            } catch {}
+            return nextProfile;
+          });
+          setIsProfileLoaded(true);
         }
       }
 
@@ -516,8 +561,11 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (String(err?.message || '').toLowerCase().includes('unauthorized') || String(err?.message || '').includes('401')) {
         queryClient.clear();
         localStorage.removeItem('wholesaler_user_id');
+        localStorage.removeItem('wholesaler_kyc_status');
+        localStorage.removeItem('wholesaler_cached_profile');
         clearAuthToken();
         setProfile(DEFAULT_PROFILE);
+        setIsProfileLoaded(false);
         setRawProducts([]);
         setRawCategories([]);
         setRawRetailers([]);
@@ -586,6 +634,14 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       if (res?.data?.token) {
         setAuthToken(res.data.token);
+        if (res.data.user) {
+          const u = res.data.user;
+          const wp = u.wholesalerProfile || {};
+          const kyc = wp.kycStatus || '';
+          if (kyc) localStorage.setItem('wholesaler_kyc_status', kyc);
+          const uid = String(u.id || u._id || '');
+          if (uid) localStorage.setItem('wholesaler_user_id', uid);
+        }
       } else {
         throw new Error('Login did not return an authentication token.');
       }
@@ -604,6 +660,14 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const verifyLoginOtp = async (challengeToken: string, code: string) => {
     const response = await api.verifyLoginOtp(challengeToken, code);
     setAuthToken(response.data.token);
+    if (response.data.user) {
+      const u = response.data.user;
+      const wp = u.wholesalerProfile || {};
+      const kyc = wp.kycStatus || '';
+      if (kyc) localStorage.setItem('wholesaler_kyc_status', kyc);
+      const uid = String(u.id || u._id || '');
+      if (uid) localStorage.setItem('wholesaler_user_id', uid);
+    }
     await refreshData();
   };
 
@@ -627,7 +691,10 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const logout = () => {
     queryClient.clear();
     localStorage.removeItem('wholesaler_user_id');
+    localStorage.removeItem('wholesaler_kyc_status');
+    localStorage.removeItem('wholesaler_cached_profile');
     clearAuthToken();
+    setIsProfileLoaded(false);
     window.location.href = '/login';
   };
 
@@ -671,7 +738,19 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateProfile = useCallback((updated: Partial<WholesalerProfile>) => {
-    setProfile((prev) => ({ ...prev, ...updated }));
+    setProfile((prev) => {
+      const next = { ...prev, ...updated };
+      if (updated.kycStatus) {
+        localStorage.setItem('wholesaler_kyc_status', updated.kycStatus);
+      }
+      try {
+        localStorage.setItem('wholesaler_cached_profile', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    if (updated.kycStatus) {
+      invalidateResources('kyc', 'profile');
+    }
   }, []);
 
   const addProduct = async (prod: Omit<Product, 'id' | 'wholesalerId' | 'isLowStock'>) => {
@@ -910,6 +989,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         auditLogs,
         notifications,
         isLoading,
+        isProfileLoaded,
         login,
         resendLoginOtp,
         verifyLoginOtp,
@@ -954,6 +1034,7 @@ const fallbackWholesalerContext: WholesalerContextType = {
   auditLogs: [],
   notifications: [],
   isLoading: false,
+  isProfileLoaded: false,
   updateReturnStatus: async () => undefined,
   login: async () => ({ requiresTwoFactor: false }),
   resendLoginOtp: async () => ({ maskedEmail: '', resendAfterSeconds: 60 }),

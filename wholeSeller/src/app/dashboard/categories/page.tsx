@@ -55,8 +55,8 @@ function getAllDescendantCategoryIds(catId: string, categoriesList: Category[]):
 }
 
 export default function CategoriesPage() {
-  const { profile, categories, products, addCategory, updateCategory, deleteCategory, isLoading } = useWholesaler();
-  const canCreateCategories = profile.kycStatus === 'APPROVED';
+  const { profile, categories, products, addCategory, updateCategory, deleteCategory, isLoading, isProfileLoaded } = useWholesaler();
+  const canCreateCategories = isProfileLoaded && profile.kycStatus === 'APPROVED';
 
   // UI View Mode (Grid or List/Table)
   const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
@@ -242,16 +242,7 @@ export default function CategoriesPage() {
   };
 
   const handleDeleteClick = (category: Category) => {
-    const assignedProducts = products.filter(
-      (product) => product.categoryId === category.id || product.subcategoryId === category.id,
-    );
-    if (assignedProducts.length > 0) {
-      setCategoryToDelete(category);
-      setReplacementCategoryId(categories.find((item) => !item.parentId && item.id !== category.id)?.id || '');
-      return;
-    }
-
-    // Direct deletion confirmation for safe interaction
+    // Direct deletion confirmation for safe interaction (products are unlinked safely without deletion)
     setConfirmDeleteCategory(category);
   };
 
@@ -416,7 +407,7 @@ export default function CategoriesPage() {
           <button
             type="button"
             onClick={() => handleOpenAddModal()}
-            disabled={!canCreateCategories}
+            disabled={isProfileLoaded && !canCreateCategories}
             className="flex items-center gap-2 px-4 py-2 bg-tradeflow-green text-white text-xs font-semibold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
           >
             <Plus className="w-4 h-4 text-white" />
@@ -426,17 +417,37 @@ export default function CategoriesPage() {
       </div>
 
       {/* KYC Warning Banner */}
-      {!canCreateCategories && (
+      {isProfileLoaded && !canCreateCategories && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 text-xs sm:flex-row sm:items-center sm:justify-between shadow-2xs">
           <div>
-            <p className="font-bold text-amber-900">KYC approval is required to create or modify categories.</p>
-            <p className="mt-0.5 text-gray-600">Current status: {profile.kycStatus || 'DRAFT'}</p>
+            <p className="font-bold text-amber-900">
+              {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+                ? 'KYC verification is under review.'
+                : profile.kycStatus === 'REJECTED'
+                  ? 'KYC verification needs changes.'
+                  : profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                    ? 'KYC resubmission requested.'
+                    : 'KYC approval is required to create or modify categories.'}
+            </p>
+            <p className="mt-0.5 text-gray-600">
+              {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+                ? 'Category management will unlock automatically once your verification is approved.'
+                : profile.kycStatus === 'REJECTED'
+                  ? 'Please update and resubmit your verification details to manage categories.'
+                  : profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                    ? 'Additional documents were requested by admin before categories can be modified.'
+                    : `Current status: ${profile.kycStatus || 'Not submitted'}`}
+            </p>
           </div>
           <Link
             to="/dashboard/profile?tab=kyc"
             className="inline-flex w-fit items-center rounded-xl bg-tradeflow-green px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-tradeflow-green-hover shadow-2xs transition-colors"
           >
-            Complete KYC
+            {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+              ? 'Check KYC Status'
+              : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                ? 'Resubmit KYC'
+                : 'Complete KYC'}
           </Link>
         </div>
       )}
@@ -1061,7 +1072,7 @@ export default function CategoriesPage() {
             <div>
               <h3 className="text-base font-extrabold text-[#1C1917]">Delete Category?</h3>
               <p className="mt-1 text-xs text-gray-600 leading-relaxed">
-                Are you sure you want to delete <strong>{confirmDeleteCategory.name}</strong>? This action cannot be undone.
+                Are you sure you want to delete <strong>{confirmDeleteCategory.name}</strong>? Any products assigned to this category will have their category reference safely unlinked. Products, images, prices, and inventory will remain completely intact.
               </p>
             </div>
             <div className="flex justify-end gap-2.5 pt-2 border-t border-[#E7E5E4]">

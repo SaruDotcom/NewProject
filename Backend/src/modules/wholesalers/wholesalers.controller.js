@@ -27,6 +27,11 @@ class WholesalerController {
     return ApiResponse.success(res, result, 'Wholesaler status updated successfully');
   });
 
+  setBlocked = asyncHandler(async (req, res) => {
+    const result = await WholesalerService.setBlocked(req.params.id, req.body.blocked, req.user, req);
+    return ApiResponse.success(res, result, result.message);
+  });
+
   deleteWholesaler = asyncHandler(async (req, res) => {
     const result = await WholesalerService.deleteWholesaler(req.params.id, req.user, req);
     return ApiResponse.success(res, result, result.message);

@@ -53,7 +53,7 @@ const SALES_SNAPSHOT_DATA = [
 ];
 
 export default function OverviewPage() {
-  const { profile, products, retailers, orders, updateOrderStatus } = useWholesaler();
+  const { profile, products, retailers, orders, updateOrderStatus, isProfileLoaded } = useWholesaler();
   const location = useLocation();
   const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(
     Boolean((location.state as { registrationSuccess?: boolean } | null)?.registrationSuccess),
@@ -124,16 +124,47 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {profile.kycStatus !== 'APPROVED' && (
+      {isProfileLoaded && profile.kycStatus !== 'APPROVED' && (
         <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-2">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-700" />
+            {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW' ? (
+              <Clock className="mt-0.5 size-4 shrink-0 text-amber-700" />
+            ) : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED' ? (
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600" />
+            ) : (
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-700" />
+            )}
             <div>
-              <p className="font-bold">Complete KYC before adding products or categories.</p>
-              <p className="mt-0.5 text-xs text-amber-800">Submit your business details for KYC review to unlock catalog creation.</p>
+              <p className="font-bold">
+                {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+                  ? 'KYC verification is under review.'
+                  : profile.kycStatus === 'REJECTED'
+                    ? 'KYC application rejected.'
+                    : profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                      ? 'KYC resubmission requested.'
+                      : 'Complete KYC before adding products or categories.'}
+              </p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+                  ? 'Your documents are being reviewed by the administration. Adding products and categories will unlock upon approval.'
+                  : profile.kycStatus === 'REJECTED'
+                    ? 'Your KYC submission was rejected. Please review feedback and resubmit your details.'
+                    : profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                      ? 'Additional or updated documents were requested. Please resubmit your KYC details.'
+                      : 'Submit your business details for KYC review to unlock catalog creation.'}
+              </p>
             </div>
           </div>
-          <Link to="/dashboard/profile?tab=kyc" className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">Continue KYC</Link>
+          <Link
+            to="/dashboard/profile?tab=kyc"
+            className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+          >
+            {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+              ? 'View KYC Status'
+              : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                ? 'Resubmit KYC'
+                : 'Continue KYC'}
+          </Link>
         </div>
       )}
 

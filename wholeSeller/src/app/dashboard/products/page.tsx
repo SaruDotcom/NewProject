@@ -29,8 +29,8 @@ import api from '@/lib/api';
 import type { ApiErrorDetail } from '@/lib/api';
 
 export default function ProductsPage() {
-  const { profile, products, categories, addProduct, updateProduct, deleteProduct, refreshData, isLoading } = useWholesaler();
-  const canCreateProducts = profile.kycStatus === 'APPROVED';
+  const { profile, products, categories, addProduct, updateProduct, deleteProduct, refreshData, isLoading, isProfileLoaded } = useWholesaler();
+  const canCreateProducts = isProfileLoaded && profile.kycStatus === 'APPROVED';
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -563,9 +563,9 @@ export default function ProductsPage() {
 
           <button
             onClick={handleOpenAddModal}
-            disabled={!canCreateProducts}
+            disabled={isProfileLoaded && !canCreateProducts}
             className="flex items-center gap-2 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
-            title={!canCreateProducts ? 'Complete KYC verification before adding products' : undefined}
+            title={isProfileLoaded && !canCreateProducts ? 'Complete KYC verification before adding products' : undefined}
           >
             <Plus className="w-4 h-4" />
             <span>Add Product</span>
@@ -573,20 +573,44 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {!canCreateProducts && (
+      {isProfileLoaded && !canCreateProducts && (
         <div className="flex flex-col gap-3 border border-amber-500/30 bg-amber-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-bold text-status-warning-foreground">KYC approval is required to add products.</p>
-            <p className="mt-1 text-xs text-status-warning-foreground">Current status: {profile.kycStatus || 'DRAFT'}</p>
+            <p className="font-bold text-status-warning-foreground">
+              {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+                ? 'KYC verification is under review.'
+                : profile.kycStatus === 'REJECTED'
+                  ? 'KYC application needs changes.'
+                  : profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                    ? 'KYC resubmission requested.'
+                    : 'KYC approval is required to add products.'}
+            </p>
+            <p className="mt-1 text-xs text-status-warning-foreground">
+              {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+                ? 'Adding products will unlock automatically once your verification is approved.'
+                : profile.kycStatus === 'REJECTED'
+                  ? 'Please review admin feedback and resubmit your documents to unlock product creation.'
+                  : profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                    ? 'Additional or updated documents are required before products can be added.'
+                    : `Current status: ${profile.kycStatus || 'Not submitted'}`}
+            </p>
           </div>
-          <Link to="/dashboard/profile?tab=kyc" className="inline-flex w-fit items-center rounded-md bg-tradeflow-green px-3 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-green-hover">
-            Complete KYC
+          <Link
+            to="/dashboard/profile?tab=kyc"
+            className="inline-flex w-fit items-center rounded-md bg-tradeflow-green px-3 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-green-hover"
+          >
+            {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
+              ? 'Check KYC Status'
+              : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED'
+                ? 'Resubmit KYC'
+                : 'Complete KYC'}
           </Link>
         </div>
       )}
 
       <BulkProductUpload
         canImport={canCreateProducts}
+        isProfileLoaded={isProfileLoaded}
         onImported={() => refreshData(true)}
       />
 

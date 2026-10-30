@@ -3208,7 +3208,7 @@ export function AuthPage({
                       />
                     </label>
 
-                    {/* Retailer Login ID */}
+                    {/* Retailer Login ID
                     <label className="block text-xs font-bold text-[#12304A]">
                       Retailer Login ID (Username) <span className="text-red-500">*</span>
                       <Input
@@ -3226,7 +3226,7 @@ export function AuthPage({
                       <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
                         Letters, numbers, and dashes only (no @ or dots). This is your login username.
                       </span>
-                    </label>
+                    </label> */}
 
                     {/* Business / Store Name */}
                     <label className="block text-xs font-bold text-[#12304A]">

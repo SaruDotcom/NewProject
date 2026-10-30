@@ -346,9 +346,11 @@ async function saveWorkbook(workbook: ExcelJS.Workbook, filename: string) {
 export default function BulkProductUpload({
   canImport,
   onImported,
+  isProfileLoaded = true,
 }: {
   canImport: boolean;
   onImported: () => Promise<void>;
+  isProfileLoaded?: boolean;
 }) {
   const [template, setTemplate] = useState<TemplateKey | ''>('');
   const [previewRows, setPreviewRows] = useState<PreviewEntry[]>([]);
@@ -550,7 +552,7 @@ export default function BulkProductUpload({
         <p className="text-[11px] text-gray-500">Excel .xlsx files only. Uploads are limited to 500 product rows.</p>
       </div>
 
-      {!canImport && (
+      {isProfileLoaded && !canImport && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
           KYC approval is required to import products. You can still download a template and preview rows.
         </p>

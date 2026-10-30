@@ -6,6 +6,7 @@ const {
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 const ProductService = require('../products/products.service');
+const { assertWholesalerAvailable, WHOLESALER_UNAVAILABLE_MESSAGE } = require('../../services/wholesaler-access.service');
 
 class RetailerPortalController {
   // Retailer gets active connection/wholesaler
@@ -14,7 +15,7 @@ class RetailerPortalController {
       retailerId: req.user._id,
       status: 'ACTIVE',
     })
-      .populate('wholesalerId', 'name email phone')
+      .populate('wholesalerId', 'name email phone status')
       .lean();
 
     const formatted = await Promise.all(
@@ -40,6 +41,10 @@ class RetailerPortalController {
           rating: 4.8,
           productCount,
           status: rel.status,
+          available: rel.wholesalerId.status !== 'BLOCKED' && rel.wholesalerId.status !== 'SUSPENDED',
+          unavailableMessage: rel.wholesalerId.status === 'BLOCKED' || rel.wholesalerId.status === 'SUSPENDED'
+            ? WHOLESALER_UNAVAILABLE_MESSAGE
+            : '',
           joinedAt: rel.joinedAt,
         };
       })
@@ -60,7 +65,9 @@ class RetailerPortalController {
     const { wholesalerId } = req.params;
     const profile = await WholesalerProfile.findOne({
       $or: [{ _id: wholesalerId.match(/^[0-9a-fA-F]{24}$/) ? wholesalerId : null }, { userId: wholesalerId.match(/^[0-9a-fA-F]{24}$/) ? wholesalerId : null }],
-    }).populate('userId', 'name email phone');
+    }).populate('userId', 'name email phone status');
+
+    await assertWholesalerAvailable(profile?.userId?._id || wholesalerId);
 
     const products = await Product.find({
       wholesalerId: profile ? profile.userId._id : wholesalerId,

@@ -26,6 +26,7 @@ const {
 } = require('../utils/errors');
 const { parsePagination } = require('../utils/pagination');
 const { generateReference } = require('../utils/crypto');
+const { assertWholesalerAvailable, WHOLESALER_UNAVAILABLE_MESSAGE } = require('./wholesaler-access.service');
 
 const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 
@@ -98,6 +99,7 @@ class RetailerService {
         'NO_ACTIVE_WHOLESALER'
       );
     }
+    await assertWholesalerAvailable(relationship.wholesalerId._id);
     return relationship.wholesalerId;
   }
 
@@ -119,11 +121,11 @@ class RetailerService {
         status: 'ACTIVE',
         isDeleted: false,
       });
-      const categoryIds = await Product.distinct('categoryId', {
+      const categoryIds = (await Product.distinct('categoryId', {
         wholesalerId: wholesalerUser._id,
         status: 'ACTIVE',
         isDeleted: false,
-      });
+      })).filter(Boolean);
 
       connectedWholesaler = {
         id: wholesalerUser._id,
@@ -133,11 +135,16 @@ class RetailerService {
         city: wholesalerProfile?.address?.city || '',
         state: wholesalerProfile?.address?.state || '',
         rating: 4.9,
+        status: wholesalerUser.status,
+        available: wholesalerUser.status !== 'BLOCKED' && wholesalerUser.status !== 'SUSPENDED',
+        unavailableMessage: wholesalerUser.status === 'BLOCKED' || wholesalerUser.status === 'SUSPENDED'
+          ? WHOLESALER_UNAVAILABLE_MESSAGE
+          : '',
       };
 
       storeMetrics = {
-        totalProducts: productCount,
-        categoriesCount: categoryIds.length,
+        totalProducts: connectedWholesaler.available ? productCount : 0,
+        categoriesCount: connectedWholesaler.available ? categoryIds.length : 0,
       };
     }
 
@@ -356,6 +363,11 @@ class RetailerService {
       minOrderValue: profile?.minOrderValue || 0,
       relationshipStatus: relationship.status,
       joinedAt: relationship.joinedAt,
+      status: wholesalerUser.status,
+      available: wholesalerUser.status !== 'BLOCKED' && wholesalerUser.status !== 'SUSPENDED',
+      unavailableMessage: wholesalerUser.status === 'BLOCKED' || wholesalerUser.status === 'SUSPENDED'
+        ? WHOLESALER_UNAVAILABLE_MESSAGE
+        : '',
     };
   }
 
@@ -420,12 +432,12 @@ class RetailerService {
    */
   static async getCategories(retailerId, query = {}) {
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
-    const categoryIds = await Product.distinct('categoryId', {
+    const categoryIds = (await Product.distinct('categoryId', {
       wholesalerId: wholesalerUser._id,
       ...(query.status ? { status: query.status } : { status: 'ACTIVE' }),
       isDeleted: false,
       isDemo: { $ne: true },
-    });
+    })).filter(Boolean);
 
     const filter = {
       _id: { $in: categoryIds },

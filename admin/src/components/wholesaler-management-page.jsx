@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Ban, CheckCircle2, ChevronLeft, ChevronRight, Eye, Plus, Search, Trash2, XCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, Ban, CheckCircle2, ChevronLeft, ChevronRight, Eye, Plus, Search, XCircle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ const statusOptions = [
     ["suspended", "Rejected"],
 ];
 const blankForm = { name: "", businessName: "", company: "", email: "", phone: "", city: "", state: "", password: "" };
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 const columns = [
     ["businessName", "Business"],
     ["email", "Email"],
@@ -78,8 +78,7 @@ const columnWidths = {
 
 const getDisplayStatus = (row) => {
     if (row.status === "BLOCKED") return "Blocked";
-    if (row.status === "SUSPENDED" || row.kycStatus === "REJECTED") return "Rejected";
-    if (row.status === "ACTIVE" && row.kycStatus === "APPROVED") return "Approved";
+    if (row.status === "SUSPENDED") return "Suspended";
     if (row.status === "ACTIVE") return "Active";
     return "Pending";
 };
@@ -169,27 +168,32 @@ export function WholesalerManagementPage() {
         description: options.description,
     });
 
-    const confirmDelete = (row) => setConfirmation({
-        kind: "delete",
+    const confirmBlocked = (row, blocked) => setConfirmation({
+        kind: "blocked",
         row,
-        title: "Delete wholesaler?",
-        description: "The record will be soft-deleted and removed from the active list. Deletion is blocked when connected retailers or active orders exist.",
+        blocked,
+        title: blocked ? "Block wholesaler?" : "Unblock wholesaler?",
+        description: blocked
+            ? `Block ${row.businessName || row.name || "this wholesaler"}? They will lose account and business access, and retailers will no longer be able to browse or order from this wholesaler. No business data or order history will be deleted.`
+            : `Unblock ${row.businessName || row.name || "this wholesaler"}? Account and retailer catalog access will be restored without changing KYC or business information.`,
     });
 
     const runConfirmedAction = async () => {
-        if (!confirmation) return;
+        if (!confirmation || actionLoading) return;
         setActionLoading(true);
         try {
-            if (confirmation.kind === "status") {
+            if (confirmation.kind === "blocked") {
+                await apiPatch(`/admin/wholesalers/${confirmation.row.id}/block`, {
+                    blocked: confirmation.blocked,
+                });
+                toast.success(confirmation.blocked ? "Wholesaler blocked successfully" : "Wholesaler unblocked successfully");
+            } else {
                 await apiPatch(`/admin/wholesalers/${confirmation.row.id}/status`, {
                     status: confirmation.nextStatus,
                     kycStatus: confirmation.kycStatus,
                     reason: confirmation.reason,
                 });
                 toast.success("Wholesaler status updated successfully");
-            } else {
-                await apiDelete(`/admin/wholesalers/${confirmation.row.id}`);
-                toast.success("Wholesaler deleted successfully");
             }
             setConfirmation(null);
             setRefreshKey((current) => current + 1);
@@ -367,7 +371,7 @@ export function WholesalerManagementPage() {
                                                         View
                                                     </Link>
                                                 </Button>
-                                                {!isApproved(row) && (
+                                                {!isApproved(row) && row.status !== "BLOCKED" && (
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
@@ -398,7 +402,29 @@ export function WholesalerManagementPage() {
                                                 >
                                                     <XCircle className="size-3.5" />
                                                 </Button>
-                                                {row.status === "BLOCKED" || row.status === "SUSPENDED" ? (
+                                                {row.status === "BLOCKED" ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 border-emerald-200 bg-emerald-50 px-2 text-xs text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                                                        title="Unblock wholesaler"
+                                                        onClick={() => confirmBlocked(row, false)}
+                                                    >
+                                                        <CheckCircle2 className="size-3.5" />
+                                                        Unblock
+                                                    </Button>
+                                                ) : row.status === "ACTIVE" ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 hover:bg-slate-100"
+                                                        title="Block wholesaler"
+                                                        onClick={() => confirmBlocked(row, true)}
+                                                    >
+                                                        <Ban className="size-3.5" />
+                                                        Block
+                                                    </Button>
+                                                ) : row.status === "SUSPENDED" ? (
                                                     <Button
                                                         variant="outline"
                                                         size="icon"
@@ -413,32 +439,7 @@ export function WholesalerManagementPage() {
                                                     >
                                                         <CheckCircle2 className="size-3.5" />
                                                     </Button>
-                                                ) : (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-8 w-8 border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                                                        title="Block wholesaler"
-                                                        aria-label={`Block ${row.businessName || row.name}`}
-                                                        onClick={() => confirmStatus(row, "BLOCKED", {
-                                                            reason: "Blocked by admin",
-                                                            title: "Block wholesaler?",
-                                                            description: "This will block the wholesaler from logging in or operating on the platform.",
-                                                        })}
-                                                    >
-                                                        <Ban className="size-3.5" />
-                                                    </Button>
-                                                )}
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-8 w-8 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
-                                                    title="Delete wholesaler"
-                                                    aria-label={`Delete ${row.businessName || row.name}`}
-                                                    onClick={() => confirmDelete(row)}
-                                                >
-                                                    <Trash2 className="size-3.5" />
-                                                </Button>
+                                                ) : null}
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -459,8 +460,8 @@ export function WholesalerManagementPage() {
                     open={Boolean(confirmation)}
                     title={confirmation?.title}
                     description={confirmation?.description}
-                    confirmLabel={confirmation?.kind === "delete" ? "Delete" : "Confirm"}
-                    variant={confirmation?.kind === "delete" ? "destructive" : "default"}
+                    confirmLabel={confirmation?.kind === "blocked" ? (confirmation.blocked ? "Block" : "Unblock") : "Confirm"}
+                    variant={confirmation?.kind === "blocked" && confirmation.blocked ? "destructive" : "default"}
                     onCancel={() => !actionLoading && setConfirmation(null)}
                     onConfirm={runConfirmedAction}
                 />

@@ -33,6 +33,7 @@ const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const WalletService = require('../../services/wallet.service');
 const env = require('../../config/env');
+const { assertWholesalerAvailable } = require('../../services/wholesaler-access.service');
 
 const normalizeOrderAddress = (address = {}) => ({
   street: address.addressLine1 || address.street || '',
@@ -74,6 +75,7 @@ class OrderService {
     }
 
     const wholesalerId = relationship.wholesalerId;
+    await assertWholesalerAvailable(wholesalerId);
 
     if (requestedWholesalerId && String(requestedWholesalerId) !== String(wholesalerId)) {
       throw new ForbiddenError(

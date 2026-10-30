@@ -92,10 +92,9 @@ categorySchema.pre('validate', async function (next) {
   }
 
   try {
-  const parent = await mongoose.model('Category').findOne({
-    _id: pId,
-    isDemo: { $ne: true },
-  });
+    const parent = await mongoose.model('Category').findOne({
+      _id: pId,
+    });
     if (!parent || parent.isDeleted) {
       return next(new Error('Parent category not found'));
     }

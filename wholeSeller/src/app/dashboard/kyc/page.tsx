@@ -61,12 +61,15 @@ export default function KycPage() {
   useEffect(() => {
     const application = kycQuery.data?.data || {};
     if (kycQuery.data) {
-      const nextStatus = application.status || 'DRAFT';
+      const nextStatus = application.status || profile.kycStatus || 'DRAFT';
       setStatus(nextStatus);
       setReviewReason(application.reviewReason || '');
       setExistingDocuments(application.documents || []);
       const hasGst = application.hasGst !== undefined ? Boolean(application.hasGst) : Boolean(application.gstin || profile.gstin);
       updateProfile({ kycStatus: nextStatus });
+      if (nextStatus) {
+        localStorage.setItem('wholesaler_kyc_status', nextStatus);
+      }
       setForm({
         businessName: application.businessName || profile.businessName || '',
         ownerName: application.ownerName || profile.ownerName || '',
@@ -232,9 +235,13 @@ export default function KycPage() {
       const nextStatus = response?.data?.status || 'SUBMITTED';
       setStatus(nextStatus);
       setReviewReason('');
+      localStorage.setItem('wholesaler_kyc_status', nextStatus);
       updateProfile({ kycStatus: nextStatus });
       await queryClient.invalidateQueries({
         queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'kyc'),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'profile'),
       });
       const refreshed = await kycQuery.refetch();
       setExistingDocuments(refreshed.data?.data?.documents || []);
