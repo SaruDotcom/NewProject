@@ -25,7 +25,7 @@ import { WholesalerProvider } from '@/context/WholesalerContext';
 import { LoginForm } from '@/app/login/page';
 import { RegisterForm } from '@/app/register/page';
 import { BRAND_NAME } from '@/config/brand';
-import { clearAuthToken, getAuthToken, resolveProductImageUrl, type SubscriptionPlan, default as api } from '@/lib/api';
+import { clearAuthToken, getAuthToken, type SubscriptionPlan, default as api } from '@/lib/api';
 
 const landingCopy = {
   hero: {
@@ -472,12 +472,12 @@ function LandingContent() {
                       {[
                         { image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=480&q=85', name: 'Royal Lehenga Set', price: '₹2,450', variants: '6 colours', imagePosition: 'center 34%' },
                         { image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?auto=format&fit=crop&w=480&q=85', name: 'Festive Kurti Set', price: '₹890', variants: '4 colours', imagePosition: 'center 28%' },
-                        { image: '/uploads/products/0b2576f4-6f78-4a57-ae2b-ffefa95a9938.webp', name: 'Embroidered Suit', price: '₹1,750', variants: '5 colours', imagePosition: 'center' },
-                        { image: '/uploads/products/4f0b7afc-ada9-40d1-9a87-e7ade720cc12.webp', name: 'Daily Ethnic Wear', price: '₹1,120', variants: '8 colours', imagePosition: 'center' },
+                        { image: '/images/landing/ethnic-suit-collection.webp', name: 'Embroidered Suit', price: '₹1,750', variants: '5 colours', imagePosition: 'center' },
+                        { image: '/images/landing/daily-ethnic-wear.webp', name: 'Daily Ethnic Wear', price: '₹1,120', variants: '8 colours', imagePosition: 'center' },
                       ].map(({ image, name, price, variants, imagePosition }) => (
                         <article key={name} className="min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm sm:rounded-lg">
                           <div className="h-[42px] overflow-hidden bg-rose-50 sm:h-[76px]">
-                            <img src={resolveProductImageUrl(image) ?? undefined} alt={name} loading="lazy" className="size-full object-cover" style={{ objectPosition: imagePosition }} />
+                            <img src={image} alt={name} loading="lazy" className="size-full object-cover" style={{ objectPosition: imagePosition }} />
                           </div>
                           <div className="p-1 sm:p-1.5">
                             <p className="truncate text-[6px] font-bold text-slate-800 sm:text-[8px]">{name}</p>
@@ -508,9 +508,9 @@ function LandingContent() {
                   <div className="mt-2 flex items-center justify-between sm:mt-3"><p className="text-[7px] font-extrabold sm:text-[9px]">Featured products</p><span className="text-[5px] font-semibold text-emerald-700 sm:text-[6px]">See all</span></div>
                   <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:mt-2 sm:gap-2">
                     {[
-                      { image: '/uploads/products/0b2576f4-6f78-4a57-ae2b-ffefa95a9938.webp', name: 'Classic Collection', price: '₹1,250' },
-                      { image: '/uploads/products/4f0b7afc-ada9-40d1-9a87-e7ade720cc12.webp', name: 'Everyday Essentials', price: '₹890' },
-                    ].map(({ image, name, price }) => <article key={image} className="overflow-hidden rounded-md border border-slate-100 bg-white sm:rounded-lg"><div className="h-12 overflow-hidden bg-amber-50 sm:h-16"><img src={resolveProductImageUrl(image) ?? undefined} alt={name} className="size-full object-cover" /></div><div className="p-1 sm:p-1.5"><p className="truncate text-[5px] font-semibold sm:text-[7px]">{name}</p><p className="mt-0.5 text-[6px] font-extrabold text-emerald-700 sm:text-[8px]">{price}</p></div></article>)}
+                      { image: '/images/landing/ethnic-suit-collection.webp', name: 'Classic Collection', price: '₹1,250' },
+                      { image: '/images/landing/daily-ethnic-wear.webp', name: 'Everyday Essentials', price: '₹890' },
+                    ].map(({ image, name, price }) => <article key={image} className="overflow-hidden rounded-md border border-slate-100 bg-white sm:rounded-lg"><div className="h-12 overflow-hidden bg-amber-50 sm:h-16"><img src={image} alt={name} className="size-full object-cover" /></div><div className="p-1 sm:p-1.5"><p className="truncate text-[5px] font-semibold sm:text-[7px]">{name}</p><p className="mt-0.5 text-[6px] font-extrabold text-emerald-700 sm:text-[8px]">{price}</p></div></article>)}
                   </div>
                 </div>
                 <div className="mx-auto mb-1 h-1 w-8 rounded-full bg-slate-300 sm:w-10" />
