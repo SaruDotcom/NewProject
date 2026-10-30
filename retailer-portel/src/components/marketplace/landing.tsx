@@ -138,7 +138,11 @@ export function LandingPage() {
           setReferralAttribution(null);
           setReferralCode("");
         }
-        setReferralError("This link is not valid. Please ask your wholesaler for a new link.");
+        setReferralError(
+          err instanceof ApiError && err.message.includes("currently unavailable")
+            ? err.message
+            : "This link is not valid. Please ask your wholesaler for a new link.",
+        );
       } else {
         setReferralError("Unable to verify this invite link. Please try again.");
       }

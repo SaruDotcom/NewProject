@@ -369,6 +369,9 @@ class ProductService {
     if (!product || product.isDeleted || product.isDemo) {
       throw new NotFoundError('Product not found');
     }
+    if (product.wholesalerId?._id) {
+      await assertWholesalerAvailable(product.wholesalerId._id);
+    }
 
     const inventory = await Inventory.findOne({ productId: product._id });
     const wholesalerUser = product.wholesalerId ? product.wholesalerId.toObject ? product.wholesalerId.toObject() : product.wholesalerId : {};

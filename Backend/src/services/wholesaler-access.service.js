@@ -8,11 +8,11 @@ const assertWholesalerAvailable = async (wholesalerId) => {
   const wholesaler = await User.findOne({
     _id: wholesalerId,
     role: ROLES.WHOLESALER,
-    isDeleted: false,
-  }).select('_id status').lean();
+  }).select('_id status isDeleted').lean();
 
   if (
     !wholesaler ||
+    wholesaler.isDeleted ||
     wholesaler.status === USER_STATUS.BLOCKED ||
     wholesaler.status === USER_STATUS.SUSPENDED
   ) {

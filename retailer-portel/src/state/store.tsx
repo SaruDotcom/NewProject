@@ -122,6 +122,8 @@ export type Wholesaler = {
   description?: string;
   businessName?: string;
   businessCategory?: string;
+  available?: boolean;
+  unavailableMessage?: string;
   activeStoreTheme?: "DEFAULT" | "ROYAL" | "FESTIVE" | "MINIMAL";
   banners?: BannerSlide[];
 };
@@ -427,6 +429,8 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
     description: item.description || "",
     businessName,
     businessCategory: item.businessCategory || "",
+    available: item.available !== false,
+    unavailableMessage: item.unavailableMessage || "",
     activeStoreTheme: item.activeStoreTheme || "DEFAULT",
     banners,
   };
@@ -912,17 +916,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const token = getAuthToken();
       if (token) {
-        const response = await api.getConnectedWholesaler();
         const userId =
           currentUser?.id ||
           localStorage.getItem("nexora_retailer_user_id");
+        if (userId) {
+          await queryClient.invalidateQueries({
+            queryKey: retailerQueryKeys.resource(userId, "wholesaler"),
+          });
+        }
+        const response = await api.getConnectedWholesaler();
         if (userId) {
           queryClient.setQueryData(
             retailerQueryKeys.resource(userId, "wholesaler"),
             response,
           );
         }
-        setLinkedWholesaler(mapWholesaler(response?.data ?? null));
+        const connectedWholesaler = mapWholesaler(response?.data ?? null);
+        setLinkedWholesaler(connectedWholesaler);
+        if (connectedWholesaler?.available === false) {
+          setProducts([]);
+          setCategories([]);
+          if (userId) {
+            queryClient.removeQueries({
+              queryKey: retailerQueryKeys.resource(userId, "products"),
+            });
+            queryClient.removeQueries({
+              queryKey: retailerQueryKeys.resource(userId, "categories"),
+            });
+          }
+        }
         return;
       }
 

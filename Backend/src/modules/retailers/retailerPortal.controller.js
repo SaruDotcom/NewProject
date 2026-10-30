@@ -39,7 +39,9 @@ class RetailerPortalController {
           city: wholesalerProfile?.address?.city || '',
           state: wholesalerProfile?.address?.state || '',
           rating: 4.8,
-          productCount,
+          productCount: rel.wholesalerId.status === 'BLOCKED' || rel.wholesalerId.status === 'SUSPENDED'
+            ? 0
+            : productCount,
           status: rel.status,
           available: rel.wholesalerId.status !== 'BLOCKED' && rel.wholesalerId.status !== 'SUSPENDED',
           unavailableMessage: rel.wholesalerId.status === 'BLOCKED' || rel.wholesalerId.status === 'SUSPENDED'

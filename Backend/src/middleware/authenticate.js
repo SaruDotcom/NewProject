@@ -1,9 +1,9 @@
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const { User } = require('../models');
-const { UnauthorizedError, ForbiddenError } = require('../utils/errors');
-const { USER_STATUS } = require('../config/constants');
+const { UnauthorizedError } = require('../utils/errors');
 const asyncHandler = require('../utils/asyncHandler');
+const accountStatus = require('./account-status');
 
 const authenticate = asyncHandler(async (req, res, next) => {
   let token;
@@ -28,12 +28,8 @@ const authenticate = asyncHandler(async (req, res, next) => {
       throw new UnauthorizedError('User account not found or deactivated');
     }
 
-    if (user.status === USER_STATUS.BLOCKED || user.status === USER_STATUS.SUSPENDED) {
-      throw new ForbiddenError(`Account is ${user.status.toLowerCase()}. Please contact support.`);
-    }
-
     req.user = user;
-    next();
+    accountStatus(req, res, next);
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
       throw new UnauthorizedError('Authentication token has expired', 'TOKEN_EXPIRED');

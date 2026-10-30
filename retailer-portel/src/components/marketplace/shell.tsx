@@ -432,6 +432,15 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      {authenticated && linkedWholesaler?.available === false && (
+        <div
+          role="alert"
+          className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-950"
+        >
+          {linkedWholesaler.unavailableMessage || "This wholesaler is currently unavailable."}
+        </div>
+      )}
+
       {/* Main Page Content */}
       <div className="flex-1 pb-16 md:pb-0">{children}</div>
 

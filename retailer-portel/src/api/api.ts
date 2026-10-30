@@ -106,6 +106,9 @@ export type ApiWholesaler = {
   minOrderValue?: number;
   rating?: number;
   relationshipStatus?: string;
+  status?: string;
+  available?: boolean;
+  unavailableMessage?: string;
   categoryDetails?: ApiCategory[];
 };
 
