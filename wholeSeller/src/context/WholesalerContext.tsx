@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Product, Category, Retailer, Order, OrderStatus, InventoryLog, SecuritySession, AuditLog, ReturnRequest,
+  Product, Category, CategoryInput, Retailer, Order, OrderStatus, InventoryLog, SecuritySession, AuditLog, ReturnRequest,
 } from '@/lib/types';
 import api, { setAuthToken, clearAuthToken, getAuthToken, type WholesalerStoreTheme } from '@/lib/api';
 import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
@@ -20,6 +20,26 @@ const productImageUrls = (images: unknown, imageUrl?: unknown): string[] => {
   const imageList = Array.isArray(images) ? images : images ? [images] : [];
   return [...new Set([productImageUrl(imageUrl), ...imageList.map(productImageUrl)].filter(Boolean))];
 };
+
+const mapCategory = (category: any, wholesalerId: string): Category => ({
+  id: String(category._id || category.id),
+  wholesalerId: String(category.wholesalerId === undefined ? wholesalerId : category.wholesalerId || ''),
+  name: category.name || '',
+  slug: category.slug || '',
+  productCount: Number(category.productCount ?? category.products ?? 0),
+  icon: category.icon || '',
+  description: category.description || '',
+  imageUrl: category.imageUrl || '',
+  parentId: category.parentId
+    ? String(typeof category.parentId === 'object'
+      ? category.parentId._id || category.parentId.id || ''
+      : category.parentId)
+    : null,
+  parentName: category.parent?.name || (typeof category.parentId === 'object' ? category.parentId.name : undefined),
+  displayPath: category.displayPath || category.name || '',
+  level: Number(category.level || 1),
+  path: Array.isArray(category.path) ? category.path : [],
+});
 
 export interface WholesalerProfile {
   id: string;
@@ -117,7 +137,7 @@ interface WholesalerContextType {
   deleteProduct: (id: string) => Promise<void>;
   adjustStock: (productId: string, delta: number, reason: string) => Promise<void>;
 
-  addCategory: (category: Omit<Category, 'id' | 'wholesalerId' | 'productCount'>) => Promise<void>;
+  addCategory: (category: CategoryInput) => Promise<void>;
   updateCategory: (id: string, updated: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<{ success: boolean; message?: string }>;
 
@@ -282,21 +302,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ? catRes.data.items
           : [];
       if (catRes?.data) {
-        const apiCats: Category[] = categoryItems.map((c: any) => ({
-          id: c._id || c.id,
-          wholesalerId: c.wholesalerId || profile.id,
-          name: c.name,
-          slug: c.slug || (c.name ? c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'category'),
-          productCount: c.productCount || c.products || 0,
-          icon: 'Package',
-          description: c.description || c.name || 'Product Category',
-          imageUrl: c.imageUrl || '',
-          parentId: c.parentId ? (typeof c.parentId === 'object' && c.parentId !== null ? String(c.parentId._id || c.parentId.id || '') : String(c.parentId)) : null,
-          parentName: c.parent?.name || (typeof c.parentId === 'object' && c.parentId !== null ? c.parentId?.name : undefined),
-          displayPath: c.displayPath || c.name,
-          level: c.level || 0,
-          path: c.path || [],
-        }));
+        const apiCats: Category[] = categoryItems.map((category: any) => mapCategory(category, userId));
         if (apiCats.length > 0) {
           setRawCategories(apiCats);
         } else {
@@ -504,7 +510,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const isPublicAuthPage = typeof window !== 'undefined' && 
         (window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/register'));
       const token = getAuthToken();
-      if (token && !isPublicAuthPage && token !== 'demo-wholesaler-token') {
+      if (token && !isPublicAuthPage) {
         loadNotifications().catch((err: any) => console.warn('Notification refresh failed:', err.message));
       }
     }, 30000);
@@ -540,27 +546,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       await refreshData();
       return { requiresTwoFactor: false };
-    } catch (err: any) {
-      if (
-        String(err?.message || '').toLowerCase().includes('failed to fetch') ||
-        String(err?.message || '').toLowerCase().includes('networkerror')
-      ) {
-        console.warn('Backend unavailable, initializing offline demo session:', err.message);
-        setAuthToken('demo-wholesaler-token');
-        setProfile({
-          ...DEFAULT_PROFILE,
-          id: 'wholesaler-apex-demo',
-          businessName: 'Apex Wholesale Electronics',
-          ownerName: 'Rajesh Sharma',
-          email: identifier || 'wholesaler@apex.com',
-          phone: '+91 98765 43210',
-          accountStatus: 'ACTIVE',
-          kycStatus: 'APPROVED',
-        });
-        return { requiresTwoFactor: false };
-      }
-      setIsLoading(false);
-      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -755,27 +740,33 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addAuditLog(`Stock adjusted for ${existing?.sku}: ${delta > 0 ? '+' : ''}${delta} (${reason})`);
   };
 
-  const addCategory = async (cat: Omit<Category, 'id' | 'wholesalerId' | 'productCount' | 'slug' | 'icon'>) => {
-    try {
-      const res = await api.createCategory({ name: cat.name, description: cat.description || cat.name, imageUrl: cat.imageUrl, parentId: cat.parentId || null });
-      if (res?.data) {
-        invalidateResources('categories', 'products');
-        await refreshData(true);
-      }
-    } catch (err) {
-      throw err;
+  const addCategory = async (cat: CategoryInput) => {
+    const res = await api.createCategory({
+      name: cat.name,
+      description: cat.description,
+      imageUrl: cat.imageUrl,
+      icon: cat.icon,
+      parentId: cat.parentId || null,
+    });
+    if (res?.data) {
+      const createdCategory = mapCategory(res.data, profile.id);
+      setRawCategories((current) => [...current.filter((category) => category.id !== createdCategory.id), createdCategory]);
+      invalidateResources('categories', 'products');
+      await refreshData(true);
     }
     addAuditLog(`Created product category: ${cat.name}`);
   };
 
   const updateCategory = async (id: string, updated: Partial<Category>) => {
-    try {
-      await api.updateCategory(id, { name: updated.name, description: updated.description, imageUrl: updated.imageUrl, parentId: updated.parentId });
-      invalidateResources('categories', 'products');
-      await refreshData(true);
-    } catch (err) {
-      throw err;
-    }
+    await api.updateCategory(id, {
+      name: updated.name,
+      description: updated.description,
+      imageUrl: updated.imageUrl,
+      icon: updated.icon,
+      parentId: updated.parentId,
+    });
+    invalidateResources('categories', 'products');
+    await refreshData(true);
     addAuditLog(`Updated category ID: ${id}`);
   };
 

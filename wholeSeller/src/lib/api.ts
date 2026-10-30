@@ -666,13 +666,13 @@ export const api = {
   getCategories: () =>
     request<{ success: boolean; data: any }>('/wholesaler/categories', { method: 'GET' }),
 
-  createCategory: (data: { name: string; description?: string; imageUrl?: string; parentId?: string | null }) =>
+  createCategory: (data: { name: string; description?: string; imageUrl?: string; icon?: string; parentId?: string | null }) =>
     request<{ success: boolean; data: any }>('/wholesaler/categories', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  updateCategory: (id: string, data: { name?: string; description?: string; imageUrl?: string; parentId?: string | null }) =>
+  updateCategory: (id: string, data: { name?: string; description?: string; imageUrl?: string; icon?: string; parentId?: string | null }) =>
     request<{ success: boolean; data: any }>(`/wholesaler/categories/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),

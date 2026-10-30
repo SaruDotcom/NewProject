@@ -19,8 +19,12 @@ class CategoryService {
     }
 
     const parent = String(parentId).match(/^[0-9a-fA-F]{24}$/)
-      ? await Category.findById(parentId)
-      : await Category.findOne({ $or: [{ slug: parentId }, { name: parentId }], isDeleted: false });
+      ? await Category.findOne({ _id: parentId, isDemo: { $ne: true } })
+      : await Category.findOne({
+        $or: [{ slug: parentId }, { name: parentId }],
+        isDeleted: false,
+        isDemo: { $ne: true },
+      });
     if (!parent || parent.isDeleted) {
       throw new NotFoundError('Parent category not found');
     }
@@ -75,7 +79,7 @@ class CategoryService {
    * Get full 3-level nested category tree in one API call
    */
   static async getCategoryTree(wholesalerId = null) {
-    const filter = { isDeleted: false };
+    const filter = { isDeleted: false, isDemo: { $ne: true } };
     if (wholesalerId) {
       filter.$or = [{ wholesalerId: null }, { wholesalerId: wholesalerId }];
     }
@@ -115,7 +119,12 @@ class CategoryService {
    * List categories (supports tree / flat / wholesaler-scoped / admin)
    */
   static async listCategories(query = {}) {
-    const rawCategories = await Category.find({ isDeleted: false })
+    const categoryFilter = { isDeleted: false, isDemo: { $ne: true } };
+    if (query.wholesalerId) {
+      categoryFilter.$or = [{ wholesalerId: null }, { wholesalerId: query.wholesalerId }];
+    }
+
+    const rawCategories = await Category.find(categoryFilter)
       .populate('parentId', 'name slug')
       .sort({ sortOrder: 1, name: 1 })
       .lean();
@@ -161,10 +170,6 @@ class CategoryService {
       });
     }
 
-    if (query.wholesalerId) {
-      targetList = targetList.filter((c) => !c.wholesalerId || String(c.wholesalerId) === String(query.wholesalerId));
-    }
-
     if (query.search) {
       const searchRegex = new RegExp(query.search, 'i');
       targetList = targetList.filter((c) => searchRegex.test(c.name));
@@ -178,8 +183,12 @@ class CategoryService {
         const level = path.length - 1;
         const displayPath = path.map((p) => p.name).join(' > ');
 
-        const subCount = await Category.countDocuments({ parentId: cat._id, isDeleted: false });
-        const prodCount = await Product.countDocuments({
+        const subCount = await Category.countDocuments({
+          parentId: cat._id,
+          isDeleted: false,
+          isDemo: { $ne: true },
+        });
+        const productFilter = {
           $or: [
             { categoryId: cat._id },
             { subcategoryId: cat._id },
@@ -187,6 +196,11 @@ class CategoryService {
             { subSubcategoryId: cat._id },
           ],
           isDeleted: false,
+          isDemo: { $ne: true },
+        };
+        if (query.wholesalerId) productFilter.wholesalerId = query.wholesalerId;
+        const prodCount = await Product.countDocuments({
+          ...productFilter,
         });
 
         return {
@@ -235,19 +249,20 @@ class CategoryService {
   static async getCategoryById(idOrSlug) {
     let category;
     if (idOrSlug.match(/^[0-9a-fA-F]{24}$/)) {
-      category = await Category.findById(idOrSlug).populate('parentId', 'name slug');
+      category = await Category.findOne({ _id: idOrSlug, isDemo: { $ne: true } }).populate('parentId', 'name slug');
     } else {
-      category = await Category.findOne({ slug: idOrSlug, isDeleted: false }).populate('parentId', 'name slug');
+      category = await Category.findOne({ slug: idOrSlug, isDeleted: false, isDemo: { $ne: true } }).populate('parentId', 'name slug');
     }
 
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
 
-    const subcategories = await Category.find({ parentId: category._id, isDeleted: false });
+    const subcategories = await Category.find({ parentId: category._id, isDeleted: false, isDemo: { $ne: true } });
     const productCount = await Product.countDocuments({
       $or: [{ categoryId: category._id }, { subcategoryId: category._id }],
       isDeleted: false,
+      isDemo: { $ne: true },
     });
 
     return {
@@ -261,7 +276,7 @@ class CategoryService {
    * Create category (Super Admin or Wholesaler)
    */
   static async createCategory(categoryData, user, req = null) {
-    const { name, description, imageUrl, icon, parentId, sortOrder } = categoryData;
+    const { name, description, imageUrl, icon, parentId, sortOrder } = categoryData || {};
 
     if (user.role === 'WHOLESALER') {
       const wholesalerProfile = await WholesalerProfile.findOne({ userId: user._id });
@@ -273,11 +288,14 @@ class CategoryService {
       }
     }
 
-    if (!name || name.trim().length === 0) {
+    if (typeof name !== 'string' || name.trim().length === 0) {
       throw new BadRequestError('Category name is required');
     }
 
     const trimmedName = name.trim();
+    if (trimmedName.length > 100) {
+      throw new BadRequestError('Category name cannot exceed 100 characters');
+    }
     const targetParentId = parentId || null;
 
     // Prevent duplicate category names under the same parent level
@@ -285,6 +303,7 @@ class CategoryService {
       name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       parentId: targetParentId,
       isDeleted: false,
+      isDemo: { $ne: true },
       ...getDuplicateCategoryScope(user.role === 'WHOLESALER' ? user._id : null),
     });
 
@@ -295,18 +314,29 @@ class CategoryService {
     if (parentId) await this.validateParentCategory(parentId, user);
 
     const slug = await this.generateUniqueSlug(trimmedName);
+    if (!slug) {
+      throw new BadRequestError('Category name must contain letters or numbers');
+    }
     const wholesalerId = user.role === 'WHOLESALER' ? user._id : null;
 
-    const category = await Category.create({
-      name: trimmedName,
-      slug,
-      description: description || '',
-      imageUrl: imageUrl || '',
-      icon: icon || '',
-      parentId: targetParentId,
-      wholesalerId,
-      sortOrder: sortOrder || 0,
-    });
+    let category;
+    try {
+      category = await Category.create({
+        name: trimmedName,
+        slug,
+        description: description || '',
+        imageUrl: imageUrl || '',
+        icon: icon || '',
+        parentId: targetParentId,
+        wholesalerId,
+        sortOrder: sortOrder || 0,
+      });
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new ConflictError(`A category named "${trimmedName}" already exists.`);
+      }
+      throw error;
+    }
 
     await AuditService.log({
       actorId: user._id,
@@ -325,33 +355,51 @@ class CategoryService {
    * Update category
    */
   static async updateCategory(categoryId, updateData, user, req = null) {
+    updateData = updateData || {};
     const category = String(categoryId).match(/^[0-9a-fA-F]{24}$/)
-      ? await Category.findById(categoryId)
-      : await Category.findOne({ $or: [{ slug: categoryId }, { name: categoryId }], isDeleted: false });
+      ? await Category.findOne({ _id: categoryId, isDemo: { $ne: true } })
+      : await Category.findOne({
+        $or: [{ slug: categoryId }, { name: categoryId }],
+        isDeleted: false,
+        isDemo: { $ne: true },
+      });
 
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
+    if (user.role === 'WHOLESALER' && String(category.wholesalerId) !== String(user._id)) {
+      throw new ForbiddenError('You can only manage your own categories');
+    }
 
     const beforeState = category.toJSON();
 
-    if (updateData.name && updateData.name.trim() !== category.name) {
+    if (updateData.name !== undefined) {
+      if (typeof updateData.name !== 'string' || updateData.name.trim().length === 0) {
+        throw new BadRequestError('Category name is required');
+      }
       const trimmedName = updateData.name.trim();
-      const targetParentId = updateData.parentId !== undefined ? (updateData.parentId || null) : category.parentId;
-      const duplicateCategory = await Category.findOne({
-        _id: { $ne: category._id },
-        name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-        parentId: targetParentId,
-        isDeleted: false,
-        ...getDuplicateCategoryScope(category.wholesalerId),
-      });
-
-      if (duplicateCategory) {
-        throw new ConflictError(`A category named "${trimmedName}" already exists at this level.`);
+      if (trimmedName.length > 100) {
+        throw new BadRequestError('Category name cannot exceed 100 characters');
       }
 
-      category.name = trimmedName;
-      category.slug = await this.generateUniqueSlug(category.name, category._id);
+      if (trimmedName !== category.name) {
+        const targetParentId = updateData.parentId !== undefined ? (updateData.parentId || null) : category.parentId;
+        const duplicateCategory = await Category.findOne({
+          _id: { $ne: category._id },
+          name: { $regex: new RegExp(`^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          parentId: targetParentId,
+          isDeleted: false,
+          isDemo: { $ne: true },
+          ...getDuplicateCategoryScope(category.wholesalerId),
+        });
+
+        if (duplicateCategory) {
+          throw new ConflictError(`A category named "${trimmedName}" already exists at this level.`);
+        }
+
+        category.name = trimmedName;
+        category.slug = await this.generateUniqueSlug(category.name, category._id);
+      }
     }
 
     if (updateData.description !== undefined) category.description = updateData.description;
@@ -391,15 +439,22 @@ class CategoryService {
    */
   static async deleteCategory(categoryId, user, req = null) {
     const category = String(categoryId).match(/^[0-9a-fA-F]{24}$/)
-      ? await Category.findById(categoryId)
-      : await Category.findOne({ $or: [{ slug: categoryId }, { name: categoryId }], isDeleted: false });
+      ? await Category.findOne({ _id: categoryId, isDemo: { $ne: true } })
+      : await Category.findOne({
+        $or: [{ slug: categoryId }, { name: categoryId }],
+        isDeleted: false,
+        isDemo: { $ne: true },
+      });
 
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
+    if (user.role === 'WHOLESALER' && String(category.wholesalerId) !== String(user._id)) {
+      throw new ForbiddenError('You can only manage your own categories');
+    }
 
     // Check if child subcategories exist
-    const childCategoriesCount = await Category.countDocuments({ parentId: category._id, isDeleted: false });
+    const childCategoriesCount = await Category.countDocuments({ parentId: category._id, isDeleted: false, isDemo: { $ne: true } });
     if (childCategoriesCount > 0) {
       throw new ConflictError(
         `Cannot delete category. There are ${childCategoriesCount} subcategories attached to it. Please reassign or delete subcategories first.`,
@@ -411,6 +466,7 @@ class CategoryService {
     const activeProductsCount = await Product.countDocuments({
       $or: [{ categoryId: category._id }, { subcategoryId: category._id }],
       isDeleted: false,
+      isDemo: { $ne: true },
     });
 
     if (activeProductsCount > 0) {

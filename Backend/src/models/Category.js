@@ -6,6 +6,7 @@ const categorySchema = new mongoose.Schema(
       type: String,
       required: [true, 'Category name is required'],
       trim: true,
+      maxlength: [100, 'Category name cannot exceed 100 characters'],
     },
     slug: {
       type: String,
@@ -91,7 +92,10 @@ categorySchema.pre('validate', async function (next) {
   }
 
   try {
-    const parent = await mongoose.model('Category').findById(pId);
+  const parent = await mongoose.model('Category').findOne({
+    _id: pId,
+    isDemo: { $ne: true },
+  });
     if (!parent || parent.isDeleted) {
       return next(new Error('Parent category not found'));
     }

@@ -55,6 +55,7 @@ interface NormalizedOrder {
     productTitle?: string;
     name?: string;
     sku?: string;
+    category?: string;
     quantity: number;
     pricePerUnit?: number;
     unitPrice?: number;
@@ -67,85 +68,6 @@ interface NormalizedOrder {
   orderStatus: string;
   paymentStatus: string;
 }
-
-// Fallback demo orders if no orders exist yet in backend
-const DEFAULT_DEMO_ORDERS: NormalizedOrder[] = [
-  {
-    id: 'ord-fb-1',
-    orderNumber: 'ORD-2026-9041',
-    retailerName: 'Metro Electronics & Retail',
-    createdAt: '2026-10-15T11:30:00.000Z',
-    items: [
-      { id: 'item-1', productTitle: 'Wireless Bluetooth Earbuds', name: 'Wireless Bluetooth Earbuds', sku: 'SKU-EAR-01', quantity: 25, pricePerUnit: 1200, subtotal: 30000 },
-    ],
-    subtotal: 30000,
-    discount: 1500,
-    grandTotal: 28500,
-    isCreditOrder: false,
-    orderStatus: 'DELIVERED',
-    paymentStatus: 'PAID',
-  },
-  {
-    id: 'ord-fb-2',
-    orderNumber: 'ORD-2026-8972',
-    retailerName: 'Shree Ganesh Mart',
-    createdAt: '2026-10-12T14:15:00.000Z',
-    items: [
-      { id: 'item-2', productTitle: 'Smart Fitness Tracker Band', name: 'Smart Fitness Tracker Band', sku: 'SKU-FIT-02', quantity: 15, pricePerUnit: 1850, subtotal: 27750 },
-    ],
-    subtotal: 27750,
-    discount: 1000,
-    grandTotal: 26750,
-    isCreditOrder: true,
-    orderStatus: 'CONFIRMED',
-    paymentStatus: 'PARTIAL',
-  },
-  {
-    id: 'ord-fb-3',
-    orderNumber: 'ORD-2026-8854',
-    retailerName: 'QuickKart General Store',
-    createdAt: '2026-10-08T09:45:00.000Z',
-    items: [
-      { id: 'item-3', productTitle: 'USB-C Fast Charging Hub', name: 'USB-C Fast Charging Hub', sku: 'SKU-HUB-03', quantity: 40, pricePerUnit: 450, subtotal: 18000 },
-    ],
-    subtotal: 18000,
-    discount: 0,
-    grandTotal: 18000,
-    isCreditOrder: false,
-    orderStatus: 'DELIVERED',
-    paymentStatus: 'PAID',
-  },
-  {
-    id: 'ord-fb-4',
-    orderNumber: 'ORD-2026-8740',
-    retailerName: 'Apex Super Bazar',
-    createdAt: '2026-10-04T16:20:00.000Z',
-    items: [
-      { id: 'item-4', productTitle: 'Cotton Round Neck T-Shirt Pack', name: 'Cotton Round Neck T-Shirt Pack', sku: 'SKU-TSH-04', quantity: 50, pricePerUnit: 350, subtotal: 17500 },
-    ],
-    subtotal: 17500,
-    discount: 750,
-    grandTotal: 16750,
-    isCreditOrder: false,
-    orderStatus: 'DELIVERED',
-    paymentStatus: 'PAID',
-  },
-  {
-    id: 'ord-fb-5',
-    orderNumber: 'ORD-2026-8619',
-    retailerName: 'City Center Traders',
-    createdAt: '2026-09-28T12:00:00.000Z',
-    items: [
-      { id: 'item-5', productTitle: 'Wireless Ergonomic Mouse', name: 'Wireless Ergonomic Mouse', sku: 'SKU-MOU-05', quantity: 20, pricePerUnit: 650, subtotal: 13000 },
-    ],
-    subtotal: 13000,
-    discount: 500,
-    grandTotal: 12500,
-    isCreditOrder: true,
-    orderStatus: 'DELIVERED',
-    paymentStatus: 'PAID',
-  },
-];
 
 // Safe Date Extractor (Never throws RangeError)
 function safeExtractDate(dateVal?: unknown): string {
@@ -284,31 +206,31 @@ export default function ReportsPage() {
     retry: 1,
   });
 
-  // Normalize all orders from API or Context or Demo
+  // Normalize orders returned by the API or shared context.
   const allOrders = useMemo<NormalizedOrder[]>(() => {
     const apiOrders = ordersQuery.data || [];
-    const rawList = apiOrders.length > 0 ? apiOrders : (contextOrders && contextOrders.length > 0 ? contextOrders : DEFAULT_DEMO_ORDERS);
+    const rawList = apiOrders.length > 0 ? apiOrders : contextOrders;
 
-    return rawList.map((order: any, idx: number) => {
-      const id = order._id || order.id || `order-${idx}`;
-      const orderNumber = order.orderNumber || order.orderNo || `ORD-2026-${8800 + idx}`;
+    return rawList.map((order: any) => {
+      const id = String(order._id || order.id || order.orderNumber || order.orderNo || '');
+      const orderNumber = String(order.orderNumber || order.orderNo || id);
       const retailerName =
         order.retailerName ||
         (typeof order.retailerId === 'object' ? order.retailerId?.name || order.retailerId?.businessName : '') ||
         order.retailer?.businessName ||
-        order.retailer?.name ||
-        'Retailer Partner';
+        order.retailer?.name || '';
 
       const items = Array.isArray(order.items)
-        ? order.items.map((it: any, itemIdx: number) => ({
-            id: it._id || it.id || `item-${itemIdx}`,
-            productTitle: it.productTitle || it.name || 'Wholesale Product',
-            name: it.name || it.productTitle || 'Wholesale Product',
-            sku: it.sku || `SKU-${100 + itemIdx}`,
-            quantity: Number(it.quantity || 1),
+        ? order.items.map((it: any) => ({
+            id: String(it._id || it.id || ''),
+            productTitle: it.productTitle || it.name || '',
+            name: it.name || it.productTitle || '',
+            sku: it.sku || '',
+            category: it.categoryName || it.category || '',
+            quantity: Number(it.quantity ?? 0),
             pricePerUnit: Number(it.pricePerUnit ?? it.price ?? it.unitPrice ?? 0),
             unitPrice: Number(it.unitPrice ?? it.pricePerUnit ?? it.price ?? 0),
-            subtotal: Number(it.subtotal || (Number(it.pricePerUnit ?? it.price ?? 100) * Number(it.quantity || 1))),
+            subtotal: Number(it.subtotal ?? (Number(it.pricePerUnit ?? it.price ?? it.unitPrice ?? 0) * Number(it.quantity ?? 0))),
           }))
         : [];
 
@@ -318,14 +240,14 @@ export default function ReportsPage() {
       const isCreditOrder = Boolean(
         order.isCreditOrder || order.paymentMethod === 'CREDIT' || order.paymentStatus === 'CREDIT'
       );
-      const orderStatus = String(order.orderStatus || order.status || 'CONFIRMED').toUpperCase();
-      const paymentStatus = String(order.paymentStatus || (isCreditOrder ? 'PARTIAL' : 'PAID')).toUpperCase();
+      const orderStatus = String(order.orderStatus || order.status || 'UNKNOWN').toUpperCase();
+      const paymentStatus = String(order.paymentStatus || 'UNKNOWN').toUpperCase();
 
       return {
         id,
         orderNumber,
         retailerName,
-        createdAt: order.createdAt || new Date().toISOString(),
+        createdAt: order.createdAt || '',
         items,
         subtotal,
         discount,
@@ -337,43 +259,41 @@ export default function ReportsPage() {
     });
   }, [ordersQuery.data, contextOrders]);
 
-  // Synthesize or utilize report
+  // Use database-backed analytics when available; the local fallback uses only actual orders.
   const effectiveReport = useMemo<WholesalerAnalyticsReport>(() => {
     if (reportQuery.data) return reportQuery.data;
 
-    // Synthesize robust metrics from current orders
-    const nonCancelledOrders = allOrders.filter(o => o.orderStatus !== 'CANCELLED');
-    const revenue = nonCancelledOrders.reduce((acc, o) => acc + (o.grandTotal || 0), 0);
-    const totalDiscount = nonCancelledOrders.reduce((acc, o) => acc + (o.discount || 0), 0);
-    const deliveredCount = nonCancelledOrders.filter(o => o.orderStatus === 'DELIVERED').length;
-    const aov = nonCancelledOrders.length > 0 ? Math.round(revenue / nonCancelledOrders.length) : 0;
-    const paymentsReceived = Math.round(revenue * 0.85);
-    const creditOutstanding = Math.max(0, revenue - paymentsReceived);
-    const overdueAmount = Math.round(creditOutstanding * 0.2);
-    const profit = Math.round(revenue * 0.22); // ~22% margin
+    const activeOrders = allOrders.filter((order) => order.orderStatus !== 'CANCELLED');
+    const revenue = activeOrders.reduce((total, order) => total + order.grandTotal, 0);
+    const totalDiscount = activeOrders.reduce((total, order) => total + order.discount, 0);
+    const deliveredCount = activeOrders.filter((order) => order.orderStatus === 'DELIVERED').length;
+    const aov = activeOrders.length > 0 ? Math.round(revenue / activeOrders.length) : 0;
+    const paymentsReceived = allOrders
+      .filter((order) => order.paymentStatus === 'PAID')
+      .reduce((total, order) => total + order.grandTotal, 0);
 
-    // Status breakdown
     const statusMap: Record<string, number> = {};
-    allOrders.forEach(o => {
-      statusMap[o.orderStatus] = (statusMap[o.orderStatus] || 0) + 1;
+    allOrders.forEach((order) => {
+      statusMap[order.orderStatus] = (statusMap[order.orderStatus] || 0) + 1;
     });
     const statusBreakdown = Object.entries(statusMap).map(([status, count]) => ({ status, count }));
 
-    // Product aggregations
-    const productSalesMap: Record<string, { name: string; sku: string; unitsSold: number; revenue: number; profit: number }> = {};
-    allOrders.forEach(o => {
-      o.items.forEach((it) => {
-        const key = it.productTitle || it.name || 'product';
-        const name = it.productTitle || it.name || 'Wholesale Product';
-        const sku = it.sku || 'SKU-001';
-        const qty = it.quantity || 1;
-        const rev = it.subtotal || (it.pricePerUnit || 100) * qty;
+    const productSalesMap: Record<string, { name: string; sku: string; category: string; unitsSold: number; revenue: number }> = {};
+    allOrders.forEach((order) => {
+      order.items.forEach((item) => {
+        const key = item.productTitle || item.name || item.sku || item.id;
+        if (!key) return;
         if (!productSalesMap[key]) {
-          productSalesMap[key] = { name, sku, unitsSold: 0, revenue: 0, profit: 0 };
+          productSalesMap[key] = {
+            name: item.productTitle || item.name || '',
+            sku: item.sku || '',
+            category: item.category || '',
+            unitsSold: 0,
+            revenue: 0,
+          };
         }
-        productSalesMap[key].unitsSold += qty;
-        productSalesMap[key].revenue += rev;
-        productSalesMap[key].profit += Math.round(rev * 0.22);
+        productSalesMap[key].unitsSold += item.quantity;
+        productSalesMap[key].revenue += item.subtotal;
       });
     });
 
@@ -381,23 +301,23 @@ export default function ReportsPage() {
       _id: id,
       name: p.name,
       sku: p.sku,
-      category: 'General',
+      category: p.category,
       unitsSold: p.unitsSold,
       revenue: p.revenue,
-      profit: p.profit,
+      profit: 0,
     }));
 
     const byRevenue = [...productsList].sort((a, b) => b.revenue - a.revenue);
     const byUnits = [...productsList].sort((a, b) => b.unitsSold - a.unitsSold);
-    const totalUnitsSold = productsList.reduce((acc, p) => acc + p.unitsSold, 0) || 120;
+    const totalUnitsSold = productsList.reduce((total, product) => total + product.unitsSold, 0);
 
-    // Retailers aggregations
     const retailerMap: Record<string, { name: string; orders: number; revenue: number }> = {};
-    allOrders.forEach(o => {
-      const name = o.retailerName || 'Retailer Partner';
+    allOrders.forEach((order) => {
+      const name = order.retailerName;
+      if (!name) return;
       if (!retailerMap[name]) retailerMap[name] = { name, orders: 0, revenue: 0 };
       retailerMap[name].orders += 1;
-      retailerMap[name].revenue += o.grandTotal || 0;
+      retailerMap[name].revenue += order.grandTotal;
     });
     const topRetailers = Object.entries(retailerMap).map(([id, r]) => ({
       _id: id,
@@ -406,100 +326,88 @@ export default function ReportsPage() {
       revenue: r.revenue,
     })).sort((a, b) => b.revenue - a.revenue);
 
+    const categoryMap: Record<string, { revenue: number; unitsSold: number }> = {};
+    allOrders.forEach((order) => order.items.forEach((item) => {
+      if (!item.category) return;
+      if (!categoryMap[item.category]) categoryMap[item.category] = { revenue: 0, unitsSold: 0 };
+      categoryMap[item.category].revenue += item.subtotal;
+      categoryMap[item.category].unitsSold += item.quantity;
+    }));
+
+    const trendMap: Record<string, { revenue: number; orders: number }> = {};
+    allOrders.forEach((order) => {
+      const date = safeExtractDate(order.createdAt);
+      if (!date) return;
+      if (!trendMap[date]) trendMap[date] = { revenue: 0, orders: 0 };
+      trendMap[date].revenue += order.grandTotal;
+      trendMap[date].orders += 1;
+    });
+
     return {
       period: { startDate, endDate },
       growth: {
-        revenueGrowth: 14.8,
-        profitGrowth: 18.2,
-        ordersGrowth: 12.5,
-        aovGrowth: 5.4,
-        retailersGrowth: 20.0,
+        revenueGrowth: 0,
+        profitGrowth: 0,
+        ordersGrowth: 0,
+        aovGrowth: 0,
+        retailersGrowth: 0,
       },
       insights: {
-        returnRatePercent: 1.8,
-        deliveredOrders: deliveredCount || 4,
+        returnRatePercent: 0,
+        deliveredOrders: deliveredCount,
         returnedOrders: 0,
-        cancelledOrders: allOrders.filter(o => o.orderStatus === 'CANCELLED').length,
+        cancelledOrders: statusMap.CANCELLED || 0,
         lowStockAlerts: [],
         fastMovingProducts: [],
         slowMovingProducts: [],
       },
       financial: {
-        revenue: revenue || 102500,
-        profit: profit || 22550,
-        profitBasis: 'Snapshot at order time (cost margin basis)',
-        averageOrderValue: aov || 20500,
-        averagePaymentPerOrder: aov || 20500,
-        paymentsReceived: paymentsReceived || 87125,
-        totalDiscount: totalDiscount || 3750,
-        creditOutstanding: creditOutstanding || 15375,
-        overdueAmount: overdueAmount || 3075,
+        revenue,
+        profit: 0,
+        profitBasis: 'Unavailable without backend analytics',
+        averageOrderValue: aov,
+        averagePaymentPerOrder: paymentsReceived > 0 ? Math.round(paymentsReceived / allOrders.filter((order) => order.paymentStatus === 'PAID').length) : 0,
+        paymentsReceived,
+        totalDiscount,
+        creditOutstanding: 0,
+        overdueAmount: 0,
       },
       orders: {
-        total: allOrders.length || 5,
+        total: allOrders.length,
         pending: statusMap['PENDING'] || 0,
-        confirmed: statusMap['CONFIRMED'] || 1,
+        confirmed: statusMap['CONFIRMED'] || 0,
         shipped: statusMap['SHIPPED'] || 0,
-        delivered: statusMap['DELIVERED'] || 4,
+        delivered: statusMap['DELIVERED'] || 0,
         cancelled: statusMap['CANCELLED'] || 0,
         returned: 0,
-        statusBreakdown: statusBreakdown.length > 0 ? statusBreakdown : [{ status: 'DELIVERED', count: 4 }, { status: 'CONFIRMED', count: 1 }],
+        statusBreakdown,
         returnReasons: [],
       },
       products: {
-        count: productsList.length || 5,
-        totalProducts: productsList.length || 5,
+        count: productsList.length,
+        totalProducts: productsList.length,
         unitsSold: totalUnitsSold,
-        byRevenue: byRevenue.length > 0 ? byRevenue : [
-          { _id: 'p1', name: 'Wireless Bluetooth Earbuds', sku: 'SKU-EAR-01', category: 'Electronics', unitsSold: 25, revenue: 28500, profit: 6270 },
-          { _id: 'p2', name: 'Smart Fitness Tracker Band', sku: 'SKU-FIT-02', category: 'Electronics', unitsSold: 15, revenue: 26750, profit: 5885 },
-          { _id: 'p3', name: 'USB-C Fast Charging Hub', sku: 'SKU-HUB-03', category: 'Electronics', unitsSold: 40, revenue: 18000, profit: 3960 },
-          { _id: 'p4', name: 'Cotton Round Neck T-Shirt Pack', sku: 'SKU-TSH-04', category: 'Clothing', unitsSold: 50, revenue: 16750, profit: 3685 },
-        ],
-        byUnits: byUnits.length > 0 ? byUnits : [
-          { _id: 'p4', name: 'Cotton Round Neck T-Shirt Pack', sku: 'SKU-TSH-04', category: 'Clothing', unitsSold: 50, revenue: 16750, profit: 3685 },
-          { _id: 'p3', name: 'USB-C Fast Charging Hub', sku: 'SKU-HUB-03', category: 'Electronics', unitsSold: 40, revenue: 18000, profit: 3960 },
-          { _id: 'p1', name: 'Wireless Bluetooth Earbuds', sku: 'SKU-EAR-01', category: 'Electronics', unitsSold: 25, revenue: 28500, profit: 6270 },
-          { _id: 'p2', name: 'Smart Fitness Tracker Band', sku: 'SKU-FIT-02', category: 'Electronics', unitsSold: 15, revenue: 26750, profit: 5885 },
-        ],
+        byRevenue,
+        byUnits,
       },
-      categories: [
-        { _id: 'Electronics', revenue: 73250, unitsSold: 80 },
-        { _id: 'Clothing & Apparel', revenue: 29250, unitsSold: 50 },
-      ],
+      categories: Object.entries(categoryMap).map(([_id, values]) => ({ _id, ...values })),
       retailers: {
-        connected: topRetailers.length || 4,
-        newConnected: 2,
-        top: topRetailers.length > 0 ? topRetailers : [
-          { _id: 'r1', name: 'Metro Electronics & Retail', orders: 1, revenue: 28500 },
-          { _id: 'r2', name: 'Shree Ganesh Mart', orders: 1, revenue: 26750 },
-          { _id: 'r3', name: 'QuickKart General Store', orders: 1, revenue: 18000 },
-          { _id: 'r4', name: 'Apex Super Bazar', orders: 1, revenue: 16750 },
-        ],
+        connected: 0,
+        newConnected: 0,
+        top: topRetailers,
       },
       inventory: {
-        unitsAdded: 350,
+        unitsAdded: 0,
         unitsSold: totalUnitsSold,
-        movementTrend: [
-          { date: '2026-10-01', added: 100, sold: 15 },
-          { date: '2026-10-05', added: 50, sold: 25 },
-          { date: '2026-10-10', added: 120, sold: 40 },
-          { date: '2026-10-15', added: 80, sold: 40 },
-        ],
+        movementTrend: [],
       },
       coupons: {
-        totalDiscount: totalDiscount || 3750,
-        mostUsed: [
-          { _id: 'DIWALI2026', uses: 3, discount: 2500 },
-          { _id: 'WHOLESALE10', uses: 2, discount: 1250 },
-        ],
+        totalDiscount,
+        mostUsed: [],
       },
-      trend: [
-        { date: '2026-10-04', revenue: 16750, orders: 1 },
-        { date: '2026-10-08', revenue: 18000, orders: 1 },
-        { date: '2026-10-12', revenue: 26750, orders: 1 },
-        { date: '2026-10-15', revenue: 28500, orders: 1 },
-      ],
+      trend: Object.entries(trendMap)
+        .map(([date, values]) => ({ date, ...values }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
     };
   }, [reportQuery.data, allOrders, startDate, endDate]);
 

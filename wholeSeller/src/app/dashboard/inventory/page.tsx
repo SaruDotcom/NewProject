@@ -66,8 +66,8 @@ export default function InventoryPage() {
     const validOrders = orders.filter((o) => o.status !== 'CANCELLED');
 
     products.forEach((p) => {
-      const cost = p.costPrice || (p.basePrice ? Math.round(p.basePrice * 0.7) : 0);
-      const selling = p.sellingPrice || p.basePrice || 100;
+      const cost = p.costPrice ?? 0;
+      const selling = p.sellingPrice ?? p.basePrice ?? 0;
       const marginUnit = selling - cost;
       const marginPercent = cost > 0 ? (marginUnit / cost) * 100 : (selling > 0 ? 100 : 0);
 
@@ -531,6 +531,13 @@ export default function InventoryPage() {
                   </React.Fragment>
                 );
               })}
+              {filteredProducts.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-sm text-gray-500">
+                    {products.length === 0 ? 'No products added yet.' : 'No products match the current filters.'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

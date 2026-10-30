@@ -89,7 +89,7 @@ class ProductService {
       throw new BadRequestError('A main category is required');
     }
 
-    const category = await Category.findById(categoryId);
+    const category = await Category.findOne({ _id: categoryId, isDemo: { $ne: true } });
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
@@ -101,7 +101,7 @@ class ProductService {
     }
 
     if (subcategoryId) {
-      const subcategory = await Category.findById(subcategoryId);
+      const subcategory = await Category.findOne({ _id: subcategoryId, isDemo: { $ne: true } });
       if (!subcategory || subcategory.isDeleted) {
         throw new NotFoundError('Subcategory not found');
       }
@@ -201,7 +201,7 @@ class ProductService {
    */
   static async listAdminProducts(query = {}) {
     const { page, limit, skip, sort } = parsePagination(query);
-    const filter = { isDeleted: false };
+    const filter = { isDeleted: false, isDemo: { $ne: true } };
 
     if (query.wholesaler && query.wholesaler !== 'all') filter.wholesalerId = query.wholesaler;
     else if (query.wholesalerId) filter.wholesalerId = query.wholesalerId;
@@ -226,7 +226,7 @@ class ProductService {
         .lean(),
       Product.countDocuments(filter),
       User.find({ role: ROLES.WHOLESALER, isDeleted: false }).select('name businessName').lean(),
-      Category.find({ isDeleted: false }).select('name slug').lean(),
+      Category.find({ isDeleted: false, isDemo: { $ne: true } }).select('name slug').lean(),
     ]);
 
     const enrichedProducts = await this.attachWholesalerMeta(products);
@@ -266,7 +266,7 @@ class ProductService {
    */
   static async listWholesalerProducts(wholesalerUser, query = {}) {
     const { page, limit, skip, sort } = parsePagination(query);
-    const filter = { wholesalerId: wholesalerUser._id, isDeleted: false };
+    const filter = { wholesalerId: wholesalerUser._id, isDeleted: false, isDemo: { $ne: true } };
 
     if (query.categoryId) filter.categoryId = query.categoryId;
     if (query.status) filter.status = query.status;
@@ -317,6 +317,7 @@ class ProductService {
       wholesalerId,
       status: PRODUCT_STATUS.ACTIVE,
       isDeleted: false,
+      isDemo: { $ne: true },
     };
 
     if (query.category && query.category !== 'All') {
@@ -363,7 +364,7 @@ class ProductService {
       .populate('categoryId', 'name slug')
       .populate('subcategoryId', 'name slug');
 
-    if (!product || product.isDeleted) {
+    if (!product || product.isDeleted || product.isDemo) {
       throw new NotFoundError('Product not found');
     }
 

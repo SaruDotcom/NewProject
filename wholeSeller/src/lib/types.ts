@@ -60,6 +60,10 @@ export interface Category {
   level?: number;
 }
 
+export type CategoryInput = Omit<Category, 'id' | 'wholesalerId' | 'productCount' | 'slug'> & {
+  slug?: string;
+};
+
 export interface Retailer {
   id: string;
   retailerId?: string;

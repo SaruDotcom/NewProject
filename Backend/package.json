@@ -8,11 +8,7 @@
     "dev": "node --watch src/server.js",
     "create:superadmin": "node scripts/createSuperAdmin.js",
     "seed": "node scripts/seedDevelopmentData.js",
-    "seed:demo": "node scripts/seed-demo.js insert",
-    "seed:demo:reset": "node scripts/seed-demo.js reset",
-    "seed:demo:clear": "node scripts/seed-demo.js clear",
-    "seed:catalog": "node scripts/seed-catalog.js insert",
-    "seed:catalog:clear": "node scripts/seed-catalog.js clear",
+    "clean:demo": "node scripts/cleanup-demo-data.js",
     "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles --forceExit",
     "test:watch": "cross-env NODE_ENV=test jest --watch",
     "test:coverage": "cross-env NODE_ENV=test jest --coverage --runInBand --detectOpenHandles --forceExit"

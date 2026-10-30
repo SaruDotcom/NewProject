@@ -219,6 +219,80 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
     expect(ownElectronicsDuplicate.status).toBe(409);
   });
 
+  test('Wholesaler category creation persists and immediately returns the saved category', async () => {
+    const createResponse = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({
+        name: 'Seasonal Goods',
+        description: 'Seasonal inventory',
+        icon: 'Package',
+      });
+
+    expect(createResponse.status).toBe(201);
+    const createdCategory = createResponse.body.data;
+    expect(String(createdCategory.wholesalerId)).toBe(String(wholesalerUser._id));
+    expect(createdCategory.slug).toBe('seasonal-goods');
+    expect((await Category.findById(createdCategory._id)).name).toBe('Seasonal Goods');
+
+    const listResponse = await request(app)
+      .get('/api/v1/wholesaler/categories')
+      .set('Authorization', 'Bearer ' + wholesalerToken);
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data.items.map((category) => String(category._id))).toContain(String(createdCategory._id));
+
+    const invalidUpdateResponse = await request(app)
+      .put(`/api/v1/wholesaler/categories/${createdCategory._id}`)
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({ name: 'x'.repeat(101) });
+    expect(invalidUpdateResponse.status).toBe(400);
+
+    const updateResponse = await request(app)
+      .put(`/api/v1/wholesaler/categories/${createdCategory._id}`)
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({ name: 'Seasonal Essentials', icon: 'Tag' });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.name).toBe('Seasonal Essentials');
+    expect(updateResponse.body.data.icon).toBe('Tag');
+
+    const deleteResponse = await request(app)
+      .delete(`/api/v1/wholesaler/categories/${createdCategory._id}`)
+      .set('Authorization', 'Bearer ' + wholesalerToken);
+    expect(deleteResponse.status).toBe(200);
+    expect((await Category.findById(createdCategory._id)).isDeleted).toBe(true);
+  });
+
+  test('Wholesalers cannot edit or delete another wholesaler category', async () => {
+    const createResponse = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({ name: 'Owned Category' });
+    const categoryId = createResponse.body.data._id;
+
+    const updateResponse = await request(app)
+      .put(`/api/v1/wholesaler/categories/${categoryId}`)
+      .set('Authorization', 'Bearer ' + otherWholesalerToken)
+      .send({ name: 'Hijacked Category' });
+    const deleteResponse = await request(app)
+      .delete(`/api/v1/wholesaler/categories/${categoryId}`)
+      .set('Authorization', 'Bearer ' + otherWholesalerToken);
+
+    expect(updateResponse.status).toBe(403);
+    expect(deleteResponse.status).toBe(403);
+    expect((await Category.findById(categoryId)).name).toBe('Owned Category');
+  });
+
+  test('Category creation validates the name before saving', async () => {
+    const response = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({ name: 'x'.repeat(101) });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/category name/i);
+    expect(await Category.countDocuments({ wholesalerId: wholesalerUser._id })).toBe(0);
+  });
+
   test('5. Wholesaler cannot edit another wholesaler product (returns 403 Forbidden)', async () => {
     // Wholesaler 1 creates a product
     const createRes = await request(app)
@@ -254,7 +328,7 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
     expect(updateRes.body.message).toMatch(/only update your own products/i);
   });
 
-  test('6. Wholesaler can create one-level subcategories but cannot nest them', async () => {
+  test('6. Wholesaler can create a three-level category hierarchy but not exceed it', async () => {
     const childRes = await request(app)
       .post('/api/v1/wholesaler/categories')
       .set('Authorization', `Bearer ${wholesalerToken}`)
@@ -268,8 +342,15 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
       .set('Authorization', `Bearer ${wholesalerToken}`)
       .send({ name: 'Shirts', parentId: childRes.body.data._id });
 
-    expect(nestedRes.status).toBe(400);
-    expect(nestedRes.body.message).toMatch(/cannot contain additional subcategories/i);
+    expect(nestedRes.status).toBe(201);
+    expect(nestedRes.body.data.level).toBe(3);
+
+    const deepestRes = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({ name: 'Formal Shirts', parentId: nestedRes.body.data._id });
+    expect(deepestRes.status).toBe(400);
+    expect(deepestRes.body.message).toMatch(/maximum 3 levels supported/i);
   });
 
   test('7. Wholesaler cannot use another wholesaler category as a parent', async () => {

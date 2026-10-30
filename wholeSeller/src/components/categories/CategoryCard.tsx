@@ -61,7 +61,7 @@ export function CategoryCard({
           <span>{productCount} {productCount === 1 ? 'product' : 'products'}</span>
         </div>
         <p className="mt-1 h-10 line-clamp-2 text-xs leading-5 text-[#57534E] font-normal" title={description || undefined}>
-          {description || 'Comprehensive catalog collection for retail buyers.'}
+          {description || 'No description provided.'}
         </p>
       </div>
 

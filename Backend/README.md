@@ -60,8 +60,8 @@ Backend/
 │   └── server.js            # Server entrypoint with graceful shutdown
 ├── scripts/
 │   ├── createSuperAdmin.js  # CLI tool to create initial Super Admin
-│   ├── seedDevelopmentData.js # Seeds categories, sample wholesalers, products & retailers
-│   └── seed-demo.js         # Idempotent, demo-only marketplace seed
+│   ├── seedDevelopmentData.js # Initializes platform settings only
+│   └── cleanup-demo-data.js # Explicitly removes records marked isDemo=true
 ├── tests/                   # Automated Jest / Supertest integration test suite
 ├── .env.example
 ├── package.json
@@ -130,21 +130,19 @@ cd Backend
 npm install
 ```
 
-### 2. Seed Initial Development Data
+### 2. Initialize Platform Settings
 ```bash
 npm run seed
 ```
 
-### 3. Seed Client-Demo Data
+This initializes platform settings only. It does not create sample users, categories, products, inventory, or orders.
+
+### 3. Remove Explicitly Tagged Demo Records
 ```bash
-npm run seed:demo
-npm run seed:demo:reset
-npm run seed:demo:clear
+npm run clean:demo -- --confirm
 ```
 
-These commands create, reset, or clear records tagged `isDemo: true`; they never delete untagged records or create/change the configured Super Admin. The script prints the target database before writing and refuses to run with `NODE_ENV=production` unless `--confirm` is passed (for example, `npm run seed:demo -- --confirm`). Set `DEMO_PASSWORD` to override the shared demo password (default: `Demo@12345`). The generated `scripts/demo-credentials.md` file is git-ignored.
-
-Product and wholesaler images use public HTTPS URLs. KYC statuses are seeded, but private KYC document files are not: the existing document endpoint streams from local private storage, so fabricating file references would produce broken downloads.
+This command requires an explicit confirmation and deletes only records with `isDemo: true`; it does not delete untagged wholesaler or retailer records. Production runs additionally require `--confirm-production`.
 
 ### 4. Create Initial Super Admin via CLI
 ```bash

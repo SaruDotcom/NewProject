@@ -388,7 +388,12 @@ class RetailerService {
       }));
 
     const [productsCount, categories] = await Promise.all([
-      Product.countDocuments({ wholesalerId: wholesalerUser._id, status: 'ACTIVE', isDeleted: false }),
+      Product.countDocuments({
+        wholesalerId: wholesalerUser._id,
+        status: 'ACTIVE',
+        isDeleted: false,
+        isDemo: { $ne: true },
+      }),
       this.getCategories(retailerId, {}),
     ]);
 
@@ -419,11 +424,13 @@ class RetailerService {
       wholesalerId: wholesalerUser._id,
       ...(query.status ? { status: query.status } : { status: 'ACTIVE' }),
       isDeleted: false,
+      isDemo: { $ne: true },
     });
 
     const filter = {
       _id: { $in: categoryIds },
       isDeleted: false,
+      isDemo: { $ne: true },
     };
 
     if (query.status) {
@@ -452,6 +459,7 @@ class RetailerService {
       wholesalerId: wholesalerUser._id,
       status: 'ACTIVE',
       isDeleted: false,
+      isDemo: { $ne: true },
     };
 
     if (query.category && query.category !== 'All') {
@@ -460,6 +468,7 @@ class RetailerService {
       } else {
         const cat = await Category.findOne({
           $or: [{ name: new RegExp(escapeRegex(query.category), 'i') }, { slug: query.category }],
+          isDemo: { $ne: true },
         });
         if (cat) filter.categoryId = cat._id;
       }

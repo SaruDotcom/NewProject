@@ -29,7 +29,7 @@ import api from '@/lib/api';
 import type { ApiErrorDetail } from '@/lib/api';
 
 export default function ProductsPage() {
-  const { profile, products, categories, addProduct, updateProduct, deleteProduct, refreshData } = useWholesaler();
+  const { profile, products, categories, addProduct, updateProduct, deleteProduct, refreshData, isLoading } = useWholesaler();
   const canCreateProducts = profile.kycStatus === 'APPROVED';
   const location = useLocation();
   const navigate = useNavigate();
@@ -51,11 +51,11 @@ export default function ProductsPage() {
   const [level3CategoryId, setLevel3CategoryId] = useState('');
   const [subcategoryId, setSubcategoryId] = useState('');
   const [categoryAttributes, setCategoryAttributes] = useState<Record<string, any>>({});
-  const [costPrice, setCostPrice] = useState<number | ''>(380);
-  const [sellingPrice, setSellingPrice] = useState<number | ''>(550);
-  const [mrp, setMrp] = useState<number | ''>(700);
-  const [stock, setStock] = useState<number | ''>(100);
-  const [minOrderQty, setMinOrderQty] = useState<number | ''>(10);
+  const [costPrice, setCostPrice] = useState<number | ''>('');
+  const [sellingPrice, setSellingPrice] = useState<number | ''>('');
+  const [mrp, setMrp] = useState<number | ''>('');
+  const [stock, setStock] = useState<number | ''>('');
+  const [minOrderQty, setMinOrderQty] = useState<number | ''>('');
   const [unit, setUnit] = useState('piece');
   const [imageUrl, setImageUrl] = useState('');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -90,10 +90,7 @@ export default function ProductsPage() {
   const [additionalOptions, setAdditionalOptions] = useState<CustomAttribute[]>([]);
 
   // Bulk Pricing Tiers State
-  const [pricingTiers, setPricingTiers] = useState<WholesaleTier[]>([
-    { id: 't1', minQty: 200, pricePerUnit: 500 },
-    { id: 't2', minQty: 500, pricePerUnit: 440 }
-  ]);
+  const [pricingTiers, setPricingTiers] = useState<WholesaleTier[]>([]);
 
   // Filter products by search and selected category filter
   const filteredProducts = products.filter(p => {
@@ -168,20 +165,21 @@ export default function ProductsPage() {
     setFormError(null);
     setFormFieldErrors([]);
     setTitle('');
-    setSku(`SKU-${Math.floor(1000 + Math.random() * 9000)}`);
+    setSku('');
     setCategoryName(''); // Unselected by default
     setLevel2CategoryId('');
     setLevel3CategoryId('');
     setSubcategoryId('');
     setCategoryAttributes({});
-    setCostPrice(380);
-    setSellingPrice(550);
-    setStock(100);
-    setMinOrderQty(10);
+    setCostPrice('');
+    setSellingPrice('');
+    setMrp('');
+    setStock('');
+    setMinOrderQty('');
     setUnit('piece');
     setImageUrl('');
     setImageFiles([]);
-    setDescription('High quality wholesale product for retail buyers.');
+    setDescription('');
     setSizes([]);
     setColors([]);
     setColorVariants([]);
@@ -191,10 +189,7 @@ export default function ProductsPage() {
     setIgst('');
     setPriceIncludesTax(false);
     setAdditionalOptions([]);
-    setPricingTiers([
-      { id: 't1', minQty: 200, pricePerUnit: 500 },
-      { id: 't2', minQty: 500, pricePerUnit: 440 }
-    ]);
+    setPricingTiers([]);
     setShowAddModal(true);
   }, [canCreateProducts]);
 
@@ -241,9 +236,9 @@ export default function ProductsPage() {
     }
 
     setCategoryAttributes(product.categoryAttributes || {});
-    setCostPrice(product.costPrice || product.basePrice * 0.7);
-    setSellingPrice(product.sellingPrice || product.basePrice);
-    setMrp(product.mrp !== undefined && product.mrp > 0 ? product.mrp : Math.round((product.sellingPrice || product.basePrice || 100) * 1.3));
+    setCostPrice(product.costPrice ?? '');
+    setSellingPrice(product.sellingPrice ?? '');
+    setMrp(product.mrp ?? '');
     setStock(product.stock);
     setMinOrderQty(product.minOrderQty);
     setUnit(product.unit || 'piece');
@@ -260,9 +255,7 @@ export default function ProductsPage() {
     setIgst(product.igst ?? '');
     setPriceIncludesTax(Boolean(product.priceIncludesTax));
     setAdditionalOptions(product.additionalOptions || []);
-    setPricingTiers(product.pricingTiers && product.pricingTiers.length > 0 ? product.pricingTiers : [
-      { id: 't1', minQty: 200, pricePerUnit: Math.round((product.sellingPrice || product.basePrice) * 0.9) }
-    ]);
+    setPricingTiers(product.pricingTiers || []);
   };
 
   // Size Tag Handlers
@@ -342,8 +335,8 @@ export default function ProductsPage() {
 
   // Bulk Pricing Tier Handlers
   const handleAddPricingTier = () => {
-    const defaultMinQty = pricingTiers.length > 0 ? (pricingTiers[pricingTiers.length - 1].minQty || 100) + 100 : 200;
-    const defaultPrice = sellingPrice ? Math.round(Number(sellingPrice) * 0.85) : 180;
+    const defaultMinQty = pricingTiers.length > 0 ? pricingTiers[pricingTiers.length - 1].minQty + 1 : 1;
+    const defaultPrice = Number(sellingPrice) || 0;
     setPricingTiers([
       ...pricingTiers,
       { id: `tier-${Date.now()}`, minQty: defaultMinQty, pricePerUnit: defaultPrice }
@@ -633,12 +626,23 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {!isLoading && products.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-tradeflow-gray-200 bg-white p-10 text-center text-sm text-gray-500">
+          No products added yet.
+        </div>
+      )}
+      {!isLoading && products.length > 0 && filteredProducts.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-tradeflow-gray-200 bg-white p-10 text-center text-sm text-gray-500">
+          No products match the current search or category filter.
+        </div>
+      )}
+
       {/* VIEW MODE 1: GRID VIEW */}
-      {viewMode === 'GRID' && (
+      {viewMode === 'GRID' && filteredProducts.length > 0 && (
         <div className="grid auto-rows-fr grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {filteredProducts.map((product, pIdx) => {
-            const cost = product.costPrice || product.basePrice * 0.7;
-            const selling = product.sellingPrice || product.basePrice;
+            const cost = product.costPrice ?? 0;
+            const selling = product.sellingPrice ?? product.basePrice;
             const profitMargin = selling - cost;
 
             return (
@@ -737,7 +741,7 @@ export default function ProductsPage() {
       )}
 
       {/* VIEW MODE 2: TABLE VIEW */}
-      {viewMode === 'TABLE' && (
+      {viewMode === 'TABLE' && filteredProducts.length > 0 && (
         <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -753,8 +757,8 @@ export default function ProductsPage() {
               </thead>
               <tbody className="divide-y divide-tradeflow-gray-200">
                 {filteredProducts.map((product, pIdx) => {
-                  const cost = product.costPrice || product.basePrice * 0.7;
-                  const selling = product.sellingPrice || product.basePrice;
+                  const cost = product.costPrice ?? 0;
+                  const selling = product.sellingPrice ?? product.basePrice;
 
                   return (
                     <tr key={product.id || (product as any)._id || `tbl-p-${pIdx}`} className="hover:bg-tradeflow-gray-50 transition-colors">

@@ -253,6 +253,7 @@ class ProductTemplateService {
 
     const categories = await Category.find({
       isDeleted: false,
+      isDemo: { $ne: true },
       $or: [{ wholesalerId: null }, { wholesalerId }],
     }).sort({ sortOrder: 1, name: 1 }).lean();
     const roots = categories.filter((category) => (

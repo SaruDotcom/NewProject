@@ -15,7 +15,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { WholesalerProvider, useWholesaler } from '@/context/WholesalerContext';
-import api, { getAuthToken, clearAuthToken } from '@/lib/api';
+import api from '@/lib/api';
 import { BRAND_NAME } from '@/config/brand';
 
 type RegisterFormProps = {
@@ -86,12 +86,6 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registrationResult, setRegistrationResult] = useState<{ businessName: string; email: string } | null>(null);
   const submissionInProgress = useRef(false);
-
-  useEffect(() => {
-    if (getAuthToken() === 'demo-wholesaler-token') {
-      clearAuthToken();
-    }
-  }, []);
 
   useEffect(() => {
     if (!refCode) return;

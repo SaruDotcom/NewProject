@@ -482,7 +482,7 @@ class OrderService {
    */
   static async listOrders(user, query = {}) {
     const { page, limit, skip, sort } = parsePagination(query);
-    const filter = {};
+    const filter = { isDemo: { $ne: true } };
 
     if (user.role === ROLES.WHOLESALER) {
       filter.wholesalerId = user._id;
@@ -576,7 +576,7 @@ class OrderService {
    * Get single order by ID with permissions check
    */
   static async getOrderById(orderId, user) {
-    const order = await Order.findById(orderId)
+    const order = await Order.findOne({ _id: orderId, isDemo: { $ne: true } })
       .populate('retailerId', 'name email phone businessName address city state pincode')
       .populate('wholesalerId', 'name email phone businessName address city state pincode')
       .populate('items.productId');

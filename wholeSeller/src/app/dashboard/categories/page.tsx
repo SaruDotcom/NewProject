@@ -88,6 +88,7 @@ export default function CategoriesPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState('Shirt');
   const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Toggle Level 3 expansion under a Level 2 subcategory
   const toggleSubcategoryExpanded = (subId: string) => {
@@ -131,6 +132,7 @@ export default function CategoriesPage() {
     setImageFile(null);
     setSelectedIcon('Shirt');
     setFormError(null);
+    setSuccessMessage(null);
     setParentId(parentCategory?.id || '');
     setShowAddModal(true);
   };
@@ -143,12 +145,21 @@ export default function CategoriesPage() {
     setImageFile(null);
     setSelectedIcon(category.icon || 'Shirt');
     setFormError(null);
+    setSuccessMessage(null);
     setParentId(category.parentId || '');
   };
 
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setFormError('Category name is required.');
+      return;
+    }
+    if (trimmedName.length > 100) {
+      setFormError('Category name cannot exceed 100 characters.');
+      return;
+    }
 
     // Check 3-level limit on chosen parent
     if (parentId) {
@@ -159,7 +170,7 @@ export default function CategoriesPage() {
       }
     }
 
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const isEditing = Boolean(editingCategory);
 
     try {
       let finalImageUrl = imageUrl.trim();
@@ -167,19 +178,18 @@ export default function CategoriesPage() {
         setIsUploading(true);
         try {
           const res = await api.uploadProductImages([imageFile]);
-          if (res.data && res.data.length > 0) {
-            finalImageUrl = res.data[0];
+          if (!res.data || res.data.length === 0) {
+            throw new Error('The category image upload did not return an image URL.');
           }
-        } catch (err) {
-          console.error(err);
+          finalImageUrl = res.data[0];
+        } finally {
+          setIsUploading(false);
         }
-        setIsUploading(false);
       }
 
       if (editingCategory) {
         await updateCategory(editingCategory.id, {
-          name,
-          slug,
+          name: trimmedName,
           description,
           imageUrl: finalImageUrl,
           icon: selectedIcon,
@@ -188,8 +198,7 @@ export default function CategoriesPage() {
         setEditingCategory(null);
       } else {
         await addCategory({
-          name,
-          slug,
+          name: trimmedName,
           description,
           imageUrl: finalImageUrl,
           icon: selectedIcon,
@@ -198,6 +207,7 @@ export default function CategoriesPage() {
         setShowAddModal(false);
       }
 
+      setSuccessMessage(isEditing ? 'Category updated successfully.' : 'Category created successfully.');
       setName('');
       setDescription('');
       setImageUrl('');
@@ -247,6 +257,8 @@ export default function CategoriesPage() {
     const result = await deleteCategory(cat.id);
     if (!result.success && result.message) {
       setDeleteWarning(result.message);
+    } else {
+      setSuccessMessage('Category deleted successfully.');
     }
   };
 
@@ -278,6 +290,7 @@ export default function CategoriesPage() {
       }
 
       setCategoryToDelete(null);
+      setSuccessMessage('Products reassigned and category deleted successfully.');
     } catch (err: any) {
       setDeleteWarning(err?.message || 'Products could not be reassigned. The category was not deleted.');
     } finally {
@@ -323,19 +336,6 @@ export default function CategoriesPage() {
     });
   }, [rootCategories, categories, searchQuery]);
 
-  // Suggested subcategories in Add/Edit modal
-  const selectedParentCat = categories.find((c) => c.id === parentId);
-  const selectedParentName = (selectedParentCat?.name || '').toLowerCase();
-  const suggestedSubcategories = selectedParentName.includes('women')
-    ? ['Saree', 'Lehenga', 'Suit', 'Kurti', 'Western Wear', 'Gown']
-    : selectedParentName.includes('men')
-      ? ['Shirts', 'T-Shirts', 'Jeans', 'Trousers', 'Jackets', 'Kurtas']
-      : selectedParentName.includes('cloth') || selectedParentName.includes('apparel') || selectedParentName.includes('fashion')
-        ? ['Men', 'Women', 'Kids', 'Ethnic Wear', 'Western Wear']
-        : selectedParentName.includes('electronic') || selectedParentName.includes('tech')
-          ? ['Mobiles', 'Computers', 'Audio', 'Accessories']
-          : [];
-
   return (
     <div className="space-y-6">
       {/* 1. PAGE HEADER & TOOLBAR */}
@@ -352,6 +352,12 @@ export default function CategoriesPage() {
             Organize catalog hierarchy, manage 3-level subcategories, and cover banners for retailer browsing
           </p>
         </div>
+
+        {successMessage && (
+          <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+            {successMessage}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {/* Search Box */}
@@ -490,7 +496,7 @@ export default function CategoriesPage() {
           <div className="w-16 h-16 rounded-2xl bg-tradeflow-green-50 text-tradeflow-green flex items-center justify-center mx-auto mb-4 border border-tradeflow-green/20">
             <FolderTree className="w-8 h-8 stroke-[1.5]" />
           </div>
-          <h3 className="text-lg font-bold text-[#1C1917]">No categories created yet</h3>
+          <h3 className="text-lg font-bold text-[#1C1917]">No categories available</h3>
           <p className="text-xs text-[#78716C] mt-1.5 mb-6 max-w-xs mx-auto leading-relaxed">
             Create your first product category to organize your wholesale catalog and help retailers browse your inventory.
           </p>
@@ -526,6 +532,7 @@ export default function CategoriesPage() {
       {!isLoading && viewMode === 'GRID' && filteredRootCategories.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
           {filteredRootCategories.map((cat) => {
+            const canManageCategory = cat.wholesalerId === profile.id;
             const coverImage = cat.imageUrl || '';
             const directSubs = categories.filter((c) => c.parentId === cat.id);
             const totalProducts = getCategoryProductCount(cat);
@@ -546,6 +553,7 @@ export default function CategoriesPage() {
                     <button
                       type="button"
                       onClick={() => handleOpenEditModal(cat)}
+                      disabled={!canManageCategory}
                       className="p-1.5 rounded-lg bg-black/45 hover:bg-black/75 text-white/95 backdrop-blur-xs transition-colors shadow-2xs"
                       title="Edit Category"
                       aria-label={`Edit ${cat.name}`}
@@ -555,6 +563,7 @@ export default function CategoriesPage() {
                     <button
                       type="button"
                       onClick={() => handleDeleteClick(cat)}
+                      disabled={!canManageCategory}
                       className="p-1.5 rounded-lg bg-black/45 hover:bg-red-600 text-white/95 backdrop-blur-xs transition-colors shadow-2xs"
                       title="Delete Category"
                       aria-label={`Delete ${cat.name}`}
@@ -578,6 +587,7 @@ export default function CategoriesPage() {
                 {directSubs.length > 0 ? (
                   <div className="space-y-1">
                     {displayedSubs.map((subcat) => {
+                      const canManageSubcategory = subcat.wholesalerId === profile.id;
                       const childSubs = categories.filter((c) => c.parentId === subcat.id);
                       const subProdCount = getCategoryProductCount(subcat);
                       const isSubExpanded = expandedSubcategoryIds.has(subcat.id);
@@ -632,6 +642,7 @@ export default function CategoriesPage() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(subcat)}
+                                disabled={!canManageSubcategory}
                                 className="p-1 text-gray-400 hover:text-tradeflow-green hover:bg-white rounded transition-colors"
                                 title={`Edit ${subcat.name}`}
                                 aria-label={`Edit ${subcat.name}`}
@@ -641,6 +652,7 @@ export default function CategoriesPage() {
                               <button
                                 type="button"
                                 onClick={() => handleDeleteClick(subcat)}
+                                disabled={!canManageSubcategory}
                                 className="p-1 text-gray-400 hover:text-red-600 hover:bg-white rounded transition-colors"
                                 title={`Delete ${subcat.name}`}
                                 aria-label={`Delete ${subcat.name}`}
@@ -657,6 +669,7 @@ export default function CategoriesPage() {
                               <div className="absolute left-2.5 top-0 bottom-2.5 w-px bg-gray-200" />
 
                               {childSubs.map((level3) => {
+                                const canManageLevel3 = level3.wholesalerId === profile.id;
                                 const l3Count = getCategoryProductCount(level3);
                                 return (
                                   <div
@@ -680,6 +693,7 @@ export default function CategoriesPage() {
                                       <button
                                         type="button"
                                         onClick={() => handleOpenEditModal(level3)}
+                                        disabled={!canManageLevel3}
                                         className="p-1 text-gray-400 hover:text-tradeflow-green hover:bg-white rounded transition-colors"
                                         title={`Edit ${level3.name}`}
                                         aria-label={`Edit ${level3.name}`}
@@ -689,6 +703,7 @@ export default function CategoriesPage() {
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteClick(level3)}
+                                        disabled={!canManageLevel3}
                                         className="p-1 text-gray-400 hover:text-red-600 hover:bg-white rounded transition-colors"
                                         title={`Delete ${level3.name}`}
                                         aria-label={`Delete ${level3.name}`}
@@ -756,6 +771,7 @@ export default function CategoriesPage() {
                     );
                   })
                   .map((cat) => {
+                    const canManageCategory = cat.wholesalerId === profile.id;
                     const linkedProductsCount = getCategoryProductCount(cat);
                     const coverImage = cat.imageUrl || '';
                     const level = getCategoryLevel(cat.id, categories);
@@ -824,6 +840,7 @@ export default function CategoriesPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(cat)}
+                              disabled={!canManageCategory}
                               className="px-3 py-1.5 bg-[#FAF9F6] border border-[#E7E5E4] hover:border-tradeflow-green/30 hover:text-tradeflow-green text-xs font-bold rounded-xl transition-colors flex items-center gap-1 text-[#1C1917]"
                             >
                               <Edit className="w-3.5 h-3.5" />
@@ -832,6 +849,7 @@ export default function CategoriesPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteClick(cat)}
+                              disabled={!canManageCategory}
                               className="p-1.5 text-[#78716C] hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete Category"
                             >
@@ -887,6 +905,7 @@ export default function CategoriesPage() {
                 <input
                   type="text"
                   required
+                  maxLength={100}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Shirts, Denim, Electronics"
@@ -923,21 +942,6 @@ export default function CategoriesPage() {
                       );
                     })}
                 </select>
-                {suggestedSubcategories.length > 0 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] font-semibold text-gray-500">Suggestions:</span>
-                    {suggestedSubcategories.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        onClick={() => setName(suggestion)}
-                        className="rounded-full border border-[#E7E5E4] bg-white px-2.5 py-0.5 text-[10px] font-semibold text-gray-700 hover:border-tradeflow-green hover:text-tradeflow-green"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Cover Image Upload (with Preset Options) */}

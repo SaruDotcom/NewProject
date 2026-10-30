@@ -66,10 +66,10 @@ export default function ProductDetailPage() {
   const [title, setTitle] = useState(product?.title || '');
   const [sku, setSku] = useState(product?.sku || '');
   const [categoryName, setCategoryName] = useState(product?.category || '');
-  const [costPrice, setCostPrice] = useState<number | ''>(product?.costPrice || 0);
-  const [sellingPrice, setSellingPrice] = useState<number | ''>(product?.sellingPrice || 0);
-  const [stock, setStock] = useState<number | ''>(product?.stock || 0);
-  const [minOrderQty, setMinOrderQty] = useState<number | ''>(product?.minOrderQty || 1);
+  const [costPrice, setCostPrice] = useState<number | ''>(product?.costPrice ?? '');
+  const [sellingPrice, setSellingPrice] = useState<number | ''>(product?.sellingPrice ?? '');
+  const [stock, setStock] = useState<number | ''>(product?.stock ?? '');
+  const [minOrderQty, setMinOrderQty] = useState<number | ''>(product?.minOrderQty ?? '');
   const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
   const [description, setDescription] = useState(product?.description || '');
   const [formError, setFormError] = useState<string | null>(null);
@@ -82,10 +82,10 @@ export default function ProductDetailPage() {
       setTitle(product.title);
       setSku(product.sku);
       setCategoryName(product.category || '');
-      setCostPrice(product.costPrice || (product.basePrice ? Math.round(product.basePrice * 0.7) : 0));
-      setSellingPrice(product.sellingPrice || product.basePrice || 0);
-      setStock(product.stock || 0);
-      setMinOrderQty(product.minOrderQty || 1);
+      setCostPrice(product.costPrice ?? '');
+      setSellingPrice(product.sellingPrice ?? product.basePrice ?? '');
+      setStock(product.stock ?? '');
+      setMinOrderQty(product.minOrderQty ?? '');
       setImageUrl(product.imageUrl || '');
       setDescription(product.description || '');
     }
@@ -108,10 +108,10 @@ export default function ProductDetailPage() {
       };
     }
 
-    const cost = product.costPrice || (product.basePrice ? Math.round(product.basePrice * 0.7) : 0);
-    const selling = product.sellingPrice || product.basePrice || 100;
+    const cost = product.costPrice ?? 0;
+    const selling = product.sellingPrice ?? product.basePrice ?? 0;
     const unitMargin = selling - cost;
-    const marginPercent = cost > 0 ? (unitMargin / cost) * 100 : (selling > 0 ? 100 : 0);
+    const marginPercent = cost > 0 ? (unitMargin / cost) * 100 : 0;
 
     let unitsSold = 0;
     let fulfilledOrdersCount = 0;
@@ -125,7 +125,7 @@ export default function ProductDetailPage() {
       let containsProduct = false;
       (o.items || []).forEach((item) => {
         if (String(item.productId) === String(product.id)) {
-          const itemQty = Number(item.quantity || 0);
+          const itemQty = Number(item.quantity ?? 0);
           const itemPrice = Number(item.unitPrice || selling);
           const itemRevenue = itemQty * itemPrice;
           const itemProfit = itemQty * (itemPrice - cost);
@@ -185,9 +185,9 @@ export default function ProductDetailPage() {
           list.push({
             orderId: o.id,
             orderNumber: o.orderNumber,
-            retailerName: o.retailerName || 'Retail Buyer',
-            retailerCity: o.retailerCity || 'India',
-            orderDate: o.createdAt || new Date().toLocaleString('en-IN'),
+            retailerName: o.retailerName || '',
+            retailerCity: o.retailerCity || '',
+            orderDate: o.createdAt || '',
             status: o.status,
             quantity: itemQty,
             unitPrice: itemPrice,

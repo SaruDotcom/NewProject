@@ -453,6 +453,7 @@ class BulkProductService {
     const wholesalerId = wholesalerUser._id;
     const categories = await Category.find({
       isDeleted: false,
+      isDemo: { $ne: true },
       $or: [{ wholesalerId: null }, { wholesalerId }],
     }).lean();
     const cleanedRows = rows.map((submitted) => rowData(submitted) || {});
@@ -463,7 +464,7 @@ class BulkProductService {
     });
     const uploadedSkus = [...skuCounts.keys()];
     const existingProducts = uploadedSkus.length
-      ? await Product.find({ wholesalerId, sku: { $in: uploadedSkus } }).select('sku').lean()
+      ? await Product.find({ wholesalerId, sku: { $in: uploadedSkus }, isDemo: { $ne: true } }).select('sku').lean()
       : [];
     const existingSkus = new Set(existingProducts.map((product) => String(product.sku).toUpperCase()));
 
