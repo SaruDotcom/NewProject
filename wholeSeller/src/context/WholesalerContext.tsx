@@ -35,7 +35,11 @@ const mapCategory = (category: any, wholesalerId: string): Category => ({
       ? category.parentId._id || category.parentId.id || ''
       : category.parentId)
     : null,
-  parentName: category.parent?.name || (typeof category.parentId === 'object' ? category.parentId.name : undefined),
+  parentName: category.parent?.name || (
+    category.parentId && typeof category.parentId === 'object'
+      ? category.parentId.name
+      : undefined
+  ),
   displayPath: category.displayPath || category.name || '',
   level: Number(category.level || 1),
   path: Array.isArray(category.path) ? category.path : [],
@@ -748,12 +752,14 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       icon: cat.icon,
       parentId: cat.parentId || null,
     });
-    if (res?.data) {
-      const createdCategory = mapCategory(res.data, profile.id);
-      setRawCategories((current) => [...current.filter((category) => category.id !== createdCategory.id), createdCategory]);
-      invalidateResources('categories', 'products');
-      await refreshData(true);
+    if (!res?.data || typeof res.data !== 'object') {
+      throw new Error('Category was created, but the server did not return the saved category.');
     }
+
+    const createdCategory = mapCategory(res.data, profile.id);
+    setRawCategories((current) => [...current.filter((category) => category.id !== createdCategory.id), createdCategory]);
+    invalidateResources('categories', 'products');
+    await refreshData(true);
     addAuditLog(`Created product category: ${cat.name}`);
   };
 
