@@ -178,10 +178,16 @@ export default function CategoriesPage() {
         setIsUploading(true);
         try {
           const res = await api.uploadProductImages([imageFile]);
-          if (!res.data || res.data.length === 0) {
+          const uploadedImage = res.data?.[0];
+          const uploadedImageUrl = typeof uploadedImage === 'string'
+            ? uploadedImage
+            : uploadedImage && typeof uploadedImage.url === 'string'
+              ? uploadedImage.url
+              : '';
+          if (!uploadedImageUrl) {
             throw new Error('The category image upload did not return an image URL.');
           }
-          finalImageUrl = res.data[0];
+          finalImageUrl = uploadedImageUrl;
         } finally {
           setIsUploading(false);
         }
