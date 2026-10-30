@@ -79,7 +79,7 @@ export function HomePage() {
 
       {/* Trust Signals */}
       <section className="border-b bg-card">
-        <div className="shell grid grid-cols-2 gap-4 py-6 sm:gap-6 lg:grid-cols-4">
+        <div className="shell grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 py-4 sm:py-6">
           {trustSignals.map(([I, t, b]) => (
             <div key={t} className="flex items-center gap-3">
               <I className="size-6 shrink-0 text-primary" />

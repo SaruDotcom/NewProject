@@ -279,22 +279,23 @@ export function AdminShell({ children }) {
       }),
       mobile &&
         _jsx("div", {
-          className: "fixed inset-0 z-50 bg-foreground/30 lg:hidden",
+          className: "fixed inset-0 z-50 bg-black/60 backdrop-blur-xs lg:hidden transition-opacity",
           onClick: () => setMobile(false),
           children: _jsxs("aside", {
             className:
-              "sidebar-premium h-full w-[280px] text-tradeflow-white shadow-xl",
+              "sidebar-premium h-full w-[280px] text-tradeflow-white shadow-2xl flex flex-col justify-between",
             onClick: (e) => e.stopPropagation(),
             children: [
               _jsxs("div", {
-                className: "flex items-center justify-between",
+                className: "flex items-center justify-between border-b border-white/10 pr-2",
                 children: [
                   _jsx(Brand, {}),
                   _jsx(Button, {
                     variant: "ghost",
                     size: "icon",
                     onClick: () => setMobile(false),
-                    children: _jsx(X, {}),
+                    "aria-label": "Close navigation menu",
+                    children: _jsx(X, { className: "size-5 text-white/80" }),
                   }),
                 ],
               }),
@@ -302,6 +303,34 @@ export function AdminShell({ children }) {
                 pathname: pathname,
                 close: () => setMobile(false),
                 pendingKycCount: pendingKycCount,
+              }),
+              _jsxs("div", {
+                className: "border-t border-white/10 p-3 bg-black/25 flex items-center justify-between",
+                children: [
+                  _jsxs("div", {
+                    className: "flex items-center gap-2 min-w-0 flex-1 mr-2",
+                    children: [
+                      _jsx("span", {
+                        className: "flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground",
+                        children: initials,
+                      }),
+                      _jsxs("div", {
+                        className: "truncate",
+                        children: [
+                          _jsx("p", { className: "text-xs font-bold text-white truncate", children: adminName }),
+                          _jsx("p", { className: "text-[10px] text-white/60 truncate", children: adminEmail }),
+                        ],
+                      }),
+                    ],
+                  }),
+                  _jsx(Button, {
+                    variant: "ghost",
+                    size: "sm",
+                    className: "text-xs text-rose-300 hover:text-rose-100 hover:bg-rose-500/20 px-2.5",
+                    onClick: logout,
+                    children: "Sign out",
+                  }),
+                ],
               }),
             ],
           }),
@@ -314,13 +343,14 @@ export function AdminShell({ children }) {
         children: [
           _jsxs("header", {
             className:
-              "admin-topbar sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/70 bg-card/80 px-4 text-foreground backdrop-blur-xl sm:px-6",
+              "admin-topbar sticky top-0 z-30 flex h-16 items-center gap-2 sm:gap-3 border-b border-border/70 bg-card/80 px-2.5 sm:px-6 text-foreground backdrop-blur-xl",
             children: [
               _jsx(Button, {
                 variant: "ghost",
                 size: "icon",
-                className: "lg:hidden",
+                className: "lg:hidden shrink-0",
                 onClick: () => setMobile(true),
+                "aria-label": "Open navigation menu",
                 children: _jsx(Menu, {}),
               }),
               _jsx("div", {
@@ -369,7 +399,7 @@ export function AdminShell({ children }) {
                     }),
               }),
               _jsxs("div", {
-                className: "relative mx-auto w-full max-w-xl",
+                className: "relative mx-auto flex-1 max-w-xl min-w-0",
                 children: [
                   _jsx(Search, {
                     className:
@@ -552,11 +582,12 @@ export function AdminShell({ children }) {
                     asChild: true,
                     children: _jsxs(Button, {
                       variant: "ghost",
-                      className: "hidden h-10 gap-2 px-2 sm:flex",
+                      className: "flex h-9 w-9 p-0 sm:h-10 sm:w-auto sm:gap-2 sm:px-2 shrink-0",
+                      "aria-label": "Open user profile menu",
                       children: [
                         _jsx("span", {
                           className:
-                            "flex size-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground",
+                            "flex size-7 sm:size-8 items-center justify-center rounded-full bg-primary text-[11px] sm:text-xs font-bold text-primary-foreground",
                           children: initials,
                         }),
                         _jsxs("span", {
@@ -572,7 +603,7 @@ export function AdminShell({ children }) {
                             }),
                           ],
                         }),
-                        _jsx(ChevronDown, { className: "size-3" }),
+                        _jsx(ChevronDown, { className: "hidden sm:block size-3" }),
                       ],
                     }),
                   }),

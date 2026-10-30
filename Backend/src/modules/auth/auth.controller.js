@@ -64,6 +64,11 @@ class AuthController {
     return ApiResponse.success(res, result, result.message);
   });
 
+  verifyPasswordReset = asyncHandler(async (req, res) => {
+    const result = await AuthService.verifyPasswordReset(req.body.email, req.body.code);
+    return ApiResponse.success(res, result, 'Code verified. You can now set a new password.');
+  });
+
   resetPassword = asyncHandler(async (req, res) => {
     const result = await AuthService.resetPassword(req.body.token, req.body.newPassword);
     return ApiResponse.success(res, result, result.message);

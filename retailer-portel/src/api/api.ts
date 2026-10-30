@@ -451,6 +451,24 @@ export const api = {
 
   getMe: () => request<ApiEnvelope<RetailerUser>>('/auth/me', { method: 'GET' }),
 
+  requestPasswordReset: (email: string) =>
+    request<ApiEnvelope<{ message: string; resendAfterSeconds: number }>>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  verifyPasswordReset: (email: string, code: string) =>
+    request<ApiEnvelope<{ resetToken: string; expiresInSeconds: number }>>('/auth/verify-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+
+  resetPassword: (token: string, newPassword: string) =>
+    request<ApiEnvelope<{ message: string }>>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    }),
+
   getDashboard: () => request<ApiEnvelope<any>>('/retailer/dashboard', { method: 'GET' }),
 
   getConnectedWholesaler: () => request<ApiEnvelope<ApiWholesaler | null>>('/retailer/wholesaler', { method: 'GET' }),

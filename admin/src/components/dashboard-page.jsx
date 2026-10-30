@@ -172,7 +172,7 @@ export function DashboardPage() {
               </span>
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-              Good morning, {adminName}
+              WelCome, {adminName}
             </h1>
             <p className="mt-2 text-sm text-white/70">
               {statsLoading ? (
@@ -256,7 +256,7 @@ export function DashboardPage() {
       </section>
 
       {/* Top Metrics Cards Grid */}
-      <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-3.5">
         {statsLoading ? (
           Array.from({ length: 10 }, (_, index) => (
             <div

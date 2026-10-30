@@ -399,6 +399,21 @@ export const api = {
   },
 
   // Auth
+  requestPasswordReset: (email: string) =>
+    request<{ success: boolean; data: { message: string; resendAfterSeconds: number } }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  verifyPasswordReset: (email: string, code: string) =>
+    request<{ success: boolean; data: { resetToken: string; expiresInSeconds: number } }>('/auth/verify-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+  resetPassword: (token: string, newPassword: string) =>
+    request<{ success: boolean; data: { message: string } }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    }),
   login: (credentials: { email?: string; loginId?: string; mobile?: string; phone?: string; password?: string; role?: string }) =>
     request<{ success: boolean; data: { token?: string; user?: any; requiresTwoFactor?: boolean; challengeToken?: string; maskedEmail?: string; resendAfterSeconds?: number } }>('/auth/login', {
       method: 'POST',

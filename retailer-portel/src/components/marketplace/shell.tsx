@@ -92,25 +92,25 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
   const isLight = variant === "light";
 
   return (
-    <Link to="/" className="flex items-center gap-2.5 group focus-visible:outline-none">
+    <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group focus-visible:outline-none shrink-0">
       {logoUrl ? (
         <img
           src={logoUrl}
           alt={retailerName}
-          className="size-9 sm:size-10 rounded-xl object-contain border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105"
+          className="size-8 sm:size-10 rounded-xl object-contain border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105 shrink-0"
         />
       ) : (
-        <TradeFlowMark className="size-9 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
+        <TradeFlowMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
       )}
-      <div className="flex flex-col">
-        <span className={cn("font-black tracking-tight text-lg sm:text-xl leading-none truncate max-w-[180px]", isLight ? "text-white" : "text-ink")}>
+      <div className="flex flex-col min-w-0">
+        <span className={cn("font-black tracking-tight text-base sm:text-xl leading-none truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[180px]", isLight ? "text-white" : "text-ink")}>
           {hasCustomName ? retailerName : (
             <>
               Trade<span className="text-tradeflow-green">Flow</span>
             </>
           )}
         </span>
-        <span className={cn("text-[10px] font-extrabold uppercase tracking-widest leading-none mt-0.5", isLight ? "text-tradeflow-green" : "text-primary")}>
+        <span className={cn("text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider sm:tracking-widest leading-none mt-0.5 truncate hidden xs:block", isLight ? "text-tradeflow-green" : "text-primary")}>
           Retailer Portal
         </span>
       </div>
@@ -135,17 +135,17 @@ export function IconLink({
     <Link
       to={to}
       aria-label={label}
-      className="group relative grid size-10 place-items-center rounded-xl text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 min-h-[44px] min-w-[44px]"
+      className="group relative grid size-9 sm:size-10 place-items-center rounded-xl text-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 min-h-[38px] min-w-[38px] sm:min-h-[44px] sm:min-w-[44px]"
     >
-      <span className="transition-opacity duration-200 group-hover:opacity-0">
+      <span className="transition-opacity duration-200 group-hover:opacity-0 [&_svg]:size-5 sm:[&_svg]:size-6">
         {children}
       </span>
-      <span className="absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <span className="absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100 [&_svg]:size-5 sm:[&_svg]:size-6">
         {hoverChildren}
       </span>
       {typeof badgeCount === "number" && badgeCount > 0 && (
         <span
-          className="absolute -top-1 -right-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-black text-white shadow-2xs ring-2 ring-background transition-transform group-hover:scale-110 pointer-events-none animate-in zoom-in-75 duration-150"
+          className="absolute -top-1 -right-1 flex h-4 min-w-4 sm:h-4.5 sm:min-w-4.5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[9px] sm:text-[10px] font-black text-white shadow-2xs ring-2 ring-background transition-transform group-hover:scale-110 pointer-events-none animate-in zoom-in-75 duration-150"
           aria-label={`${badgeCount} in ${label}`}
         >
           {badgeCount > 99 ? "99+" : badgeCount}
@@ -198,7 +198,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
       {/* Header */}
       <header className="premium-header sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
-        <div className="shell flex h-16 sm:h-18 items-center justify-between gap-3 sm:gap-6">
+        <div className="shell flex h-16 sm:h-18 items-center justify-between gap-1.5 sm:gap-6 px-2.5 sm:px-4 lg:px-6">
           <div className="flex items-center gap-3 lg:gap-5">
             <Logo />
             {/* Desktop Navigation Links */}
@@ -298,10 +298,10 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="lg:hidden size-11 rounded-xl min-h-[44px] min-w-[44px]"
+                  className="lg:hidden size-9 sm:size-11 rounded-xl min-h-[38px] min-w-[38px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center p-0"
                   aria-label="Open mobile menu"
                 >
-                  <MenuIcon className="size-6 text-ink" />
+                  <MenuIcon className="size-5.5 sm:size-6 text-ink" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-[85vw] max-w-sm p-6 overflow-y-auto">

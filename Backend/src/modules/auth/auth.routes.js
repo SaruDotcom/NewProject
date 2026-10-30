@@ -19,6 +19,7 @@ const {
   registerSchema,
   refreshTokenSchema,
   forgotPasswordSchema,
+  verifyPasswordResetSchema,
   resetPasswordSchema,
   otpCodeSchema,
   loginOtpSchema,
@@ -58,6 +59,7 @@ router.post('/refresh', validate(refreshTokenSchema), authController.refresh);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
 router.post('/forgot-password', authRateLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
+router.post('/verify-password-reset', authRateLimiter, validate(verifyPasswordResetSchema), authController.verifyPasswordReset);
 router.post('/reset-password', authRateLimiter, validate(resetPasswordSchema), authController.resetPassword);
 
 module.exports = router;

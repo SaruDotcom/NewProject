@@ -188,7 +188,7 @@ export default function OrdersPage() {
       <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs">
         <div className="overflow-x-auto">
           {activeStatusTab === 'RETURNS' ? (
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[720px]">
               <thead>
                 <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Return ID</th>
@@ -230,7 +230,7 @@ export default function OrdersPage() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[700px]">
               <thead>
                 <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Order ID</th>
@@ -324,7 +324,7 @@ export default function OrdersPage() {
             )}
 
             {/* STATUS UPDATE DROPDOWN SELECTOR */}
-            <div className="p-4 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex items-center justify-between">
+            <div className="p-4 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="text-[10px] font-bold uppercase text-gray-400 block mb-0.5">Order Status</span>
                 <span className="text-xs text-gray-600 font-medium">Confirmed status deducts inventory stock.</span>
@@ -356,7 +356,7 @@ export default function OrdersPage() {
             )}
 
             {/* Buyer & Seller Info Box */}
-            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-tradeflow-gray-50 border border-tradeflow-gray-200 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-tradeflow-gray-50 border border-tradeflow-gray-200 text-xs">
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-400 mb-1">Wholesaler (Seller)</div>
                 <div className="font-bold text-tradeflow-navy">Apex Wholesale Pvt Ltd</div>
@@ -372,8 +372,8 @@ export default function OrdersPage() {
             {/* Line Items Table */}
             <div className="space-y-2">
               <div className="text-xs font-bold text-gray-700">Items</div>
-              <div className="border border-tradeflow-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
+              <div className="border border-tradeflow-gray-200 rounded-xl overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-[440px]">
                   <thead className="bg-tradeflow-gray-50 text-gray-500 font-bold border-b border-tradeflow-gray-200">
                     <tr>
                       <th className="p-2.5">Item & SKU</th>

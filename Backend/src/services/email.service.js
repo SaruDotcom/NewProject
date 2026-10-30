@@ -1,6 +1,7 @@
 const env = require('../config/env');
 const logger = require('../config/logger');
 const { AppError } = require('../utils/errors');
+const nodemailer = require('nodemailer');
 
 const BREVO_EMAIL_URL = 'https://api.brevo.com/v3/smtp/email';
 
@@ -96,7 +97,41 @@ async function sendVerificationCode(to, code) {
   }
 }
 
+async function sendPasswordResetCode(to, code) {
+  try {
+    env.assertSmtpConfigured();
+  } catch (error) {
+    logger.error('Password reset email is not configured.', { message: error.message });
+    throw new AppError('Password reset email is not configured', 503, 'EMAIL_SERVICE_NOT_CONFIGURED');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_SECURE,
+    auth: {
+      user: env.SMTP_USER,
+      pass: env.SMTP_APP_PASSWORD,
+    },
+  });
+
+  try {
+    await transporter.sendMail({
+      from: env.EMAIL_FROM || env.SMTP_USER,
+      to,
+      subject: 'Your Vyapar Dwar password reset code',
+      text: `Your password reset code is ${code}. It expires in 5 minutes. If you did not request this, ignore this email.`,
+      html: `<p>Your password reset code is <strong>${escapeHtml(code)}</strong>.</p><p>It expires in 5 minutes. If you did not request this, ignore this email.</p>`,
+    });
+    logger.info('Password reset email sent.');
+  } catch (error) {
+    logger.error('Password reset email delivery failed.', { message: error.message });
+    throw new AppError('Could not send the password reset email', 502, 'EMAIL_DELIVERY_FAILED');
+  }
+}
+
 module.exports = {
   sendVerificationCode,
   sendOtpEmail: sendVerificationCode,
+  sendPasswordResetCode,
 };

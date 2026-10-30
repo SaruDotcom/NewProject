@@ -766,7 +766,7 @@ export default function CategoriesPage() {
       {!isLoading && viewMode === 'TABLE' && (
         <div className="bg-white rounded-2xl border border-[#E7E5E4] p-6 shadow-xs">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[700px]">
               <thead>
                 <tr className="border-b border-[#E7E5E4] text-[#78716C] font-bold uppercase tracking-wider">
                   <th className="pb-3">Cover</th>

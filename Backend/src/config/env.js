@@ -45,6 +45,11 @@ const env = {
   EMAIL_PROVIDER_API_KEY: process.env.EMAIL_PROVIDER_API_KEY || '',
   EMAIL_FROM: process.env.EMAIL_FROM || '',
   EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || '',
+  SMTP_HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
+  SMTP_PORT: parseInt(process.env.SMTP_PORT || '465', 10),
+  SMTP_SECURE: process.env.SMTP_SECURE !== 'false',
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_APP_PASSWORD: process.env.SMTP_APP_PASSWORD || '',
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
 };
@@ -62,6 +67,14 @@ env.assertEmailConfigured = () => {
     .filter((key) => !env[key]);
   if (missing.length) {
     throw new Error(`Email service is not configured. Set: ${missing.join(', ')}`);
+  }
+};
+
+env.assertSmtpConfigured = () => {
+  const missing = ['SMTP_HOST', 'SMTP_USER', 'SMTP_APP_PASSWORD']
+    .filter((key) => !env[key]);
+  if (missing.length) {
+    throw new Error(`Password reset email requires Gmail SMTP settings: ${missing.join(', ')}`);
   }
 };
 

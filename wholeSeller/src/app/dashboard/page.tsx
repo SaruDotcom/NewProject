@@ -76,9 +76,9 @@ export default function OverviewPage() {
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-tradeflow-navy via-tradeflow-navy-hover to-tradeflow-navy text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-gray-800">
+      <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-tradeflow-navy via-tradeflow-navy-hover to-tradeflow-navy text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-gray-800">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-tradeflow-green text-tradeflow-navy tracking-wide flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
               <span>
@@ -91,7 +91,7 @@ export default function OverviewPage() {
               GSTIN: {profile.gstin || 'Not provided'}
             </span>
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
             {profile.businessName ? `Welcome back, ${profile.businessName}` : 'Welcome to your dashboard'}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
@@ -99,17 +99,17 @@ export default function OverviewPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <Link
             to="/dashboard/products"
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md"
           >
             <Plus className="w-4 h-4" />
             <span>Add Product</span>
           </Link>
           <Link
             to="/dashboard/orders"
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-white/10 text-white text-xs font-bold rounded-xl hover:bg-white/20 transition-all border border-white/10"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white/10 text-white text-xs font-bold rounded-xl hover:bg-white/20 transition-all border border-white/10"
           >
             <ShoppingBag className="w-4 h-4" />
             <span>Orders ({orders.length})</span>
@@ -417,7 +417,7 @@ export default function OverviewPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[550px]">
               <thead>
                 <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Order Number</th>

@@ -178,12 +178,12 @@ export function ProductCard({
           </div>
 
           {/* Action Buttons: View Details & Add to Cart */}
-          <div className="mt-4 flex flex-wrap sm:flex-nowrap items-center gap-2.5 pt-3 border-t border-border/60">
+          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-border/60">
             <Button
               asChild
               variant="outline"
               size="sm"
-              className="h-9 flex-1 min-w-[120px] rounded-lg font-semibold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1.5 transition-colors cursor-pointer whitespace-nowrap px-3"
+              className="h-9 w-full sm:flex-1 rounded-lg font-semibold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1.5 transition-colors cursor-pointer whitespace-nowrap px-3"
             >
               <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="inline-flex items-center justify-center gap-1.5 w-full min-w-0">
                 <Visibility className="size-3.5 shrink-0 text-muted-foreground" />
@@ -193,7 +193,7 @@ export function ProductCard({
             <Button
               disabled={product.stock <= 0}
               size="sm"
-              className="h-9 flex-1 min-w-[120px] rounded-lg font-semibold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap px-3"
+              className="h-9 w-full sm:flex-1 rounded-lg font-semibold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap px-3"
               onClick={() => addToCart(product.id)}
             >
               <ShoppingCart className="size-3.5 shrink-0" />
@@ -213,7 +213,7 @@ export function ProductCard({
         to="/products/$productId"
         params={{ productId: product.id }}
         onClick={() => addRecentlyViewed(product.id)}
-        className="relative block aspect-[4/3] max-h-52 w-full overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-3 flex items-center justify-center cursor-pointer"
+        className="relative block aspect-square sm:aspect-[4/3] max-h-52 w-full overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-2.5 sm:p-3 flex items-center justify-center cursor-pointer"
       >
         {productImg ? (
           <ProductImage
@@ -281,32 +281,32 @@ export function ProductCard({
         </div>
 
         {/* Pinned Action Buttons: View Details & Add to Cart */}
-        <div className="mt-auto grid grid-cols-2 gap-2 pt-3 border-t border-border/50">
+        <div className="mt-auto grid grid-cols-2 gap-1.5 sm:gap-2 pt-2.5 sm:pt-3 border-t border-border/50">
           <Button
             asChild
             variant="outline"
             size="sm"
-            className="h-9 min-w-0 w-full rounded-lg font-semibold text-xs border-border/80 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 !gap-1.5 transition-colors !px-2 cursor-pointer whitespace-nowrap"
+            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg font-semibold text-[11px] sm:text-xs border-border/80 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 !gap-1 sm:!gap-1.5 transition-colors !px-1.5 sm:!px-2 cursor-pointer"
           >
             <Link
               to="/products/$productId"
               params={{ productId: product.id }}
               onClick={() => addRecentlyViewed(product.id)}
-              className="inline-flex items-center justify-center gap-1.5 w-full min-w-0 text-center"
+              className="inline-flex items-center justify-center gap-1 sm:gap-1.5 w-full min-w-0 text-center"
             >
               <Visibility className="!size-3.5 shrink-0 text-muted-foreground" />
-              <span className="whitespace-nowrap">View Details</span>
+              <span className="truncate">Details</span>
             </Link>
           </Button>
 
           <Button
             disabled={product.stock <= 0}
             size="sm"
-            className="h-9 min-w-0 w-full rounded-lg font-semibold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs !gap-1.5 transition-all active:scale-95 !px-2 cursor-pointer whitespace-nowrap"
+            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg font-semibold text-[11px] sm:text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs !gap-1 sm:!gap-1.5 transition-all active:scale-95 !px-1.5 sm:!px-2 cursor-pointer"
             onClick={() => addToCart(product.id)}
           >
             <ShoppingCart className="!size-3.5 shrink-0" />
-            <span className="whitespace-nowrap">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
+            <span className="truncate">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
           </Button>
         </div>
       </div>
@@ -328,7 +328,7 @@ export function ProductGrid({
   const gridClassName = list
     ? cn("grid gap-3", className)
     : cn(
-        "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5",
+        "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5",
         className,
       );
 

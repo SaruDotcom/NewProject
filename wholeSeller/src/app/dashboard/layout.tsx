@@ -78,14 +78,15 @@ export default function DashboardLayout({
   children?: React.ReactNode;
 }) {
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <DashboardGuard>
       <WholesalerProvider>
         <div className="min-h-screen bg-[#FAF9F6] text-[#1C1917] relative">
-          <Sidebar />
-          <Header />
-          <main className="ml-64 min-h-screen px-8 pb-8 pt-24 bg-[#FAF9F6]">
+          <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+          <Header isMenuOpen={isMobileMenuOpen} onToggleMenu={() => setIsMobileMenuOpen((prev) => !prev)} />
+          <main className="ml-0 lg:ml-64 min-h-screen px-3 sm:px-6 lg:px-8 pb-8 pt-20 sm:pt-24 bg-[#FAF9F6] overflow-x-hidden">
             <div className="mx-auto max-w-[1440px] space-y-6">
               <Suspense fallback={<div className="animate-pulse space-y-5" role="status" aria-label="Loading page"><div className="h-8 w-56 rounded-lg bg-stone-200" /><div className="h-40 rounded-2xl bg-stone-100" /><div className="h-64 rounded-2xl bg-stone-100" /></div>}>
                 {children || <Outlet />}
@@ -94,7 +95,7 @@ export default function DashboardLayout({
           </main>
 
           {/* Floating Super Admin Help & Call Floating Widget */}
-          <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 group">
+          <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2 group">
             <div className="hidden group-hover:flex items-center gap-2 px-3 py-1.5 bg-[#1C1917] text-white rounded-xl text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2">
               <span className="w-2 h-2 rounded-full bg-tradeflow-green animate-ping" />
               <span>Direct Super Admin Helpline (24/7)</span>
@@ -103,10 +104,10 @@ export default function DashboardLayout({
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
-              className="p-3.5 bg-tradeflow-green hover:bg-tradeflow-green-hover text-white rounded-full shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center border-2 border-white focus:outline-none ring-4 ring-tradeflow-green/20"
+              className="p-3 sm:p-3.5 bg-tradeflow-green hover:bg-tradeflow-green-hover text-white rounded-full shadow-2xl transition-all transform hover:scale-110 flex items-center justify-center border-2 border-white focus:outline-none ring-4 ring-tradeflow-green/20"
               title="Super Admin Help & Call Hotline"
             >
-              <PhoneCall className="w-5 h-5 text-white animate-bounce" />
+              <PhoneCall className="w-4 h-4 sm:w-5 sm:h-5 text-white animate-bounce" />
             </button>
           </div>
 

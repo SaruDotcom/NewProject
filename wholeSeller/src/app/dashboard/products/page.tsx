@@ -668,7 +668,7 @@ export default function ProductsPage() {
 
       {/* VIEW MODE 1: GRID VIEW */}
       {viewMode === 'GRID' && filteredProducts.length > 0 && (
-        <div className="grid auto-rows-fr grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredProducts.slice(0, visibleCount).map((product, pIdx) => {
             const cost = product.costPrice ?? 0;
             const selling = product.sellingPrice ?? product.basePrice;
@@ -773,7 +773,7 @@ export default function ProductsPage() {
       {viewMode === 'TABLE' && filteredProducts.length > 0 && (
         <div className="bg-white rounded-2xl border border-tradeflow-gray-200 p-6 shadow-xs">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[680px]">
               <thead>
                 <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Product Item & SKU</th>

@@ -24,6 +24,7 @@ const EmailOtpService = require('../../services/emailOtp.service');
 const ReferralService = require('../referrals/referrals.service');
 const WholesalerInvitesService = require('../wholesaler-invites/wholesalerInvites.service');
 const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
+const PasswordResetService = require('../../services/passwordReset.service');
 
 class AuthService {
   /**
@@ -570,47 +571,18 @@ class AuthService {
    * Forgot password flow
    */
   static async forgotPassword(email) {
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
-      // Return success to avoid email enumeration
-      return { message: 'If the email exists, a password reset link has been dispatched.' };
-    }
+    return PasswordResetService.requestCode(email);
+  }
 
-    const resetToken = generateSecureToken(32);
-    user.resetPasswordTokenHash = hashToken(resetToken);
-    user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
-    await user.save();
-
-    // In production, dispatch email with reset link
-    return {
-      message: 'Password reset instructions dispatched.',
-      resetToken, // Returned in dev/testing environments
-    };
+  static async verifyPasswordReset(email, code) {
+    return PasswordResetService.verifyCode(email, code);
   }
 
   /**
    * Reset password with token
    */
   static async resetPassword(token, newPassword) {
-    const tokenHashVal = hashToken(token);
-    const user = await User.findOne({
-      resetPasswordTokenHash: tokenHashVal,
-      resetPasswordExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      throw new BadRequestError('Invalid or expired password reset token', 'INVALID_RESET_TOKEN');
-    }
-
-    user.passwordHash = await User.hashPassword(newPassword);
-    user.resetPasswordTokenHash = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
-
-    // Invalidate all active sessions for security
-    await RefreshToken.updateMany({ userId: user._id }, { isRevoked: true });
-
-    return { message: 'Password updated successfully. Please log in with your new credentials.' };
+    return PasswordResetService.resetPassword(token, newPassword);
   }
 
 }

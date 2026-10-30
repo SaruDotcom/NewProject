@@ -11,12 +11,18 @@ import {
   MessageSquare,
   Headphones,
   PhoneCall,
+  Menu,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onToggleMenu?: () => void;
+  isMenuOpen?: boolean;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
   const { profile, notifications, markNotificationsRead } = useWholesaler();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -27,47 +33,58 @@ export const Header: React.FC = () => {
   const unreadCount = notifications.filter((notification) => !notification.isRead).length;
 
   return (
-    <header className="fixed top-0 right-0 left-64 h-16 bg-tradeflow-navy text-white border-b border-tradeflow-navy-pressed flex items-center justify-between px-6 z-20 shadow-[0_1px_3px_rgba(18,48,74,0.18)]">
-      {/* Search Input Bar */}
-      <div className="relative w-96">
-        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-tradeflow-gray-200" />
-        <input
-          type="text"
-          placeholder="Search products, orders, retailers, SKUs..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 text-xs text-white placeholder:text-tradeflow-gray-200 bg-tradeflow-navy-hover border border-tradeflow-navy-hover rounded-xl focus:outline-none focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green/20 transition-all"
-        />
+    <header className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-tradeflow-navy text-white border-b border-tradeflow-navy-pressed flex items-center justify-between px-3 sm:px-6 z-20 shadow-[0_1px_3px_rgba(18,48,74,0.18)]">
+      {/* Left Area: Mobile Hamburger + Search Input */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 pr-2">
+        <button
+          type="button"
+          onClick={onToggleMenu}
+          className="lg:hidden p-2 -ml-1 rounded-xl text-tradeflow-gray-200 hover:text-white hover:bg-tradeflow-navy-hover transition-colors focus:outline-none"
+          aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        >
+          <Menu className="w-5 h-5 text-white" />
+        </button>
+
+        <div className="relative w-full max-w-[140px] xs:max-w-[190px] sm:max-w-xs md:w-80 lg:w-96">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-tradeflow-gray-200" />
+          <input
+            type="text"
+            placeholder="Search products, orders, SKUs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 sm:py-2 text-xs text-white placeholder:text-tradeflow-gray-200 bg-tradeflow-navy-hover border border-tradeflow-navy-hover rounded-xl focus:outline-none focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green/20 transition-all truncate"
+          />
+        </div>
       </div>
 
       {/* Right Header Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Super Admin Direct Call & Help Button */}
         <button
           type="button"
           onClick={() => setShowHelpModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-tradeflow-navy-hover text-white border border-tradeflow-navy-hover text-xs font-semibold rounded-xl hover:bg-tradeflow-navy-pressed hover:border-tradeflow-green/30 shadow-2xs transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 bg-tradeflow-navy-hover text-white border border-tradeflow-navy-hover text-xs font-semibold rounded-xl hover:bg-tradeflow-navy-pressed hover:border-tradeflow-green/30 shadow-2xs transition-all"
           title="Direct Call & Help from Super Admin"
         >
           <PhoneCall className="w-3.5 h-3.5 text-tradeflow-green" />
-          <span>Call Super Admin</span>
+          <span className="hidden md:inline">Call Super Admin</span>
         </button>
 
         {/* Quick Add Product Button */}
         <button
           type="button"
           onClick={() => navigate('/dashboard/products', { state: { openAddProduct: true } })}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-tradeflow-green text-white text-xs font-semibold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-tradeflow-green text-white text-xs font-semibold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all"
         >
           <Plus className="w-4 h-4 text-white" />
-          <span>Add Product</span>
+          <span className="hidden sm:inline">Add Product</span>
         </button>
 
-        {/* Feedback Button */}
+        {/* Feedback Button - hidden on small screens, accessible in sidebar */}
         <button
           type="button"
           onClick={() => setShowFeedbackModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-tradeflow-navy-hover text-white border border-tradeflow-navy-hover rounded-xl text-xs font-medium hover:bg-tradeflow-navy-pressed hover:border-tradeflow-green/30 transition-colors"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-tradeflow-navy-hover text-white border border-tradeflow-navy-hover rounded-xl text-xs font-medium hover:bg-tradeflow-navy-pressed hover:border-tradeflow-green/30 transition-colors"
           title="Submit Feedback & Review"
         >
           <MessageSquare className="w-3.5 h-3.5 text-[#78716C]" />
