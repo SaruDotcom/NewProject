@@ -114,27 +114,23 @@ class ReferralService {
     const { profile } = await this.resolveActiveCode(code);
     const { Category, Product } = require('../../models');
 
-    let categories = [];
-    try {
-      const productCategoryIds = await Product.distinct('categoryId', {
-        wholesalerId: profile.userId,
-        status: { $ne: 'INACTIVE' },
+    const productCategoryIds = await Product.distinct('categoryId', {
+      wholesalerId: profile.userId,
+      status: { $ne: 'INACTIVE' },
+      isDeleted: false,
+    });
+    const categoryDetails = productCategoryIds.length > 0
+      ? await Category.find({
+        _id: { $in: productCategoryIds },
         isDeleted: false,
-      });
-      if (productCategoryIds && productCategoryIds.length > 0) {
-        const found = await Category.find({ _id: { $in: productCategoryIds }, isDeleted: false })
-          .limit(3)
-          .select('name')
-          .lean();
-        categories = found.map((c) => c.name);
-      }
-      if (categories.length === 0) {
-        const fallbackCats = await Category.find({ isDeleted: false }).limit(3).select('name').lean();
-        categories = fallbackCats.map((c) => c.name);
-      }
-    } catch {
-      categories = [];
-    }
+        $or: [{ wholesalerId: profile.userId }, { wholesalerId: null }],
+      })
+        .sort({ sortOrder: 1, name: 1 })
+        .limit(3)
+        .select('_id name slug description imageUrl parentId')
+        .lean()
+      : [];
+    const categories = categoryDetails.map((category) => category.name);
 
     const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
     const businessCategory = normalizeBusinessType(profile.businessCategory || profile.khataBook?.businessType);
@@ -169,6 +165,7 @@ class ReferralService {
       logo: profile.businessLogoUrl || '',
       city: profile.address?.city || '',
       categories,
+      categoryDetails,
       businessCategory,
       activeStoreTheme: profile.activeStoreTheme || 'DEFAULT',
       banners: activeBanners,

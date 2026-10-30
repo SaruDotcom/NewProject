@@ -657,8 +657,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ]);
 
           let mappedWs: Wholesaler | null = null;
+          let referralCategories: Category[] = [];
           if (refRes?.data?.wholesaler) {
             mappedWs = mapWholesaler(refRes.data.wholesaler);
+            referralCategories = Array.isArray(refRes.data.wholesaler.categoryDetails)
+              ? refRes.data.wholesaler.categoryDetails.map(mapCategory)
+              : [];
             setLinkedWholesaler(mappedWs);
           }
 
@@ -697,7 +701,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               name: String(name),
               description: `${name} category`,
             }));
-            setCategories(publicCategories);
+            setCategories(referralCategories.length ? referralCategories : publicCategories);
           } else {
             setProducts([]);
             setCategories([]);
@@ -902,8 +906,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const referralCode = getStoredReferralAttribution()?.code;
       if (!referralCode) return;
+      const normalizedCode = referralCode.trim().toUpperCase();
+      await queryClient.invalidateQueries({
+        queryKey: ["public", "referral", normalizedCode],
+      });
       const response = await api.getReferral(referralCode);
-      setLinkedWholesaler(mapWholesaler(response?.data?.wholesaler ?? null));
+      const referralWholesaler = response?.data?.wholesaler;
+      setLinkedWholesaler(mapWholesaler(referralWholesaler ?? null));
+      if (Array.isArray(referralWholesaler?.categoryDetails)) {
+        setCategories(referralWholesaler.categoryDetails.map(mapCategory));
+      }
     } catch (error) {
       console.warn("Could not refresh the connected wholesaler storefront theme", error);
     }

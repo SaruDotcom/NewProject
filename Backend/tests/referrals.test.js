@@ -62,13 +62,19 @@ describe('Wholesaler referral-only retailer registration', () => {
       logo: 'https://example.test/logo.png',
       city: 'Pune',
       categories: [],
+      categoryDetails: [],
+      businessCategory: 'CLOTHING',
       activeStoreTheme: 'DEFAULT',
+      banners: [],
     });
     expect(Object.keys(response.body.data.wholesaler).sort()).toEqual([
       '_id',
       'activeStoreTheme',
+      'banners',
+      'businessCategory',
       'businessName',
       'categories',
+      'categoryDetails',
       'city',
       'id',
       'logo',
@@ -118,6 +124,82 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(firstCatalog.body.data.map((product) => product.name)).toEqual(['First wholesaler product']);
     expect(secondCatalog.status).toBe(200);
     expect(secondCatalog.body.data.map((product) => product.name)).toEqual(['Second wholesaler product']);
+  });
+
+  test('public referral categories retain wholesaler-specific images and return replacements', async () => {
+    const secondWholesaler = await User.create({
+      name: 'Second Wholesaler',
+      email: 'second-image-wholesaler@example.test',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerProfile.create({
+      userId: secondWholesaler._id,
+      businessName: 'Second Image Business',
+      kycStatus: KYC_STATUS.APPROVED,
+      retailerReferralCode: 'ZX90YU',
+    });
+
+    const firstCategory = await Category.create({
+      name: 'First Image Category',
+      slug: 'first-image-category',
+      imageUrl: 'https://images.example.test/first-image.jpg',
+      wholesalerId: wholesaler._id,
+    });
+    const secondCategory = await Category.create({
+      name: 'Second Image Category',
+      slug: 'second-image-category',
+      imageUrl: 'https://images.example.test/second-image.jpg',
+      wholesalerId: secondWholesaler._id,
+    });
+    await Product.create([
+      {
+        wholesalerId: wholesaler._id,
+        name: 'First image product',
+        slug: 'first-image-product',
+        sku: 'FIRST-IMAGE-PRODUCT',
+        categoryId: firstCategory._id,
+        wholesalePrice: 100,
+      },
+      {
+        wholesalerId: secondWholesaler._id,
+        name: 'Second image product',
+        slug: 'second-image-product',
+        sku: 'SECOND-IMAGE-PRODUCT',
+        categoryId: secondCategory._id,
+        wholesalePrice: 200,
+      },
+    ]);
+
+    const firstReferral = await request(app).get(`/api/v1/referral/${referralCode}`);
+    const secondReferral = await request(app).get('/api/v1/referral/ZX90YU');
+
+    expect(firstReferral.status).toBe(200);
+    expect(firstReferral.body.data.wholesaler.categoryDetails).toEqual([
+      expect.objectContaining({
+        _id: String(firstCategory._id),
+        name: 'First Image Category',
+        imageUrl: 'https://images.example.test/first-image.jpg',
+      }),
+    ]);
+    expect(secondReferral.status).toBe(200);
+    expect(secondReferral.body.data.wholesaler.categoryDetails).toEqual([
+      expect.objectContaining({
+        _id: String(secondCategory._id),
+        name: 'Second Image Category',
+        imageUrl: 'https://images.example.test/second-image.jpg',
+      }),
+    ]);
+
+    firstCategory.imageUrl = 'https://images.example.test/replacement-image.jpg';
+    await firstCategory.save();
+    const updatedReferral = await request(app).get(`/api/v1/referral/${referralCode}`);
+    const refreshedSecondReferral = await request(app).get('/api/v1/referral/ZX90YU');
+    expect(updatedReferral.body.data.wholesaler.categoryDetails[0].imageUrl)
+      .toBe('https://images.example.test/replacement-image.jpg');
+    expect(refreshedSecondReferral.body.data.wholesaler.categoryDetails[0].imageUrl)
+      .toBe('https://images.example.test/second-image.jpg');
   });
 
   test('registration rejects a missing or invalid code without creating an account', async () => {

@@ -106,6 +106,7 @@ export type ApiWholesaler = {
   minOrderValue?: number;
   rating?: number;
   relationshipStatus?: string;
+  categoryDetails?: ApiCategory[];
 };
 
 export type ApiOrder = {
@@ -363,7 +364,7 @@ export const api = {
     return queryClient.fetchQuery({
       queryKey: ['public', 'referral', normalizedCode],
       queryFn: () =>
-        request<ApiEnvelope<{ wholesaler: { id?: string; businessName: string; logo: string; city: string; categories?: string[]; businessCategory?: string; activeStoreTheme?: ApiWholesaler["activeStoreTheme"]; banners?: ApiBannerSlide[] } }>>(
+        request<ApiEnvelope<{ wholesaler: ApiWholesaler & { businessName: string; logo: string; city: string; categories?: string[] } }>>(
           `/referral/${encodeURIComponent(normalizedCode)}`,
           { method: 'GET' },
         ),
