@@ -44,6 +44,7 @@ const corsOptions = {
     'Authorization',
     'X-Requested-With',
     'Accept',
+    'Cache-Control',
     'Idempotency-Key',
     'X-Wholesaler-Id',
   ],
