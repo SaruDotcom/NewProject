@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { RelationshipsManagementPage } from "@/components/relationships-management-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const RelationshipsManagementPage = createLazyRoute(() => import("@/components/relationships-management-page"), "RelationshipsManagementPage");
 export const Route = createFileRoute("/relationships")({
   head: () => ({
     meta: [
@@ -24,4 +25,3 @@ export const Route = createFileRoute("/relationships")({
     return _jsx(AdminShell, { children: pathname === "/relationships" ? _jsx(RelationshipsManagementPage, {}) : _jsx(Outlet, {}) });
   },
 });
-

@@ -32,5 +32,5 @@ export function ProductImage({ src, alt, className = '', placeholderClassName = 
     );
   }
 
-  return <img src={imageUrl} alt={alt} className={className} onError={() => setFailed(true)} />;
+  return <img src={imageUrl} alt={alt} className={className} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
 }

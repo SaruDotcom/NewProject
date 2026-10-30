@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { PaymentsManagementPage } from "@/components/payments-management-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const PaymentsManagementPage = createLazyRoute(() => import("@/components/payments-management-page"), "PaymentsManagementPage");
 export const Route = createFileRoute("/payments")({
   head: () => ({
     meta: [

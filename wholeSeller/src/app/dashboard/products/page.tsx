@@ -38,6 +38,11 @@ export default function ProductsPage() {
   const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [searchQuery, selectedCategory]);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -640,7 +645,7 @@ export default function ProductsPage() {
       {/* VIEW MODE 1: GRID VIEW */}
       {viewMode === 'GRID' && filteredProducts.length > 0 && (
         <div className="grid auto-rows-fr grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.map((product, pIdx) => {
+          {filteredProducts.slice(0, visibleCount).map((product, pIdx) => {
             const cost = product.costPrice ?? 0;
             const selling = product.sellingPrice ?? product.basePrice;
             const profitMargin = selling - cost;
@@ -756,7 +761,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-tradeflow-gray-200">
-                {filteredProducts.map((product, pIdx) => {
+                {filteredProducts.slice(0, visibleCount).map((product, pIdx) => {
                   const cost = product.costPrice ?? 0;
                   const selling = product.sellingPrice ?? product.basePrice;
 
@@ -808,6 +813,17 @@ export default function ProductsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+      {filteredProducts.length > visibleCount && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + 50)}
+            className="rounded-xl border border-tradeflow-gray-200 bg-white px-4 py-2 text-sm font-bold text-tradeflow-navy hover:bg-tradeflow-gray-50"
+          >
+            Load more products
+          </button>
         </div>
       )}
 

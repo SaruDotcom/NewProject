@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Product, Category, CategoryInput, Retailer, Order, OrderStatus, InventoryLog, SecuritySession, AuditLog, ReturnRequest,
@@ -20,6 +21,21 @@ const productImageUrls = (images: unknown, imageUrl?: unknown): string[] => {
   const imageList = Array.isArray(images) ? images : images ? [images] : [];
   return [...new Set([productImageUrl(imageUrl), ...imageList.map(productImageUrl)].filter(Boolean))];
 };
+
+function getWholesalerPageResources(pathname: string): Set<string> {
+  if (pathname === '/dashboard') {
+    return new Set(['categories', 'products', 'retailers', 'orders', 'returns']);
+  }
+  if (pathname === '/dashboard/products') return new Set(['categories', 'products']);
+  if (pathname === '/dashboard/categories') return new Set(['categories', 'products']);
+  if (pathname.startsWith('/dashboard/inventory')) return new Set(['products']);
+  if (pathname === '/dashboard/retailers') return new Set(['retailers']);
+  if (pathname === '/dashboard/orders') return new Set(['orders', 'returns']);
+  if (pathname === '/dashboard/analytics' || pathname === '/dashboard/reports') {
+    return new Set(['products', 'retailers', 'orders']);
+  }
+  return new Set();
+}
 
 const mapCategory = (category: any, wholesalerId: string): Category => ({
   id: String(category._id || category.id),
@@ -198,7 +214,10 @@ export const DEFAULT_PROFILE: WholesalerProfile = {
 
 export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [profile, setProfile] = useState<WholesalerProfile>(DEFAULT_PROFILE);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
   const [rawProducts, setRawProducts] = useState<Product[]>([]);
   const [rawCategories, setRawCategories] = useState<Category[]>([]);
   const [rawRetailers, setRawRetailers] = useState<Retailer[]>([]);
@@ -209,6 +228,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<WholesalerNotification[]>([]);
+  const refreshDataRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
   const invalidateResources = (...resources: string[]) => {
     const userId = profile.id || getWholesalerId();
@@ -256,13 +276,16 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     try {
       if (!silent) setIsLoading(true);
+      const resources = getWholesalerPageResources(location.pathname);
 
-      // 1. Get Me Profile
-      const meRes = await api.getMe();
-      const userId = String(meRes?.data?.id || meRes?.data?._id || profile.id || 'unknown');
-      if (userId !== 'unknown') localStorage.setItem('wholesaler_user_id', userId);
-      if (meRes?.data) {
-        const u = meRes.data;
+      // 1. Get the profile on first load; keep subsequent route visits on the cached session state.
+      let userId = profileRef.current.id || getWholesalerId();
+      if (!profileRef.current.id) {
+        const meRes = await api.getMe();
+        userId = String(meRes?.data?.id || meRes?.data?._id || userId || 'unknown');
+        if (userId !== 'unknown') localStorage.setItem('wholesaler_user_id', userId);
+        if (meRes?.data) {
+          const u = meRes.data;
         const wp = u.wholesalerProfile || {};
         setProfile((prev) => ({
           ...prev,
@@ -293,9 +316,11 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           kycStatus: wp.kycStatus || prev.kycStatus,
           twoFactorEnabled: Boolean(wp.twoFactorEnabled),
         }));
+        }
       }
 
       // 2. Get Categories
+      if (resources.has('categories')) {
       const catRes = await queryClient.fetchQuery({
         queryKey: wholesalerQueryKeys.resource(userId, 'categories'),
         queryFn: () => api.getCategories(),
@@ -313,8 +338,10 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           setRawCategories([]);
         }
       }
+      }
 
       // 3. Get Products
+      if (resources.has('products')) {
       const prodRes = await queryClient.fetchQuery({
         queryKey: wholesalerQueryKeys.resource(userId, 'products'),
         queryFn: () => api.getProducts(),
@@ -328,7 +355,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const moq = Number(p.minOrderQty ?? p.moq ?? 0);
           return {
             id: p._id || p.id,
-            wholesalerId: p.wholesalerId || profile.id,
+            wholesalerId: p.wholesalerId || userId,
             title: p.name || p.title || '',
             sku: p.sku || '',
             category: typeof p.categoryId === 'object' ? (p.categoryId?.name || '') : (typeof p.category === 'object' ? p.category?.name : (p.category || '')),
@@ -361,8 +388,10 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
         setRawProducts(apiProds);
       }
+      }
 
       // 4. Get Connected Retailers
+      if (resources.has('retailers')) {
       const retRes = await queryClient.fetchQuery({
         queryKey: wholesalerQueryKeys.resource(userId, 'retailers'),
         queryFn: () => api.getConnectedRetailers(),
@@ -371,7 +400,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const apiRets: Retailer[] = retRes.data.map((r: any) => ({
           id: r._id || r.id,
           retailerId: r.retailerId || '',
-          wholesalerId: profile.id,
+          wholesalerId: userId,
           businessName: r.businessName || '',
           contactPerson: r.contactPerson || r.name || '',
           email: r.email || '',
@@ -397,8 +426,10 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }));
         setRawRetailers(apiRets);
       }
+      }
 
       // 5. Get Orders
+      if (resources.has('orders')) {
       const orderRes = await queryClient.fetchQuery({
         queryKey: wholesalerQueryKeys.resource(userId, 'orders'),
         queryFn: () => api.getOrders(),
@@ -417,7 +448,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return {
             id: o._id || o.id,
             orderNumber: o.orderNo || o.orderNumber || '',
-            wholesalerId: profile.id,
+            wholesalerId: userId,
             retailerId: rId,
             retailerBusinessName: rBiz,
             retailerName: rName,
@@ -449,8 +480,10 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
         setRawOrders(apiOrders);
       }
+      }
 
       // 6. Get Returns
+      if (resources.has('returns')) {
       const returnsRes = await queryClient.fetchQuery({
         queryKey: wholesalerQueryKeys.resource(userId, 'returns'),
         queryFn: () => api.getReturns(),
@@ -470,6 +503,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         })));
       } else {
         setReturns([]);
+      }
       }
 
       try {
@@ -501,13 +535,20 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  refreshDataRef.current = refreshData;
+
   useEffect(() => {
     const isPublicAuthPage = typeof window !== 'undefined' && 
       (window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/register'));
     if (!isPublicAuthPage) {
-      refreshData();
+      const userId = getWholesalerId();
+      const resources = getWholesalerPageResources(location.pathname);
+      const needsInitialLoad = [...resources].some(
+        (resource) => !queryClient.getQueryData(wholesalerQueryKeys.resource(userId, resource)),
+      );
+      void refreshDataRef.current?.(!needsInitialLoad);
     }
-  }, []);
+  }, [location.pathname, queryClient]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -801,7 +842,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const updateOrderStatus = async (id: string, status: OrderStatus, tracking?: string) => {
     try {
       await api.updateOrderStatus(id, status);
-      invalidateResources('orders', 'analytics');
+      invalidateResources('orders', 'products', 'inventory', 'analytics');
       await refreshData(true);
     } catch (err: any) {
       console.warn('Update order status API note:', err.message);
@@ -813,7 +854,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const updateReturnStatus = async (returnId: string, status: 'APPROVED' | 'REJECTED') => {
     try {
       await api.updateReturnStatus(returnId, status);
-      invalidateResources('returns', 'orders');
+      invalidateResources('returns', 'orders', 'products', 'inventory', 'analytics');
       await refreshData(true);
       addAuditLog(`Updated return request ${returnId} to ${status}`);
     } catch (err: any) {

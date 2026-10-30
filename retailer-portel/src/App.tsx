@@ -1,39 +1,45 @@
-import { useSyncExternalStore } from "react";
+import { lazy, Suspense, useSyncExternalStore } from "react";
 import { MarketplaceShell } from "@/components/marketplace/shell";
-import { PortalPage } from "@/components/marketplace/portal-page";
-import { HomePage } from "@/components/marketplace/home";
-import {
-  CategoriesPage,
-  ProductDetailPage,
-  ProductsPage,
-  WholesalerCatalogPage,
-  WholesalerProfilePage,
-  WholesalersPage,
-} from "@/components/marketplace/storefront";
-import {
-  AddressesPage,
-  AuthPage,
-  CartPage,
-  CheckoutPage,
-  CouponsPage,
-  DashboardPage,
-  NotificationsPage,
-  OrderDetailsPage,
-  OrdersPage,
-  ProfilePage,
-  SettingsPage,
-  WishlistPage,
-} from "@/components/marketplace/workspace";
+const PortalPage = lazy(() => import("@/components/marketplace/portal-page").then(({ PortalPage }) => ({ default: PortalPage })));
+const HomePage = lazy(() => import("@/components/marketplace/home").then(({ HomePage }) => ({ default: HomePage })));
+const CategoriesPage = lazy(() => import("@/components/marketplace/storefront").then(({ CategoriesPage }) => ({ default: CategoriesPage })));
+const ProductDetailPage = lazy(() => import("@/components/marketplace/storefront").then(({ ProductDetailPage }) => ({ default: ProductDetailPage })));
+const ProductsPage = lazy(() => import("@/components/marketplace/storefront").then(({ ProductsPage }) => ({ default: ProductsPage })));
+const WholesalerCatalogPage = lazy(() => import("@/components/marketplace/storefront").then(({ WholesalerCatalogPage }) => ({ default: WholesalerCatalogPage })));
+const WholesalerProfilePage = lazy(() => import("@/components/marketplace/storefront").then(({ WholesalerProfilePage }) => ({ default: WholesalerProfilePage })));
+const WholesalersPage = lazy(() => import("@/components/marketplace/storefront").then(({ WholesalersPage }) => ({ default: WholesalersPage })));
+const AddressesPage = lazy(() => import("@/components/marketplace/workspace").then(({ AddressesPage }) => ({ default: AddressesPage })));
+const AuthPage = lazy(() => import("@/components/marketplace/workspace").then(({ AuthPage }) => ({ default: AuthPage })));
+const CartPage = lazy(() => import("@/components/marketplace/workspace").then(({ CartPage }) => ({ default: CartPage })));
+const CheckoutPage = lazy(() => import("@/components/marketplace/workspace").then(({ CheckoutPage }) => ({ default: CheckoutPage })));
+const CouponsPage = lazy(() => import("@/components/marketplace/workspace").then(({ CouponsPage }) => ({ default: CouponsPage })));
+const DashboardPage = lazy(() => import("@/components/marketplace/workspace").then(({ DashboardPage }) => ({ default: DashboardPage })));
+const NotificationsPage = lazy(() => import("@/components/marketplace/workspace").then(({ NotificationsPage }) => ({ default: NotificationsPage })));
+const OrderDetailsPage = lazy(() => import("@/components/marketplace/workspace").then(({ OrderDetailsPage }) => ({ default: OrderDetailsPage })));
+const OrdersPage = lazy(() => import("@/components/marketplace/workspace").then(({ OrdersPage }) => ({ default: OrdersPage })));
+const ProfilePage = lazy(() => import("@/components/marketplace/workspace").then(({ ProfilePage }) => ({ default: ProfilePage })));
+const SettingsPage = lazy(() => import("@/components/marketplace/workspace").then(({ SettingsPage }) => ({ default: SettingsPage })));
+const WishlistPage = lazy(() => import("@/components/marketplace/workspace").then(({ WishlistPage }) => ({ default: WishlistPage })));
 
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
-import { HelpSupportPage } from "@/components/marketplace/support";
-import { LandingPage } from "@/components/marketplace/landing";
+const HelpSupportPage = lazy(() => import("@/components/marketplace/support").then(({ HelpSupportPage }) => ({ default: HelpSupportPage })));
+const LandingPage = lazy(() => import("@/components/marketplace/landing").then(({ LandingPage }) => ({ default: LandingPage })));
 import {
   getReferralAttributionFromUrl,
   saveReferralAttribution,
   getStoredReferralAttribution,
 } from "@/lib/referral-attribution";
+
+function PageLoadingFallback() {
+  return (
+    <div className="shell min-h-[50vh] animate-pulse py-8" role="status" aria-label="Loading page" aria-busy="true">
+      <div className="h-8 w-56 rounded-lg bg-muted" />
+      <div className="mt-6 h-48 rounded-2xl bg-muted/70" />
+      <div className="mt-4 h-64 rounded-2xl bg-muted/70" />
+    </div>
+  );
+}
 
 function isBusinessSetupComplete(profile: ReturnType<typeof useStore>["retailerProfile"]) {
   if (profile.profileComplete) return true;
@@ -175,7 +181,9 @@ function RouterView() {
 export default function App() {
   return (
     <MarketplaceShell>
-      <RouterView />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <RouterView />
+      </Suspense>
     </MarketplaceShell>
   );
 }

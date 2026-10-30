@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { ProductsManagementPage } from "@/components/products-management-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const ProductsManagementPage = createLazyRoute(() => import("@/components/products-management-page"), "ProductsManagementPage");
 export const Route = createFileRoute("/products")({
   head: () => ({
     meta: [

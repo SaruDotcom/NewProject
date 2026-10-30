@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
-import { RelationshipDetailPage } from "@/components/relationship-detail-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const RelationshipDetailPage = createLazyRoute(() => import("@/components/relationship-detail-page"), "RelationshipDetailPage");
 
 export const Route = createFileRoute("/relationships/$id")({
   head: () => ({

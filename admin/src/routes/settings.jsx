@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { SettingsPage } from "@/components/system-pages";
+import { createLazyRoute } from "@/lib/lazy-route";
+const SettingsPage = createLazyRoute(() => import("@/components/system-pages"), "SettingsPage");
 
 export const Route = createFileRoute("/settings")({
   head: () => ({

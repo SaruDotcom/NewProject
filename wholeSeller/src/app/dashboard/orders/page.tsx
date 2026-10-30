@@ -28,6 +28,11 @@ export default function OrdersPage() {
   const [activeStatusTab, setActiveStatusTab] = useState<string>('ALL');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  React.useEffect(() => {
+    setVisibleCount(50);
+  }, [activeStatusTab, dateFilter, searchQuery]);
 
   // Order Details Modal State
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -197,7 +202,7 @@ export default function OrdersPage() {
               </thead>
               <tbody className="divide-y divide-tradeflow-gray-200">
                 {/*@ts-ignore*/}
-                {returns.map((ret: any) => (
+                {returns.slice(0, visibleCount).map((ret: any) => (
                   <tr key={ret.id} className="hover:bg-tradeflow-gray-50 transition-colors group">
                     <td className="py-4 font-bold font-mono text-tradeflow-navy">{ret.returnNumber}</td>
                     <td className="py-4 font-mono text-gray-600">{ret.orderId?.orderNumber || ret.orderId}</td>
@@ -238,7 +243,7 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-tradeflow-gray-200">
-                {filteredOrders.map((order) => {
+                {filteredOrders.slice(0, visibleCount).map((order) => {
                   const totalUnitsCount = order.items.reduce((acc, i) => acc + i.quantity, 0);
                   const productsSummary = order.items.map(i => i.productTitle).join(', ');
   
@@ -278,6 +283,17 @@ export default function OrdersPage() {
           )}
         </div>
       </div>
+      {(activeStatusTab === 'RETURNS' ? returns.length : filteredOrders.length) > visibleCount && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + 50)}
+            className="rounded-xl border border-tradeflow-gray-200 bg-white px-4 py-2 text-sm font-bold text-tradeflow-navy hover:bg-tradeflow-gray-50"
+          >
+            Load more {activeStatusTab === 'RETURNS' ? 'returns' : 'orders'}
+          </button>
+        </div>
+      )}
 
       {/* ORDER DETAILS & STATUS UPDATE MODAL */}
       {selectedOrder && (

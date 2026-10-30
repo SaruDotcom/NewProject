@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { WholesalerInvitesPage } from "@/components/wholesaler-invites-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const WholesalerInvitesPage = createLazyRoute(() => import("@/components/wholesaler-invites-page"), "WholesalerInvitesPage");
 
 export const Route = createFileRoute("/wholesaler-invites")({
   head: () => ({

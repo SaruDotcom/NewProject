@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
-import { RetailerDetailPage } from "@/components/retailer-detail-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const RetailerDetailPage = createLazyRoute(() => import("@/components/retailer-detail-page"), "RetailerDetailPage");
 
 export const Route = createFileRoute("/retailers/$id")({
   head: () => ({
@@ -22,4 +23,3 @@ export const Route = createFileRoute("/retailers/$id")({
   }),
   component: () => _jsx(RetailerDetailPage, {}),
 });
-

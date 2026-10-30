@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, MoreHorizontal, PackageSearch, Plus, RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -28,6 +28,8 @@ function ProductThumbnail({ product }) {
           <img
             src={image}
             alt={product.name || "Product"}
+            loading="lazy"
+            decoding="async"
             onError={() => setImageFailed(true)}
             className="size-full object-cover"
           />
@@ -47,6 +49,7 @@ export function ProductsManagementPage() {
     const listPath = `/admin/products?${params.toString()}`;
     const productsQuery = useQuery({
       queryKey: adminQueryKeys.collection("products", listPath),
+      placeholderData: keepPreviousData,
       queryFn: async () => {
         const payload = await apiGet(listPath);
         const items = Array.isArray(payload) ? payload : (payload?.items || payload?.data || []);

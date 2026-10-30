@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useNavigate, Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
@@ -87,7 +87,9 @@ export default function DashboardLayout({
           <Header />
           <main className="ml-64 min-h-screen px-8 pb-8 pt-24 bg-[#FAF9F6]">
             <div className="mx-auto max-w-[1440px] space-y-6">
-              {children || <Outlet />}
+              <Suspense fallback={<div className="animate-pulse space-y-5" role="status" aria-label="Loading page"><div className="h-8 w-56 rounded-lg bg-stone-200" /><div className="h-40 rounded-2xl bg-stone-100" /><div className="h-64 rounded-2xl bg-stone-100" /></div>}>
+                {children || <Outlet />}
+              </Suspense>
             </div>
           </main>
 

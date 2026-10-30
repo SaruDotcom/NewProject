@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { NotificationsManagementPage } from "@/components/notifications-management-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const NotificationsManagementPage = createLazyRoute(() => import("@/components/notifications-management-page"), "NotificationsManagementPage");
 export const Route = createFileRoute("/notifications")({
   head: () => ({
     meta: [

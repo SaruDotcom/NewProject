@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { KycDetailPage } from "@/components/kyc-detail-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const KycDetailPage = createLazyRoute(() => import("@/components/kyc-detail-page"), "KycDetailPage");
 
 export const Route = createFileRoute("/kyc/$id")({
   head: () => ({

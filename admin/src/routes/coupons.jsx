@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { CouponsManagementPage } from "@/components/coupons-management-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const CouponsManagementPage = createLazyRoute(() => import("@/components/coupons-management-page"), "CouponsManagementPage");
 export const Route = createFileRoute("/coupons")({
   head: () => ({
     meta: [

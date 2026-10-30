@@ -51,6 +51,8 @@ export function DashboardPage() {
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
     queryFn: async () => (await api.getCreditInfo())?.data ?? null,
     enabled: Boolean(currentUser?.id),
+    staleTime: 0,
+    gcTime: 0,
     refetchInterval: 15000,
   });
   const creditInfo = creditQuery.data;

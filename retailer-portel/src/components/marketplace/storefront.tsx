@@ -161,7 +161,12 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
 
   const [sort, setSort] = useState("popular");
   const [list, setList] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(40);
   const { relationships, connectedWholesalers, products, categories } = useStore();
+
+  useEffect(() => {
+    setVisibleCount(40);
+  }, [search, selectedCategories, availability, minPrice, maxPrice, minRating, sort]);
 
   useEffect(() => {
     if (initialCategory && initialCategory !== "All") {
@@ -408,7 +413,7 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
         <div className="min-w-0 flex-1">
           {shown.length ? (
             <ProductGrid
-              products={shown}
+              products={shown.slice(0, visibleCount)}
               list={list}
               className="grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5"
             />
@@ -421,6 +426,13 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
               </p>
               <Button className="mt-5 rounded-xl font-bold" onClick={handleResetAll}>
                 Reset filters
+              </Button>
+            </div>
+          )}
+          {shown.length > visibleCount && (
+            <div className="mt-6 flex justify-center">
+              <Button variant="outline" onClick={() => setVisibleCount((count) => count + 40)}>
+                Load more products
               </Button>
             </div>
           )}

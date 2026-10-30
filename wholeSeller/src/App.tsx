@@ -1,30 +1,42 @@
 import React, { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import LoginPage from './app/login/page';
-import RegisterPage from './app/register/page';
-import DashboardLayout from './app/dashboard/layout';
-import DashboardPage from './app/dashboard/page';
-import ProductsPage from './app/dashboard/products/page';
-import CategoriesPage from './app/dashboard/categories/page';
-import InventoryPage from './app/dashboard/inventory/page';
-import ProductDetailPage from './app/dashboard/inventory/ProductDetailPage';
-import RetailersPage from './app/dashboard/retailers/page';
-import OrdersPage from './app/dashboard/orders/page';
-import AnalyticsPage from './app/dashboard/analytics/page';
-import ReportsPage from './app/dashboard/reports/page';
-import SubscriptionPage from './app/dashboard/subscription/page';
-import SecurityPage from './app/dashboard/security/page';
-import WalletPage from './app/dashboard/wallet/page';
-import WholesalerProfilePage from './app/dashboard/profile/page';
-import BannerSlidesPage from './app/dashboard/banner-slides/page';
-import CreditPolicyPage from './app/dashboard/credit-policy/page';
-import CouponsPage from './app/dashboard/coupons/page';
-import SupportPage from './app/dashboard/support/page';
-import PaymentSettingsPage from './app/dashboard/payment-settings/page';
-import KhataBookPage from './app/dashboard/khata-book/page';
-import StoreThemePage from './app/dashboard/store-theme/page';
+const LoginPage = lazy(() => import('./app/login/page'));
+const RegisterPage = lazy(() => import('./app/register/page'));
+const DashboardLayout = lazy(() => import('./app/dashboard/layout'));
+const DashboardPage = lazy(() => import('./app/dashboard/page'));
+const ProductsPage = lazy(() => import('./app/dashboard/products/page'));
+const CategoriesPage = lazy(() => import('./app/dashboard/categories/page'));
+const InventoryPage = lazy(() => import('./app/dashboard/inventory/page'));
+const ProductDetailPage = lazy(() => import('./app/dashboard/inventory/ProductDetailPage'));
+const RetailersPage = lazy(() => import('./app/dashboard/retailers/page'));
+const OrdersPage = lazy(() => import('./app/dashboard/orders/page'));
+const AnalyticsPage = lazy(() => import('./app/dashboard/analytics/page'));
+const ReportsPage = lazy(() => import('./app/dashboard/reports/page'));
+const SubscriptionPage = lazy(() => import('./app/dashboard/subscription/page'));
+const SecurityPage = lazy(() => import('./app/dashboard/security/page'));
+const WalletPage = lazy(() => import('./app/dashboard/wallet/page'));
+const WholesalerProfilePage = lazy(() => import('./app/dashboard/profile/page'));
+const BannerSlidesPage = lazy(() => import('./app/dashboard/banner-slides/page'));
+const CreditPolicyPage = lazy(() => import('./app/dashboard/credit-policy/page'));
+const CouponsPage = lazy(() => import('./app/dashboard/coupons/page'));
+const SupportPage = lazy(() => import('./app/dashboard/support/page'));
+const PaymentSettingsPage = lazy(() => import('./app/dashboard/payment-settings/page'));
+const KhataBookPage = lazy(() => import('./app/dashboard/khata-book/page'));
+const StoreThemePage = lazy(() => import('./app/dashboard/store-theme/page'));
 
 const LandingPage = lazy(() => import('./app/landing/page'));
+
+function PageLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] p-6" role="status" aria-label="Loading page" aria-busy="true">
+      <div className="mx-auto max-w-[1440px] animate-pulse space-y-5">
+        <div className="h-8 w-56 rounded-lg bg-stone-200" />
+        <div className="h-40 rounded-2xl bg-stone-100" />
+        <div className="h-72 rounded-2xl bg-stone-100" />
+      </div>
+    </div>
+  );
+}
 
 function LandingRoute() {
   const location = useLocation();
@@ -73,37 +85,39 @@ function LandingRoute() {
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingRoute />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      
-      <Route path="/dashboard" element={<DashboardLayout />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="products" element={<ProductsPage />} />
-        <Route path="categories" element={<CategoriesPage />} />
-        <Route path="inventory" element={<InventoryPage />} />
-        <Route path="inventory/:productId" element={<ProductDetailPage />} />
-        <Route path="retailers" element={<RetailersPage />} />
-        <Route path="banner-slides" element={<BannerSlidesPage />} />
-        <Route path="orders" element={<OrdersPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="credit-policy" element={<CreditPolicyPage />} />
-        <Route path="payment-settings" element={<PaymentSettingsPage />} />
-        <Route path="store-theme" element={<StoreThemePage />} />
-        <Route path="khata-book" element={<KhataBookPage />} />
-        <Route path="coupons" element={<CouponsPage />} />
-        <Route path="wallet" element={<WalletPage />} />
-        <Route path="profile" element={<WholesalerProfilePage />} />
-        <Route path="kyc" element={<Navigate to="/dashboard/profile?tab=kyc" replace />} />
-        <Route path="subscription" element={<SubscriptionPage />} />
-        <Route path="security" element={<SecurityPage />} />
-        <Route path="support" element={<SupportPage />} />
-      </Route>
+    <Suspense fallback={<PageLoadingFallback />}>
+      <Routes>
+        <Route path="/" element={<LandingRoute />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+        <Route path="/dashboard" element={<DashboardLayout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="products" element={<ProductsPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
+          <Route path="inventory" element={<InventoryPage />} />
+          <Route path="inventory/:productId" element={<ProductDetailPage />} />
+          <Route path="retailers" element={<RetailersPage />} />
+          <Route path="banner-slides" element={<BannerSlidesPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="credit-policy" element={<CreditPolicyPage />} />
+          <Route path="payment-settings" element={<PaymentSettingsPage />} />
+          <Route path="store-theme" element={<StoreThemePage />} />
+          <Route path="khata-book" element={<KhataBookPage />} />
+          <Route path="coupons" element={<CouponsPage />} />
+          <Route path="wallet" element={<WalletPage />} />
+          <Route path="profile" element={<WholesalerProfilePage />} />
+          <Route path="kyc" element={<Navigate to="/dashboard/profile?tab=kyc" replace />} />
+          <Route path="subscription" element={<SubscriptionPage />} />
+          <Route path="security" element={<SecurityPage />} />
+          <Route path="support" element={<SupportPage />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

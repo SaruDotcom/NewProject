@@ -605,6 +605,8 @@ export function resolveWholesalerId(input?: string | null): string {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  const currentUserRef = useRef<UserSession | null>(null);
+  currentUserRef.current = currentUser;
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<RetailerProfile>(emptyProfile);
   const [products, setProducts] = useState<Product[]>([]);
@@ -718,13 +720,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       if (!silent) setIsLoading(true);
 
-      const me = await api.getMe();
-      const user = (me?.data as Record<string, any>) || {};
-      const email = String(user["email"] || "");
-      const userId = String(user["_id"] || user["id"] || email || "retailer");
-      localStorage.setItem("nexora_retailer_user_id", userId);
-      setCurrentUser({ id: userId, email });
-      setProfile(normalizeProfile(user));
+      let userId = localStorage.getItem("nexora_retailer_user_id") || "";
+      if (!currentUserRef.current || !userId) {
+        const me = await api.getMe();
+        const user = (me?.data as Record<string, any>) || {};
+        const email = String(user["email"] || "");
+        userId = String(user["_id"] || user["id"] || email || "retailer");
+        localStorage.setItem("nexora_retailer_user_id", userId);
+        const session = { id: userId, email };
+        currentUserRef.current = session;
+        setCurrentUser(session);
+        setProfile(normalizeProfile(user));
+      }
 
       // Sync any guest cart items added before logging in
       const guestCart = readLocalCart();
@@ -744,20 +751,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...(staleTime !== undefined && { staleTime }),
         });
 
+      const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
+      const loadDashboard = pathname === "/dashboard";
+      const loadCatalog =
+        pathname === "/" ||
+        pathname === "/products" ||
+        pathname === "/categories" ||
+        pathname.startsWith("/products/") ||
+        pathname.startsWith("/wholesalers");
+      const loadProducts =
+        loadDashboard ||
+        loadCatalog ||
+        pathname === "/cart" ||
+        pathname === "/checkout" ||
+        pathname === "/wishlist";
+      const loadCategories = loadDashboard || loadCatalog;
+      const loadCart = true;
+      const loadWishlist = loadDashboard || loadCatalog || pathname === "/wishlist";
+      const loadOrders =
+        loadDashboard || pathname === "/orders" || pathname.startsWith("/orders/");
+      const loadNotifications = true;
+      const loadReturns = loadDashboard || pathname === "/orders";
       const [dashboardRes, wholesalerRes, productsRes, categoriesRes, cartRes, wishlistRes, ordersRes, notificationsRes, returnsRes] = await Promise.all([
-        fetchUserData("dashboard", () => api.getDashboard()).catch(() => null),
-        fetchUserData("wholesaler", () => api.getConnectedWholesaler(), 0).catch(() => null),
-        fetchUserData("products", () => api.getProducts({ limit: 200 })).catch(() => ({ data: [] })),
-        fetchUserData("categories", () => api.getCategories({ limit: 200 })).catch(() => ({ data: [] })),
-        fetchUserData("cart", () => api.getCart()).catch(() => ({ data: { items: [] } })),
-        fetchUserData("wishlist", () => api.getWishlist()).catch(() => ({ data: [] })),
-        fetchUserData("orders", () => api.getOrders({ limit: 200 })).catch(() => ({ data: [] })),
-        fetchUserData("notifications", () => api.getNotifications()).catch(() => ({ data: [] })),
-        fetchUserData("returns", () => api.getReturns()).catch(() => ({ data: [] })),
+        loadDashboard ? fetchUserData("dashboard", () => api.getDashboard()).catch(() => null) : Promise.resolve(null),
+        fetchUserData("wholesaler", () => api.getConnectedWholesaler(), 60_000).catch(() => null),
+        loadProducts ? fetchUserData("products", () => api.getProducts({ limit: 200 })).catch(() => ({ data: [] })) : Promise.resolve(null),
+        loadCategories ? fetchUserData("categories", () => api.getCategories({ limit: 200 })).catch(() => ({ data: [] })) : Promise.resolve(null),
+        loadCart ? fetchUserData("cart", () => api.getCart()).catch(() => ({ data: { items: [] } })) : Promise.resolve(null),
+        loadWishlist ? fetchUserData("wishlist", () => api.getWishlist()).catch(() => ({ data: [] })) : Promise.resolve(null),
+        loadOrders ? fetchUserData("orders", () => api.getOrders({ limit: 200 })).catch(() => ({ data: [] })) : Promise.resolve(null),
+        loadNotifications ? fetchUserData("notifications", () => api.getNotifications()).catch(() => ({ data: [] })) : Promise.resolve(null),
+        loadReturns ? fetchUserData("returns", () => api.getReturns()).catch(() => ({ data: [] })) : Promise.resolve(null),
       ]);
 
       const connectedWholesalerData = mapWholesaler((wholesalerRes as { data?: ApiWholesaler } | null)?.data ?? null);
-      setDashboard((dashboardRes as { data?: Record<string, unknown> } | null)?.data ?? null);
+      if (loadDashboard) {
+        setDashboard((dashboardRes as { data?: Record<string, unknown> } | null)?.data ?? null);
+      }
       setLinkedWholesaler(connectedWholesalerData);
       if (connectedWholesalerData) {
         setRelationships({ [connectedWholesalerData.id]: "Connected" });
@@ -768,7 +798,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const nextCategories = Array.isArray((categoriesRes as { data?: ApiCategory[] })?.data)
         ? ((categoriesRes as { data?: ApiCategory[] }).data || []).map(mapCategory)
         : [];
-      setCategories(nextCategories);
+      if (loadCategories) setCategories(nextCategories);
 
       const categoryMap = new Map<string, string>();
       nextCategories.forEach((c) => {
@@ -787,26 +817,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
           })
         : [];
-      setProducts(nextProducts);
+      if (loadProducts) setProducts(nextProducts);
 
-      const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } } | null)?.data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
-      const mappedCart = cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0), color: item.color }));
-      setCart(mappedCart);
-      cartRef.current = mappedCart;
-      saveLocalCart(mappedCart);
+      if (loadCart) {
+        const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } } | null)?.data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
+        const mappedCart = cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0), color: item.color }));
+        setCart(mappedCart);
+        cartRef.current = mappedCart;
+        saveLocalCart(mappedCart);
+      }
 
-      const wishlistItems = ((wishlistRes as { data?: Array<{ _id?: string; productId?: string }> } | null)?.data || []) as Array<{ _id?: string; productId?: string }>;
-      setWishlist(wishlistItems.map((item) => String(item.productId || item._id || "")));
+      if (loadWishlist) {
+        const wishlistItems = ((wishlistRes as { data?: Array<{ _id?: string; productId?: string }> } | null)?.data || []) as Array<{ _id?: string; productId?: string }>;
+        setWishlist(wishlistItems.map((item) => String(item.productId || item._id || "")));
+      }
 
-      setOrders(getApiOrderItems(ordersRes as { data?: ApiOrder[] | ApiOrderListData } | null).map(mapOrder));
+      if (loadOrders) {
+        setOrders(getApiOrderItems(ordersRes as { data?: ApiOrder[] | ApiOrderListData } | null).map(mapOrder));
+      }
 
-      const nextNotifications = Array.isArray((notificationsRes as { data?: ApiNotification[] })?.data)
-        ? ((notificationsRes as { data?: ApiNotification[] }).data || []).map(mapNotification)
-        : [];
-      setNotifications(nextNotifications);
+      if (loadNotifications) {
+        const nextNotifications = Array.isArray((notificationsRes as { data?: ApiNotification[] })?.data)
+          ? ((notificationsRes as { data?: ApiNotification[] }).data || []).map(mapNotification)
+          : [];
+        setNotifications(nextNotifications);
+      }
 
-      const nextReturns = Array.isArray((returnsRes as any)?.data) ? (returnsRes as any).data : [];
-      setReturns(nextReturns);
+      if (loadReturns) {
+        const nextReturns = Array.isArray((returnsRes as any)?.data) ? (returnsRes as any).data : [];
+        setReturns(nextReturns);
+      }
     } catch (error) {
       console.warn("Unable to sync retailer session", error);
       clearAuthToken();
@@ -831,7 +871,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       }
       const ordersRes = await api.getOrders({ limit: 200 }).catch(() => null);
-      if (ordersRes) setOrders(getApiOrderItems(ordersRes).map(mapOrder));
+      if (ordersRes) {
+        if (userId) {
+          queryClient.setQueryData(retailerQueryKeys.resource(userId, "orders"), ordersRes);
+        }
+        setOrders(getApiOrderItems(ordersRes).map(mapOrder));
+      }
     } catch {
       // Silent catch for background polling
     }
@@ -842,6 +887,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const token = getAuthToken();
       if (token) {
         const response = await api.getConnectedWholesaler();
+        const userId =
+          currentUser?.id ||
+          localStorage.getItem("nexora_retailer_user_id");
+        if (userId) {
+          queryClient.setQueryData(
+            retailerQueryKeys.resource(userId, "wholesaler"),
+            response,
+          );
+        }
         setLinkedWholesaler(mapWholesaler(response?.data ?? null));
         return;
       }
@@ -853,7 +907,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.warn("Could not refresh the connected wholesaler storefront theme", error);
     }
-  }, []);
+  }, [currentUser?.id, queryClient]);
 
   const refreshCatalog = useCallback(async () => {
     const token = getAuthToken();
@@ -907,25 +961,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void syncSession();
 
-    // Auto-poll orders every 30 seconds for real-time order status updates (Pending -> Confirmed, etc.)
     const interval = setInterval(() => {
-      void refreshOrders();
+      const path = window.location.pathname;
+      if (path === "/dashboard" || path === "/orders" || path.startsWith("/orders/")) {
+        void refreshOrders();
+      }
     }, 30000);
     const themeInterval = setInterval(() => {
       void refreshLinkedWholesaler();
     }, 60000);
     const catalogInterval = setInterval(() => {
-      void refreshCatalog();
+      const path = window.location.pathname;
+      if (
+        path === "/" ||
+        path === "/products" ||
+        path === "/categories" ||
+        path.startsWith("/products/") ||
+        path.startsWith("/wholesalers")
+      ) {
+        void refreshCatalog();
+      }
     }, 30000);
 
     const handleFocus = () => {
       if (document.visibilityState === "hidden") return;
-      void refreshOrders();
       void refreshLinkedWholesaler();
-      void refreshCatalog();
+      const path = window.location.pathname;
+      if (path === "/dashboard" || path === "/orders" || path.startsWith("/orders/")) {
+        void refreshOrders();
+      }
+      if (
+        path === "/" ||
+        path === "/products" ||
+        path === "/categories" ||
+        path.startsWith("/products/") ||
+        path.startsWith("/wholesalers")
+      ) {
+        void refreshCatalog();
+      }
+    };
+    const handleNavigation = () => {
+      if (getAuthToken()) void syncSession(true);
     };
 
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("popstate", handleNavigation);
     document.addEventListener("visibilitychange", handleFocus);
 
     return () => {
@@ -933,6 +1013,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       clearInterval(themeInterval);
       clearInterval(catalogInterval);
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("popstate", handleNavigation);
       document.removeEventListener("visibilitychange", handleFocus);
     };
   }, [syncSession, refreshOrders, refreshLinkedWholesaler, refreshCatalog]);
@@ -1187,7 +1268,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCart([]);
       cartRef.current = [];
       saveLocalCart([]);
-      invalidateUserData("cart", "orders", "dashboard");
+      invalidateUserData("cart", "orders", "products", "dashboard");
       await syncSession(true);
       toast.success("Wholesale order placed successfully!");
       return true;

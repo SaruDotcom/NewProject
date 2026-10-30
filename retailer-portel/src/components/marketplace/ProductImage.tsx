@@ -67,6 +67,7 @@ export function ProductImage({
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       loading="lazy"
+      decoding="async"
     />
   );
 }

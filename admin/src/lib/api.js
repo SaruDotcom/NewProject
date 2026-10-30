@@ -128,12 +128,14 @@ export const api = {
 
 export async function apiGet(path) {
   const resource = requestResource(path);
+  const sensitive = /\/(?:payments|payment-reports|auth)(?:\/|$)/i.test(path.split("?")[0]);
   return queryClient.fetchQuery({
     queryKey: adminQueryKeys.request(resource, path),
     queryFn: async () => {
       const payload = await api.get(path);
       return payload.data ?? payload;
     },
+    ...(sensitive ? { staleTime: 0, gcTime: 0 } : {}),
   });
 }
 

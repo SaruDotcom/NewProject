@@ -1,7 +1,8 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
-import { KycManagementPage } from "@/components/kyc-management-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const KycManagementPage = createLazyRoute(() => import("@/components/kyc-management-page"), "KycManagementPage");
 
 export const Route = createFileRoute("/kyc")({
   head: () => ({

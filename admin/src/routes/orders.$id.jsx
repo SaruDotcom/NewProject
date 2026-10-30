@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createFileRoute } from "@tanstack/react-router";
-import { OrderDetailPage } from "@/components/order-detail-page";
+import { createLazyRoute } from "@/lib/lazy-route";
+const OrderDetailPage = createLazyRoute(() => import("@/components/order-detail-page"), "OrderDetailPage");
 export const Route = createFileRoute("/orders/$id")({
   head: () => ({
     meta: [
