@@ -2797,6 +2797,10 @@ export function AuthPage({
           );
           return;
         }
+        if (!/^[A-Z0-9_-]{4,32}$/.test(loginId.trim().toUpperCase())) {
+          toast.error("Choose a login ID with 4-32 letters, numbers, underscores, or hyphens.");
+          return;
+        }
         if (!/^[6-9]\d{9}$/.test(phone.trim())) {
           toast.error("Enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.");
           setIsSubmitting(false);
@@ -3208,7 +3212,7 @@ export function AuthPage({
                       />
                     </label>
 
-                    {/* Retailer Login ID
+                    {/* Retailer Login ID */}
                     <label className="block text-xs font-bold text-[#12304A]">
                       Retailer Login ID (Username) <span className="text-red-500">*</span>
                       <Input
@@ -3226,7 +3230,7 @@ export function AuthPage({
                       <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
                         Letters, numbers, and dashes only (no @ or dots). This is your login username.
                       </span>
-                    </label> */}
+                    </label>
 
                     {/* Business / Store Name */}
                     <label className="block text-xs font-bold text-[#12304A]">
