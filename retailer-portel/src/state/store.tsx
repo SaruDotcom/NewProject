@@ -636,6 +636,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartLine[]>(() => readLocalCart());
   const cartRef = useRef<CartLine[]>([]);
   cartRef.current = cart;
+  const guestCartSyncRef = useRef<Promise<{ guestCart: CartLine[]; unsyncedGuestCart: CartLine[] }> | null>(null);
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   const uniqueCartCount = cart.length;
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -762,15 +763,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
 
       // Sync any guest cart items added before logging in
-      const guestCart = readLocalCart();
-      if (guestCart.length > 0) {
-        for (const line of guestCart) {
-          await api.addToCart(line.productId, line.quantity, line.color).catch(() => undefined);
-        }
-        try {
-          localStorage.removeItem(GUEST_CART_KEY);
-        } catch {}
+      let guestCartSync = guestCartSyncRef.current;
+      if (!guestCartSync) {
+        guestCartSync = (async () => {
+          const guestCart = readLocalCart();
+          const unsyncedGuestCart: CartLine[] = [];
+          for (const line of guestCart) {
+            try {
+              await api.addToCart(line.productId, line.quantity, line.color);
+            } catch (error) {
+              unsyncedGuestCart.push(line);
+              console.warn("Could not sync a guest cart item; preserving it for checkout.", error);
+            }
+          }
+          if (guestCart.length > 0) saveLocalCart(unsyncedGuestCart);
+          return { guestCart, unsyncedGuestCart };
+        })();
+        guestCartSyncRef.current = guestCartSync;
       }
+      const { guestCart, unsyncedGuestCart } = await guestCartSync;
+      if (guestCartSyncRef.current === guestCartSync) guestCartSyncRef.current = null;
 
       const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>, staleTime?: number) =>
         queryClient.fetchQuery({
@@ -805,7 +817,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fetchUserData("wholesaler", () => api.getConnectedWholesaler(), 60_000).catch(() => null),
         loadProducts ? fetchUserData("products", () => api.getProducts({ limit: 200 })).catch(() => ({ data: [] })) : Promise.resolve(null),
         loadCategories ? fetchUserData("categories", () => api.getCategories({ limit: 200 })).catch(() => ({ data: [] })) : Promise.resolve(null),
-        loadCart ? fetchUserData("cart", () => api.getCart()).catch(() => ({ data: { items: [] } })) : Promise.resolve(null),
+        loadCart ? fetchUserData("cart", () => api.getCart()).catch((error) => {
+          console.warn("Could not load the retailer cart; preserving the local cart.", error);
+          return null;
+        }) : Promise.resolve(null),
         loadWishlist ? fetchUserData("wishlist", () => api.getWishlist()).catch(() => ({ data: [] })) : Promise.resolve(null),
         loadOrders ? fetchUserData("orders", () => api.getOrders({ limit: 200 })).catch(() => ({ data: [] })) : Promise.resolve(null),
         loadNotifications ? fetchUserData("notifications", () => api.getNotifications()).catch(() => ({ data: [] })) : Promise.resolve(null),
@@ -848,11 +863,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (loadProducts) setProducts(nextProducts);
 
       if (loadCart) {
-        const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } } | null)?.data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
-        const mappedCart = cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0), color: item.color }));
-        setCart(mappedCart);
-        cartRef.current = mappedCart;
-        saveLocalCart(mappedCart);
+        if (cartRes) {
+          const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } }).data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
+          const mappedCart = cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0), color: item.color }));
+          for (const line of unsyncedGuestCart) {
+            const existing = mappedCart.find(
+              (item) => item.productId === line.productId && String(item.color || "") === String(line.color || ""),
+            );
+            if (existing) existing.quantity += line.quantity;
+            else mappedCart.push(line);
+          }
+          setCart(mappedCart);
+          cartRef.current = mappedCart;
+          saveLocalCart(unsyncedGuestCart);
+        } else {
+          const preservedCart = cartRef.current.length ? [...cartRef.current] : [];
+          for (const line of guestCart) {
+            const existing = preservedCart.find(
+              (item) => item.productId === line.productId && String(item.color || "") === String(line.color || ""),
+            );
+            if (!existing) preservedCart.push(line);
+            else existing.quantity = Math.max(existing.quantity, line.quantity);
+          }
+          setCart(preservedCart);
+          cartRef.current = preservedCart;
+        }
       }
 
       if (loadWishlist) {

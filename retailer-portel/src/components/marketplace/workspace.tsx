@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { type RetailerProfile } from "@/state/store";
 import { useStore, getApiOrderItems, getCategoryHierarchy, mapOrder } from "@/state/store";
-import { ApiError, api, setAuthToken } from "@/api/api";
+import { ApiError, api } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { retailerQueryKeys } from "@/lib/query-client";
 import {
@@ -39,6 +39,30 @@ import {
   type ReferralAttribution,
 } from "@/lib/referral-attribution";
 import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, money } from "./primitives";
+
+const AUTH_REDIRECT_KEY = "nexora_auth_redirect";
+const AUTH_IDENTIFIER_KEY = "nexora_auth_identifier";
+
+function getSafeAuthRedirect(value: string | null | undefined): string {
+  if (typeof window === "undefined" || !value || !value.startsWith("/")) return "/dashboard";
+  try {
+    const destination = new URL(value, window.location.origin);
+    if (
+      destination.origin !== window.location.origin ||
+      value.startsWith("//") ||
+      ["/login", "/register", "/forgot-password"].includes(destination.pathname)
+    ) return "/dashboard";
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  } catch {
+    return "/dashboard";
+  }
+}
+
+function getApiErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof ApiError) || !error.data || typeof error.data !== "object") return undefined;
+  const code = (error.data as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
 
 export function DashboardPage() {
   const { currentUser, wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
@@ -2653,15 +2677,26 @@ export function AuthPage({
   redirect?: string;
 }) {
   const { login, isLoggedIn } = useStore();
+  const navigate = useNavigate();
 
   const queryRedirect = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("redirect") : null;
-  const targetRedirect = redirect || queryRedirect || (typeof window !== "undefined" ? sessionStorage.getItem("nexora_auth_redirect") : null) || "/dashboard";
+  let storedRedirect: string | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      storedRedirect = sessionStorage.getItem(AUTH_REDIRECT_KEY);
+    } catch (error) {
+      console.warn("Could not read the saved authentication redirect", error);
+    }
+  }
+  const targetRedirect = getSafeAuthRedirect(redirect || queryRedirect || storedRedirect);
 
   useEffect(() => {
     if (redirect && typeof window !== "undefined") {
       try {
-        sessionStorage.setItem("nexora_auth_redirect", redirect);
-      } catch {}
+        sessionStorage.setItem(AUTH_REDIRECT_KEY, getSafeAuthRedirect(redirect));
+      } catch (error) {
+        console.warn("Could not save the authentication redirect", error);
+      }
     }
   }, [redirect]);
 
@@ -2712,6 +2747,18 @@ export function AuthPage({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showOptionalDocs, setShowOptionalDocs] = useState(false);
+
+  useEffect(() => {
+    try {
+      const identifier = sessionStorage.getItem(AUTH_IDENTIFIER_KEY);
+      if (identifier) {
+        setEmail(identifier);
+        sessionStorage.removeItem(AUTH_IDENTIFIER_KEY);
+      }
+    } catch (error) {
+      console.warn("Could not restore the retailer login identifier", error);
+    }
+  }, []);
 
   useEffect(() => {
     setMode(initialMode);
@@ -2783,11 +2830,13 @@ export function AuthPage({
         await login(email, password);
         markRetailerRegistrationComplete();
         toast.success("Login successful!");
-        const dest = targetRedirect || "/dashboard";
         try {
-          sessionStorage.removeItem("nexora_auth_redirect");
-        } catch {}
-        window.location.href = dest;
+          sessionStorage.removeItem(AUTH_REDIRECT_KEY);
+          sessionStorage.removeItem(AUTH_IDENTIFIER_KEY);
+        } catch (error) {
+          console.warn("Could not clear the saved authentication state", error);
+        }
+        navigate({ to: targetRedirect });
       } else if (mode === "register") {
         if (!activeReferralWholesaler) {
           setReferralError(
@@ -2842,7 +2891,7 @@ export function AuthPage({
           return;
         }
 
-        const res = await api.register({
+        await api.register({
           name: name.trim(),
           loginId: trimmedLoginId || undefined,
           businessName: businessName.trim(),
@@ -2872,22 +2921,30 @@ export function AuthPage({
           firstLandingAt: referralAttribution?.firstLandingAt,
         });
 
-        const token = res.data.token || res.data.accessToken;
         markRetailerRegistrationComplete();
-        if (token) {
-          setAuthToken(token);
-          toast.success("Account created successfully! Welcome to NEXORA.");
-          const dest = targetRedirect || "/dashboard";
-          try {
-            sessionStorage.removeItem("nexora_auth_redirect");
-          } catch {}
-          window.location.href = dest;
-        } else {
-          toast.success("Account created! Please sign in.");
-          setMode("login");
+        try {
+          sessionStorage.setItem(AUTH_IDENTIFIER_KEY, email.trim());
+          sessionStorage.removeItem(AUTH_REDIRECT_KEY);
+        } catch (error) {
+          console.warn("Could not save the retailer login identifier", error);
         }
+        toast.success("Account created. Sign in to continue checkout.");
+        navigate({ to: "/login", search: { redirect: targetRedirect } });
       }
     } catch (err: unknown) {
+      const errorCode = getApiErrorCode(err);
+      if (mode === "register" && (errorCode === "EMAIL_ALREADY_EXISTS" || errorCode === "PHONE_ALREADY_EXISTS")) {
+        const identifier = errorCode === "PHONE_ALREADY_EXISTS" ? phone.trim() : email.trim();
+        markRetailerRegistrationComplete();
+        try {
+          sessionStorage.setItem(AUTH_IDENTIFIER_KEY, identifier);
+        } catch (storageError) {
+          console.warn("Could not save the retailer login identifier", storageError);
+        }
+        toast.error("An account already uses these details. Sign in to continue checkout.");
+        navigate({ to: "/login", search: { redirect: targetRedirect } });
+        return;
+      }
       const errorMsg = err instanceof Error
         ? err.message
         : mode === "login"

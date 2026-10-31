@@ -1,4 +1,4 @@
-import { lazy, Suspense, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 import { MarketplaceShell } from "@/components/marketplace/shell";
 const PortalPage = lazy(() => import("@/components/marketplace/portal-page").then(({ PortalPage }) => ({ default: PortalPage })));
 const HomePage = lazy(() => import("@/components/marketplace/home").then(({ HomePage }) => ({ default: HomePage })));
@@ -23,12 +23,14 @@ const WishlistPage = lazy(() => import("@/components/marketplace/workspace").the
 
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
+import { useNavigate } from "@/lib/router";
 const HelpSupportPage = lazy(() => import("@/components/marketplace/support").then(({ HelpSupportPage }) => ({ default: HelpSupportPage })));
 const LandingPage = lazy(() => import("@/components/marketplace/landing").then(({ LandingPage }) => ({ default: LandingPage })));
 import {
   getReferralAttributionFromUrl,
   saveReferralAttribution,
   getStoredReferralAttribution,
+  hasCompletedRetailerRegistration,
 } from "@/lib/referral-attribution";
 
 function PageLoadingFallback() {
@@ -39,6 +41,32 @@ function PageLoadingFallback() {
       <div className="mt-4 h-64 rounded-2xl bg-muted/70" />
     </div>
   );
+}
+
+function AuthRedirect({ to }: { to: string }) {
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
+  useEffect(() => {
+    let destination = "/dashboard";
+    try {
+      if (to.startsWith("/") && !to.startsWith("//")) {
+        const parsed = new URL(to, window.location.origin);
+        if (
+          parsed.origin === window.location.origin &&
+          !["/login", "/register", "/forgot-password"].includes(parsed.pathname)
+        ) {
+          destination = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+      }
+    } catch (error) {
+      console.warn("Could not resolve the saved authentication redirect", error);
+    }
+    navigateRef.current({ to: destination });
+  }, [to]);
+
+  return <PageLoadingFallback />;
 }
 
 function isBusinessSetupComplete(profile: ReturnType<typeof useStore>["retailerProfile"]) {
@@ -116,9 +144,11 @@ function RouterView() {
   const isRefPath = path === "/register";
   if (path === "/login") {
     const searchParams = new URLSearchParams(url.search);
-    const hasRef = searchParams.has("ref") || Boolean(getStoredReferralAttribution()?.code);
-    if (authenticated && !searchParams.get("redirect")) return <HomePage />;
-    return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} redirect={searchParams.get("redirect") || undefined} />;
+    if (authenticated) {
+      const redirect = searchParams.get("redirect");
+      return redirect ? <AuthRedirect to={redirect} /> : <HomePage />;
+    }
+    return <AuthPage key={`${path}${url.search}`} mode="login" redirect={searchParams.get("redirect") || undefined} />;
   }
   if (isRefPath) {
     const searchParams = new URLSearchParams(url.search);
@@ -131,8 +161,10 @@ function RouterView() {
     if (!authenticated) {
       const searchParams = new URLSearchParams(url.search);
       const activeRef = searchParams.get("ref") || getStoredReferralAttribution()?.code;
-      const initialMode = activeRef ? "register" : "login";
-      return <AuthPage key={`checkout-auth-${url.search}`} mode={initialMode} redirect="/checkout" />;
+      const returnUrl = new URL("/checkout", url.origin);
+      if (activeRef) returnUrl.searchParams.set("ref", activeRef);
+      const initialMode = hasCompletedRetailerRegistration() || !activeRef ? "login" : "register";
+      return <AuthPage key={`checkout-auth-${url.search}`} mode={initialMode} redirect={`${returnUrl.pathname}${returnUrl.search}`} />;
     }
     return <CheckoutPage />;
   }
