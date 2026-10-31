@@ -59,7 +59,7 @@ export default function CategoriesPage() {
   const canCreateCategories = isProfileLoaded && profile.kycStatus === 'APPROVED';
 
   // UI View Mode (Grid or List/Table)
-  const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('GRID');
+  const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('TABLE');
 
   // Search Filter State
   const [searchQuery, setSearchQuery] = useState('');
