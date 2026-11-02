@@ -139,13 +139,8 @@ export function WholesalerDetailPage() {
     const profile = details?.profile || {};
     const address = profile.address || {};
     const pickupAddress = profile.pickupAddress || {};
-    const retailers = details?.connectedRetailers || [];
-    const products = details?.products || [];
-    const orders = details?.recentOrders || [];
-    const payments = details?.paymentSummary || [];
     const subscription = details?.subscription || null;
     const subscriptionPayments = details?.subscriptionPayments || [];
-    const paymentMetrics = details?.paymentMetrics || {};
     const kycApplication = details?.kycApplication || {};
     const documents = Array.isArray(kycApplication.documents) ? kycApplication.documents : [];
     const registeredAddress = kycApplication.registeredAddress || address;
@@ -317,15 +312,9 @@ export function WholesalerDetailPage() {
             </div>
             <Tabs defaultValue="overview">
                 <TabsList className="flex h-auto justify-start overflow-x-auto bg-transparent p-0">
-                    {[["overview", "Overview"], ["subscription", "Subscription"], ["retailers", "Retailers"], ["products", "Products"], ["orders", "Orders"], ["payments", "Payments"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
+                    {[["overview", "Overview"], ["subscription", "Subscription"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
                 </TabsList>
                 <TabsContent value="overview" className="space-y-5">
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                        <KpiCard label="Associated retailers" value={String(details?.metrics?.connectedRetailers ?? retailers.length)} />
-                        <KpiCard label="Products" value={String(details?.metrics?.totalProducts ?? products.length)} />
-                        <KpiCard label="Categories" value={String(details?.metrics?.totalCategories || 0)} />
-                        <KpiCard label="Total orders" value={String(details?.metrics?.totalOrders || 0)} />
-                    </div>
                     <SectionCard
                         title="Business and contact information"
                         description="Registered account and primary contact details"
@@ -403,14 +392,6 @@ export function WholesalerDetailPage() {
                             <p><strong>Pincode:</strong> {pickupAddress.pincode || "—"}</p>
                         </div>
                     </SectionCard>
-                    <SectionCard title="Orders and payments" description="Financial totals are calculated from wholesaler-linked records">
-                        <div className="grid grid-cols-2 gap-3 p-5 lg:grid-cols-4">
-                            <KpiCard label="Orders" value={String(details?.metrics?.totalOrders || 0)} />
-                            <KpiCard label="Gross sales" value={money(details?.metrics?.earnings?.totalGross)} />
-                            <KpiCard label="Payment transactions" value={String(paymentMetrics.totalCount || 0)} />
-                            <KpiCard label="Paid amount" value={money(paymentMetrics.paidAmount)} />
-                        </div>
-                    </SectionCard>
                 </TabsContent>
                 <TabsContent value="subscription" className="space-y-5">
                     <SectionCard title="Subscription details" description="Plan and validity are sourced from this wholesaler's subscription record">
@@ -452,10 +433,6 @@ export function WholesalerDetailPage() {
                         />
                     </SectionCard>
                 </TabsContent>
-                <TabsContent value="retailers"><SectionCard title="Connected retailers" description={`${retailers.length} linked records`}><SimpleTable headers={["Retailer", "Email", "Phone", "Status", "Connected"]} rows={retailers.map((retailer) => [displayName(retailer), retailer.email || "—", retailer.phone || "—", <StatusBadge key="status" status={statusLabels[retailer.status] || retailer.status} />, date(retailer.createdAt)])} /></SectionCard></TabsContent>
-                <TabsContent value="products"><SectionCard title="Products" description={`${details?.metrics?.totalProducts ?? products.length} products across ${details?.metrics?.totalCategories || 0} categories; latest ${products.length} shown`}><SimpleTable headers={["Product", "SKU", "Category", "Price", "Stock", "Status"]} rows={products.map((product) => [product.name || "—", product.sku || "—", product.category?.name || "—", money(product.wholesalePrice), product.quantity ?? product.stockQuantity ?? product.stock ?? 0, <StatusBadge key="status" status={statusLabels[product.status] || product.status} />])} /></SectionCard></TabsContent>
-                <TabsContent value="orders"><SectionCard title="Recent orders" description={`Latest ${orders.length} of ${details?.metrics?.totalOrders || 0} orders for this wholesaler`}><SimpleTable headers={["Order", "Retailer", "Amount", "Status", "Payment", "Date"]} rows={orders.map((order) => [`#${order.orderNumber || order.orderNo || order.id}`, displayName(order.retailer), money(order.totalAmount ?? order.grandTotal), <StatusBadge key="status" status={statusLabels[order.orderStatus || order.status] || order.orderStatus || order.status} />, <StatusBadge key="payment" status={order.paymentStatus || "Unpaid"} />, date(order.createdAt)])} /></SectionCard></TabsContent>
-                <TabsContent value="payments"><SectionCard title="Payment summary" description={`${paymentMetrics.totalCount || 0} payment records · ${money(paymentMetrics.totalAmount)} total`}><div className="grid grid-cols-2 gap-3 p-5 lg:grid-cols-3"><KpiCard label="Paid" value={money(paymentMetrics.paidAmount)} /><KpiCard label="Pending / processing" value={money(paymentMetrics.pendingAmount)} /><KpiCard label="Total payments" value={String(paymentMetrics.totalCount || 0)} /></div><SimpleTable headers={["Order", "Method", "Reference", "Status", "Amount", "Date"]} rows={payments.map((payment) => [payment.order?.orderNumber || payment.orderId?.orderNumber || "—", payment.paymentMethod || "—", payment.transactionReference || "—", <StatusBadge key="status" status={payment.status} />, money(payment.amount), date(payment.createdAt)])} /></SectionCard></TabsContent>
                 <TabsContent value="reviews">
                     <SectionCard title="Wholesaler reviews" description="Reviews associated with this wholesaler's account">
                         {reviewsLoading ? <div className="p-6 text-sm text-muted-foreground">Loading reviews...</div> : reviewsError ? <div className="p-6 text-sm text-destructive">{reviewsError}</div> : (

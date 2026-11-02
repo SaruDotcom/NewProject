@@ -9,7 +9,7 @@ export const Route = createFileRoute("/wholesalers/$id")({
       {
         name: "description",
         content:
-          "Full wholesaler profile: business info, products, retailers, orders, sales, and payments.",
+          "Full wholesaler profile: business info, KYC verification, subscription, reviews, and feedback.",
       },
       { property: "og:title", content: "Wholesaler Detail" },
       {
