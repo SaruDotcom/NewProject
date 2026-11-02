@@ -1,6 +1,7 @@
 const OrderService = require('./orders.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
+const { parsePagination } = require('../../utils/pagination');
 
 class OrderController {
   // Retailer places order
@@ -13,6 +14,19 @@ class OrderController {
   listOrders = asyncHandler(async (req, res) => {
     const { orders, meta, filters } = await OrderService.listOrders(req.user, req.query);
     return ApiResponse.success(res, { items: orders, pagination: meta, filters }, 'Orders retrieved successfully');
+  });
+
+  listAdminOrders = asyncHandler(async (req, res) => {
+    const { page, limit } = parsePagination(req.query);
+    return ApiResponse.success(
+      res,
+      {
+        items: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+        filters: { wholesalers: [], retailers: [] },
+      },
+      'No orders available'
+    );
   });
 
   // Get order by ID

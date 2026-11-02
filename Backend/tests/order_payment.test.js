@@ -110,6 +110,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       password: 'Retailer123',
     });
     retailerToken = retLogin.body.data.token;
+
   });
 
   test('1. Retailer places order: Server calculates authoritative pricing & reserves stock', async () => {
@@ -156,6 +157,19 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
   });
 
   test('wholesaler status updates persist canonically and are returned to the retailer', async () => {
+    const superAdmin = await User.create({
+      name: 'Orders Super Admin',
+      email: 'orders-super-admin@example.test',
+      passwordHash: await User.hashPassword('SuperAdmin123'),
+      role: ROLES.SUPER_ADMIN,
+      status: USER_STATUS.ACTIVE,
+    });
+    const adminLogin = await request(app).post('/api/v1/auth/login').send({
+      email: superAdmin.email,
+      password: 'SuperAdmin123',
+    });
+    const superAdminToken = adminLogin.body.data.token;
+
     const createRes = await request(app)
       .post('/api/v1/orders')
       .set('Authorization', `Bearer ${retailerToken}`)
@@ -196,6 +210,24 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(retailerOrdersRes.body.data.items).toHaveLength(1);
     expect(retailerOrdersRes.body.data.items[0]._id).toBe(orderId);
     expect(retailerOrdersRes.body.data.items[0].orderStatus).toBe(ORDER_STATUS.SHIPPED);
+
+    const wholesalerOrdersRes = await request(app)
+      .get('/api/v1/orders')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(wholesalerOrdersRes.status).toBe(200);
+    expect(wholesalerOrdersRes.body.data.items).toHaveLength(1);
+    expect(wholesalerOrdersRes.body.data.items[0]._id).toBe(orderId);
+
+    const adminOrdersRes = await request(app)
+      .get('/api/v1/admin/orders')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(adminOrdersRes.status).toBe(200);
+    expect(adminOrdersRes.body.data).toMatchObject({
+      items: [],
+      pagination: { total: 0, totalPages: 0 },
+      filters: { wholesalers: [], retailers: [] },
+    });
+    expect(await Order.countDocuments({ _id: orderId })).toBe(1);
   });
 
   test('invalid wholesaler order status is rejected without changing the saved status', async () => {

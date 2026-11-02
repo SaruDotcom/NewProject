@@ -10,6 +10,7 @@ const invitationRoutes = require('../modules/invitations/invitations.routes');
 const categoryRoutes = require('../modules/categories/categories.routes');
 const productRoutes = require('../modules/products/products.routes');
 const orderRoutes = require('../modules/orders/orders.routes');
+const orderController = require('../modules/orders/orders.controller');
 const earningRoutes = require('../modules/earnings/earnings.routes');
 const payoutRoutes = require('../modules/payouts/payouts.routes');
 const walletRoutes = require('../modules/wallets/wallets.routes');
@@ -64,6 +65,12 @@ router.use('/admin/retailers', retailerRoutes);
 router.use('/admin/kyc', kycRoutes);
 router.use('/admin/categories', categoryRoutes);
 router.use('/admin/products', productRoutes);
+router.get(
+  '/admin/orders',
+  authenticate,
+  authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN),
+  orderController.listAdminOrders
+);
 router.use('/admin/orders', orderRoutes);
 router.use('/admin/earnings', earningRoutes);
 router.use('/admin/payouts', payoutRoutes);
