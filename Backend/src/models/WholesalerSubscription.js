@@ -9,6 +9,7 @@ const wholesalerSubscriptionSchema = new mongoose.Schema(
     billingPeriod: { type: String, enum: ['MONTHLY', 'YEARLY'], default: 'MONTHLY' },
     amount: { type: Number, required: true, min: 0 },
     currency: { type: String, default: 'INR' },
+    paymentMethod: { type: String, default: '' },
     status: { type: String, enum: ['ACTIVE', 'EXPIRED'], default: 'ACTIVE', index: true },
     startedAt: { type: Date, required: true },
     renewalDate: { type: Date, required: true, index: true },

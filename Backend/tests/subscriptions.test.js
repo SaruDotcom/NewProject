@@ -244,4 +244,79 @@ describe('Wholesaler subscriptions', () => {
       expect.objectContaining({ upsert: true }),
     );
   });
+
+  test('records payment failure with error reason and payment method', async () => {
+    const mockSave = jest.fn().mockResolvedValue(true);
+    jest.spyOn(SubscriptionPayment, 'findOne').mockResolvedValue({
+      _id: 'payment-failed-1',
+      planId: 'plan-1',
+      planName: 'Wholesaler Plan',
+      amount: 499,
+      amountPaise: 49900,
+      status: 'PENDING',
+      razorpayOrderId: 'order-fail-1',
+      save: mockSave,
+    });
+
+    const result = await SubscriptionService.recordPaymentFailure('user-1', {
+      razorpayOrderId: 'order-fail-1',
+      razorpayPaymentId: 'pay_failed_123',
+      errorReason: 'Payment declined by bank',
+      paymentMethod: 'card',
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.errorReason).toBe('Payment declined by bank');
+    expect(result.paymentMethod).toBe('card');
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  test('records payment cancellation for pending orders', async () => {
+    const mockSave = jest.fn().mockResolvedValue(true);
+    jest.spyOn(SubscriptionPayment, 'findOne').mockResolvedValue({
+      _id: 'payment-cancel-1',
+      planId: 'plan-1',
+      planName: 'Wholesaler Plan',
+      amount: 499,
+      amountPaise: 49900,
+      status: 'PENDING',
+      razorpayOrderId: 'order-cancel-1',
+      save: mockSave,
+    });
+
+    const result = await SubscriptionService.recordPaymentCancellation('user-1', {
+      razorpayOrderId: 'order-cancel-1',
+      reason: 'Cancelled by user',
+    });
+
+    expect(result.status).toBe('CANCELLED');
+    expect(result.errorReason).toBe('Cancelled by user');
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  test('prevents duplicate processing if payment already paid', async () => {
+    jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
+      select: jest.fn().mockResolvedValue({ _id: 'profile-1' }),
+    });
+    jest.spyOn(SubscriptionPayment, 'findOne').mockResolvedValue({
+      _id: 'purchase-already-paid',
+      userId: 'user-1',
+      status: 'PAID',
+      razorpayPaymentId: 'pay_already_123',
+    });
+    jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue({
+      status: 'ACTIVE',
+      planName: 'Wholesaler Plan',
+    });
+
+    const result = await SubscriptionService.verifyPayment('user-1', {
+      razorpay_order_id: 'order-dup',
+      razorpay_payment_id: 'pay_already_123',
+      razorpay_signature: crypto.createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+        .update('order-dup|pay_already_123')
+        .digest('hex'),
+    });
+
+    expect(result.status).toBe('ACTIVE');
+  });
 });

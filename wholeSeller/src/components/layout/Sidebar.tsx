@@ -51,7 +51,7 @@ const NAV_ITEMS = [
   { name: 'Orders', path: '/dashboard/orders', icon: ShoppingBag, badge: 'New' },
   { name: 'Business Analytics', path: '/dashboard/analytics', icon: TrendingUp },
   { name: 'Reports', path: '/dashboard/reports', icon: FileText, badge: 'Export' },
-  { name: 'Wallet & Earnings', path: '/dashboard/wallet', icon: CreditCard, badge: 'New' },
+  // { name: 'Wallet & Earnings', path: '/dashboard/wallet', icon: CreditCard, badge: 'New' },
   { name: 'Subscription', path: '/dashboard/subscription', icon: CreditCard },
   { name: 'Security', path: '/dashboard/security', icon: ShieldCheck },
   { name: 'Help & Support', path: '/dashboard/support', icon: Headphones },

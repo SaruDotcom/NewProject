@@ -66,6 +66,10 @@ module.exports = {
     ApiResponse.success(res, await SubscriptionService.getWholesalerSubscription(req.user._id), 'Subscription retrieved')
   )),
 
+  getSubscriptionPayments: asyncHandler(async (req, res) => (
+    ApiResponse.success(res, { payments: await SubscriptionService.getSubscriptionPayments(req.user._id) }, 'Subscription payments retrieved')
+  )),
+
   createOrder: asyncHandler(async (req, res) => {
     const result = await SubscriptionService.createOrder(req.user._id, req.body.planId);
     if (!result.configured) {
@@ -77,5 +81,15 @@ module.exports = {
   verifyPayment: asyncHandler(async (req, res) => {
     const subscription = await SubscriptionService.verifyPayment(req.user._id, req.body);
     return ApiResponse.success(res, { subscription }, 'Subscription payment verified');
+  }),
+
+  failPayment: asyncHandler(async (req, res) => {
+    const payment = await SubscriptionService.recordPaymentFailure(req.user._id, req.body);
+    return ApiResponse.success(res, { payment }, 'Subscription payment failure recorded');
+  }),
+
+  cancelPayment: asyncHandler(async (req, res) => {
+    const payment = await SubscriptionService.recordPaymentCancellation(req.user._id, req.body);
+    return ApiResponse.success(res, { payment }, 'Subscription payment cancellation recorded');
   }),
 };

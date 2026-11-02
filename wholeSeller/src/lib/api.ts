@@ -206,8 +206,26 @@ export interface WholesalerSubscription {
   amount: number;
   currency: string;
   billingPeriod: 'MONTHLY' | 'YEARLY';
+  paymentMethod?: string;
   startedAt: string;
   renewalDate: string;
+}
+
+export interface SubscriptionPaymentRecord {
+  id: string;
+  planId: string;
+  planName: string;
+  billingPeriod: 'MONTHLY' | 'YEARLY';
+  amount: number;
+  amountPaise: number;
+  currency: string;
+  status: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED';
+  razorpayOrderId: string;
+  razorpayPaymentId?: string;
+  paymentMethod?: string;
+  errorReason?: string;
+  verifiedAt?: string | null;
+  createdAt: string;
 }
 
 export interface BulkProductPreviewRow {
@@ -563,9 +581,16 @@ export const api = {
       data: {
         plans: SubscriptionPlan[];
         subscription: WholesalerSubscription | null;
+        payments: SubscriptionPaymentRecord[];
         payment: { configured: boolean };
       };
     }>('/wholesaler/subscription', { method: 'GET' }),
+
+  getSubscriptionPayments: () =>
+    request<{ success: boolean; data: { payments: SubscriptionPaymentRecord[] } }>(
+      '/wholesaler/subscription/payments',
+      { method: 'GET' },
+    ),
 
   createSubscriptionOrder: (planId: string) =>
     request<{
@@ -586,6 +611,23 @@ export const api = {
   }) =>
     request<{ success: boolean; data: { subscription: WholesalerSubscription } }>(
       '/wholesaler/subscription/verify',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+
+  failSubscriptionPayment: (payload: {
+    razorpayOrderId: string;
+    razorpayPaymentId?: string;
+    errorReason?: string;
+    paymentMethod?: string;
+  }) =>
+    request<{ success: boolean; data: { payment: SubscriptionPaymentRecord } }>(
+      '/wholesaler/subscription/fail',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+
+  cancelSubscriptionPayment: (payload: { razorpayOrderId: string; reason?: string }) =>
+    request<{ success: boolean; data: { payment: SubscriptionPaymentRecord } }>(
+      '/wholesaler/subscription/cancel',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
 

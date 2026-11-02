@@ -71,7 +71,7 @@ const notifications = [];
 const nav = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Wholesalers", href: "/wholesalers", icon: Building2 },
-  // { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
+  { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
   { label: "KYC", href: "/kyc", icon: FileCheck2 },
   // { label: "Retailers", href: "/retailers", icon: Store },
   // { label: "Relationships", href: "/relationships", icon: Waypoints },

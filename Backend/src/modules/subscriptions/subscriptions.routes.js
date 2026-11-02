@@ -22,7 +22,10 @@ adminRoutes.delete('/:planId/features/:featureId', controller.removeFeature);
 const wholesalerRoutes = express.Router();
 wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));
 wholesalerRoutes.get('/', controller.getWholesalerSubscription);
+wholesalerRoutes.get('/payments', controller.getSubscriptionPayments);
 wholesalerRoutes.post('/orders', controller.createOrder);
 wholesalerRoutes.post('/verify', controller.verifyPayment);
+wholesalerRoutes.post('/fail', controller.failPayment);
+wholesalerRoutes.post('/cancel', controller.cancelPayment);
 
 module.exports = { publicRoutes, adminRoutes, wholesalerRoutes };

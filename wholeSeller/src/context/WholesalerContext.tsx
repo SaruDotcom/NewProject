@@ -102,17 +102,6 @@ export interface WholesalerAccountRegistration {
   ownerName: string;
   email: string;
   phone: string;
-  isGstRegistered: boolean;
-  gstin: string;
-  streetAddress: string;
-  city: string;
-  state: string;
-  pincode: string;
-  sameAsBusinessAddress: boolean;
-  pickupStreetAddress: string;
-  pickupCity: string;
-  pickupState: string;
-  pickupPincode: string;
   inviteToken?: string;
   ref?: string;
   adminCode?: string;
@@ -707,19 +696,9 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         password: passwordInput,
         businessName: data.businessName,
         phone: data.phone,
-        address: data.streetAddress,
-        streetAddress: data.streetAddress,
-        city: data.city,
-        state: data.state,
-        pincode: data.pincode,
-        isGstRegistered: data.isGstRegistered,
-        gstin: data.isGstRegistered ? data.gstin : '',
-        gstStatus: data.isGstRegistered ? 'REGISTERED' : 'UNREGISTERED',
-        sameAsBusinessAddress: data.sameAsBusinessAddress,
-        pickupStreetAddress: data.pickupStreetAddress,
-        pickupCity: data.pickupCity,
-        pickupState: data.pickupState,
-        pickupPincode: data.pickupPincode,
+        isGstRegistered: false,
+        gstin: '',
+        gstStatus: 'UNREGISTERED',
         inviteToken: data.inviteToken,
         ref: data.ref,
         adminCode: data.adminCode,

@@ -420,6 +420,8 @@ export function WholesalerDetailPage() {
                                 <p><strong>Status:</strong> <StatusBadge status={statusLabels[subscription.status] || formatStatus(subscription.status)} /></p>
                                 <p><strong>Amount:</strong> {money(subscription.amount)} {subscription.currency || "INR"}</p>
                                 <p><strong>Billing period:</strong> {formatStatus(subscription.billingPeriod)}</p>
+                                <p><strong>Payment method:</strong> <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-secondary text-secondary-foreground uppercase">{subscription.paymentMethod || "Razorpay"}</span></p>
+                                <p><strong>Payment ID:</strong> <span className="font-mono text-xs">{subscription.razorpayPaymentId || "—"}</span></p>
                                 <p><strong>Started:</strong> {date(subscription.startedAt)}</p>
                                 <p><strong>Valid until:</strong> {date(subscription.renewalDate)}</p>
                             </div>
@@ -427,14 +429,24 @@ export function WholesalerDetailPage() {
                     </SectionCard>
                     <SectionCard title="Subscription payments" description={`${subscriptionPayments.length} recorded payment transactions`}>
                         <SimpleTable
-                            headers={["Plan", "Billing period", "Amount", "Payment status", "Order reference", "Payment reference", "Paid / verified"]}
+                            headers={["Plan", "Billing period", "Amount", "Method", "Payment status", "Razorpay Order ID", "Razorpay Payment ID", "Paid / Date"]}
                             rows={subscriptionPayments.map((payment) => [
                                 payment.planName || "—",
                                 formatStatus(payment.billingPeriod),
                                 `${money(payment.amount)} ${payment.currency || "INR"}`,
-                                <StatusBadge key="status" status={payment.status} />,
-                                payment.razorpayOrderId || "—",
-                                payment.razorpayPaymentId || "—",
+                                <span key="method" className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground uppercase">
+                                    {payment.paymentMethod || "Razorpay"}
+                                </span>,
+                                <div key="status" className="space-y-1">
+                                    <StatusBadge status={payment.status} />
+                                    {payment.errorReason && (
+                                        <p className="text-xs text-rose-600 dark:text-rose-400 max-w-[200px] truncate" title={payment.errorReason}>
+                                            {payment.errorReason}
+                                        </p>
+                                    )}
+                                </div>,
+                                <span key="order" className="font-mono text-xs text-muted-foreground">{payment.razorpayOrderId || "—"}</span>,
+                                <span key="payment" className="font-mono text-xs text-muted-foreground">{payment.razorpayPaymentId || "—"}</span>,
                                 date(payment.verifiedAt || payment.createdAt),
                             ])}
                         />

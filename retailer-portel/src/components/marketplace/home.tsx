@@ -154,7 +154,7 @@ export function HomePage() {
       </section>
 
       {/* Featured from your connections */}
-      {connectedWholesalers.length > 0 && (
+      {/* {connectedWholesalers.length > 0 && (
         <section className="border-t border-border/60 bg-card py-12 sm:py-16 lg:py-20">
           <div className="shell">
             <div className="mb-8 sm:mb-10 flex flex-wrap items-end justify-between gap-4">
@@ -189,7 +189,7 @@ export function HomePage() {
             </div>
           </div>
         </section>
-      )}
+       )} */}
 
       {/* Promo Banner ("Save up to 18%") */}
       <section className="shell py-12 sm:py-16 lg:py-20">
