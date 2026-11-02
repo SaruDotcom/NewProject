@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
-const { User, WholesalerProfile, Category, Product, Inventory } = require('../src/models');
+const { User, WholesalerProfile, Category, Product, Inventory, WholesalerSubscription } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const ProductService = require('../src/modules/products/products.service');
 
@@ -33,6 +33,15 @@ describe('Products & Inventory Test Suite', () => {
       businessName: 'Tech World Supplies',
       kycStatus: KYC_STATUS.APPROVED,
       isVerified: true,
+    });
+    await WholesalerSubscription.create({
+      userId: wholesalerUser._id,
+      planName: 'Basic Monthly',
+      status: 'ACTIVE',
+      amount: 299,
+      currency: 'INR',
+      billingPeriod: 'MONTHLY',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
     const loginRes = await request(app).post('/api/v1/auth/login').send({

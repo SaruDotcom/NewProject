@@ -13,6 +13,7 @@ const { RetailerIdentityService } = require('../../services/retailerIdentity.ser
 const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
 const { uploadBusinessLogo, deleteUploadedProductImage } = require('../../services/cloudinary.service');
 const logger = require('../../config/logger');
+const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
 class WholesalerPortalService {
   static formatRetailerRelationship(row) {
@@ -277,6 +278,7 @@ class WholesalerPortalService {
   }
 
   static async adjustInventory(userId, productId, quantity, notes, actor, req) {
+    await assertWholesalerBusinessActivated(userId);
     if (!mongoose.isValidObjectId(productId) || !Number.isInteger(quantity) || quantity === 0) throw new BadRequestError('A valid product id and non-zero integer quantity are required');
     const inventory = await Inventory.findOne({ productId, wholesalerId: userId });
     if (!inventory) throw new NotFoundError('Inventory item not found');

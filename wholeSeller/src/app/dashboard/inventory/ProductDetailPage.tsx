@@ -32,11 +32,13 @@ import { useWholesaler } from '@/context/WholesalerContext';
 import { ProductImage } from '@/components/products/ProductImage';
 import { Product, Order, ReturnRequest, InventoryLog, WholesaleTier, CustomAttribute } from '@/lib/types';
 import api from '@/lib/api';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 
 export default function ProductDetailPage() {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
   const {
+    profile,
     products,
     categories,
     orders = [],
@@ -44,7 +46,10 @@ export default function ProductDetailPage() {
     inventoryLogs = [],
     retailers = [],
     updateProduct,
-    adjustStock
+    adjustStock,
+    isProfileLoaded,
+    isSubscriptionStatusLoaded,
+    isBusinessActivated,
   } = useWholesaler();
 
   // Find target product
@@ -382,6 +387,10 @@ export default function ProductDetailPage() {
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!product) return;
+    if (!isBusinessActivated) {
+      setFormError('Approved KYC and an active subscription are required to manage products.');
+      return;
+    }
     setFormError(null);
     setFormFieldErrors([]);
     setIsSaving(true);
@@ -411,7 +420,7 @@ export default function ProductDetailPage() {
   // Handle Manual Stock Adjust Submit
   const handleApplyStockAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!product) return;
+    if (!isBusinessActivated || !product) return;
     await adjustStock(product.id, Number(adjustAmount), adjustReason);
     setShowAdjustModal(false);
   };
@@ -443,6 +452,13 @@ export default function ProductDetailPage() {
 
   return (
     <div className="space-y-6 pb-12">
+      <BusinessActivationNotice
+        kycStatus={profile.kycStatus}
+        subscriptionStatus={profile.subscriptionStatus}
+        isProfileLoaded={isProfileLoaded}
+        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
+      />
+
       {/* Top Header & Navigation Breadcrumb */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -466,7 +482,8 @@ export default function ProductDetailPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowAdjustModal(true)}
-            className="px-3.5 py-2 bg-white border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+            disabled={!isBusinessActivated}
+            className="px-3.5 py-2 bg-white border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sliders className="w-4 h-4 text-green-700" />
             <span>Adjust Stock</span>
@@ -474,7 +491,8 @@ export default function ProductDetailPage() {
 
           <button
             onClick={() => setShowEditModal(true)}
-            className="px-4 py-2 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all flex items-center gap-1.5"
+            disabled={!isBusinessActivated}
+            className="px-4 py-2 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Edit className="w-4 h-4" />
             <span>Edit Product</span>
@@ -977,7 +995,7 @@ export default function ProductDetailPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
+                  disabled={isSaving || !isBusinessActivated}
                   className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover disabled:opacity-50"
                 >
                   {isSaving ? 'Saving...' : 'Save Product Updates'}
@@ -1046,7 +1064,8 @@ export default function ProductDetailPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover"
+                  disabled={!isBusinessActivated}
+                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Apply Stock Update
                 </button>

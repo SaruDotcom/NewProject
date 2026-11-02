@@ -180,18 +180,18 @@ export default function KycPage() {
       return;
     }
 
-    // 4. Bank Account Number Validation (9 to 18 numeric digits)
+    // 4. Bank Account Number Validation (optional; 9 to 18 numeric digits if provided)
     const cleanAccountNumber = form.accountNumber.trim();
-    if (!cleanAccountNumber || !/^\d{9,18}$/.test(cleanAccountNumber)) {
-      setError('Please enter a valid Bank Account Number (must be between 9 and 18 numeric digits).');
+    if (cleanAccountNumber && !/^\d{9,18}$/.test(cleanAccountNumber)) {
+      setError('Please enter a valid Bank Account Number (must be between 9 and 18 numeric digits) or leave it empty.');
       return;
     }
 
-    // 5. IFSC Code Validation (11 characters: 4 letters + 0 + 6 alphanumeric)
+    // 5. IFSC Code Validation (optional; 11 characters if provided)
     const cleanIfsc = form.ifscCode.trim().toUpperCase();
     const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-    if (!cleanIfsc || !ifscRegex.test(cleanIfsc)) {
-      setError('Please enter a valid 11-character Indian IFSC code (e.g. SBIN0001234 or PUNB0123400). Code like "567SDF" is invalid.');
+    if (cleanIfsc && !ifscRegex.test(cleanIfsc)) {
+      setError('Please enter a valid 11-character Indian IFSC code (e.g. SBIN0001234 or PUNB0123400) or leave it empty.');
       return;
     }
 
@@ -371,38 +371,39 @@ export default function KycPage() {
               </section>
 
               <section className="overflow-hidden rounded-lg border border-tradeflow-gray-200 bg-white shadow-sm">
-                <div className="border-b border-tradeflow-gray-200 px-5 py-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-green-700">03 · Payout account</p>
-                  <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Bank details</h2>
+                <div className="border-b border-tradeflow-gray-200 px-5 py-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-green-700">03 · Payout account (Optional)</p>
+                    <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Bank details</h2>
+                  </div>
+                  <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md">Optional</span>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
-                  <label className={fieldClass}>Account holder name *<input required className={inputClass} value={form.accountHolderName} onChange={changeField('accountHolderName')} /></label>
+                  <label className={fieldClass}>Account holder name (optional)<input className={inputClass} value={form.accountHolderName} onChange={changeField('accountHolderName')} placeholder="Optional account holder name" /></label>
                   <label className={fieldClass}>
-                    Account number *
+                    Account number (optional)
                     <input
-                      required
                       maxLength={18}
                       className={`${inputClass} font-mono`}
                       value={form.accountNumber}
                       onChange={(e) => setForm((curr) => ({ ...curr, accountNumber: e.target.value.replace(/\D/g, '').slice(0, 18) }))}
-                      placeholder="9 to 18 digits (numbers only)"
+                      placeholder="9 to 18 digits (optional)"
                       autoComplete="off"
                     />
                   </label>
                   <label className={fieldClass}>
-                    IFSC code *
+                    IFSC code (optional)
                     <input
-                      required
                       maxLength={11}
                       className={`${inputClass} uppercase tracking-wider font-mono`}
                       value={form.ifscCode}
                       onChange={(e) => setForm((curr) => ({ ...curr, ifscCode: e.target.value.toUpperCase().slice(0, 11) }))}
-                      placeholder="e.g. SBIN0001234 (11 chars)"
+                      placeholder="e.g. SBIN0001234 (optional)"
                       autoComplete="off"
                     />
                   </label>
-                  <label className={fieldClass}>Bank name *<input required className={inputClass} value={form.bankName} onChange={changeField('bankName')} /></label>
-                  <label className={fieldClass}>Branch<input className={inputClass} value={form.branch} onChange={changeField('branch')} /></label>
+                  <label className={fieldClass}>Bank name (optional)<input className={inputClass} value={form.bankName} onChange={changeField('bankName')} placeholder="Optional bank name" /></label>
+                  <label className={fieldClass}>Branch (optional)<input className={inputClass} value={form.branch} onChange={changeField('branch')} placeholder="Optional branch name" /></label>
                 </div>
               </section>
             </fieldset>

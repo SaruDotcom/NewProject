@@ -4,7 +4,7 @@ const subscriptionPlanSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true },
     name: { type: String, required: true, trim: true },
-    price: { type: Number, required: true, min: 0, default: 499 },
+    price: { type: Number, required: true, min: 0, default: 299 },
     billingPeriod: { type: String, enum: ['MONTHLY', 'YEARLY'], default: 'MONTHLY' },
     description: { type: String, trim: true, default: '' },
     taxNote: { type: String, trim: true, default: 'Taxes may apply.' },

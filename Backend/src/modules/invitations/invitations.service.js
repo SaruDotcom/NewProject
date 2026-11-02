@@ -10,7 +10,6 @@ const {
   INVITATION_STATUS,
   RELATIONSHIP_STATUS,
   AUDIT_ACTION,
-  KYC_STATUS,
   ROLES,
 } = require('../../config/constants');
 const {
@@ -22,6 +21,7 @@ const {
 const { generateSecureToken, hashToken } = require('../../utils/crypto');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
+const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
 class InvitationService {
   /**
@@ -29,15 +29,7 @@ class InvitationService {
    */
   static async createInvitation(wholesalerUser, options = {}, req = null) {
     const wholesalerId = wholesalerUser._id;
-
-    // Check wholesaler KYC status
-    const profile = await WholesalerProfile.findOne({ userId: wholesalerId });
-    if (!profile || profile.kycStatus !== KYC_STATUS.APPROVED) {
-      throw new ForbiddenError(
-        'Wholesaler must have an APPROVED KYC status to generate retailer invitation links',
-        'KYC_APPROVAL_REQUIRED'
-      );
-    }
+    await assertWholesalerBusinessActivated(wholesalerId);
 
     const rawToken = generateSecureToken(24);
     const tokenHash = hashToken(rawToken);
@@ -80,6 +72,7 @@ class InvitationService {
    * Wholesaler lists all active/past invitation links
    */
   static async getWholesalerInvitations(wholesalerUser) {
+    await assertWholesalerBusinessActivated(wholesalerUser._id);
     const invitations = await Invitation.find({ wholesalerId: wholesalerUser._id })
       .sort({ createdAt: -1 })
       .lean();
@@ -99,6 +92,7 @@ class InvitationService {
    * Wholesaler revokes an invitation link
    */
   static async revokeInvitation(invitationId, wholesalerUser, req = null) {
+    await assertWholesalerBusinessActivated(wholesalerUser._id);
     const invitation = await Invitation.findOne({
       _id: invitationId,
       wholesalerId: wholesalerUser._id,
@@ -155,6 +149,7 @@ class InvitationService {
       throw new BadRequestError('This invitation link has reached its maximum usage limit', 'INVITATION_EXHAUSTED');
     }
 
+    await assertWholesalerBusinessActivated(invitation.wholesalerId._id);
     const wholesalerProfile = await WholesalerProfile.findOne({ userId: invitation.wholesalerId._id })
       .select('businessName businessLogoUrl description city state')
       .lean();
@@ -191,6 +186,7 @@ class InvitationService {
     }
 
     const wholesalerId = invitation.wholesalerId;
+    await assertWholesalerBusinessActivated(wholesalerId);
 
     // Check if retailer already belongs to ANY active wholesaler
     const existingActiveRel = await WholesalerRetailerRelationship.findOne({

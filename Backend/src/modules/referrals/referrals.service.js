@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { User, WholesalerProfile, WholesalerRetailerRelationship } = require('../../models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../../config/constants');
 const { BadRequestError, ForbiddenError, ConflictError } = require('../../utils/errors');
+const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
 const INVALID_REFERRAL_MESSAGE = 'This link is not valid. Please ask your wholesaler for a new link.';
 const REFERRAL_CODE_CHARACTERS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -40,6 +41,7 @@ class ReferralService {
       throw new ForbiddenError('This wholesaler is currently unavailable.', 'WHOLESALER_UNAVAILABLE');
     }
     if (wholesaler.status !== USER_STATUS.ACTIVE) throw this.invalidReferral();
+    await assertWholesalerBusinessActivated(wholesaler._id);
 
     return { profile, wholesaler };
   }
@@ -51,8 +53,11 @@ class ReferralService {
       status: USER_STATUS.ACTIVE,
       isDeleted: false,
     }).select('_id').lean();
-    const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
-    if (!activeUser || !profile || profile.kycStatus !== KYC_STATUS.APPROVED || profile.isDeleted) {
+    if (!activeUser) {
+      throw new ForbiddenError('Wholesaler must have an active account to manage retailer referrals.', 'WHOLESALER_UNAVAILABLE');
+    }
+    const { profile } = await assertWholesalerBusinessActivated(wholesalerUser._id);
+    if (profile.isDeleted) {
       throw new ForbiddenError('Wholesaler must have approved KYC to manage retailer referrals.', 'KYC_APPROVAL_REQUIRED');
     }
     return profile;

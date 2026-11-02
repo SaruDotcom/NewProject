@@ -10,7 +10,13 @@ const env = require('../../config/env');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../utils/errors');
 
 const CATALOG_KEY = 'WHOLESALER';
-const LEGACY_PLAN_KEY = 'WHOLESALER_MONTHLY';
+const CATALOG_VERSION = 2;
+const CANONICAL_PLAN_KEYS = [
+  'WHOLESALER_MONTHLY',
+  'WHOLESALER_ANNUAL',
+  'WHOLESALER_499',
+  'WHOLESALER_PRO_YEARLY',
+];
 const STARTER_FEATURES = [
   'Own storefront link',
   'Custom domain or subdomain',
@@ -26,10 +32,10 @@ const STARTER_FEATURES = [
 const DEFAULT_PLANS = [
   {
     key: 'WHOLESALER_MONTHLY',
-    name: 'Monthly Plan',
-    price: 300,
+    name: 'Basic Monthly',
+    price: 299,
     billingPeriod: 'MONTHLY',
-    description: 'A flexible monthly plan for your wholesale business.',
+    description: 'Core tools for your wholesale business, billed monthly.',
     taxNote: 'Taxes may apply.',
     isActive: true,
     order: 0,
@@ -37,10 +43,10 @@ const DEFAULT_PLANS = [
   },
   {
     key: 'WHOLESALER_ANNUAL',
-    name: 'Annual Pro Plan',
-    price: 3000,
+    name: 'Basic Yearly',
+    price: 2499,
     billingPeriod: 'YEARLY',
-    description: 'A full year of tools to run and grow your wholesale business.',
+    description: 'Core tools for your wholesale business, billed yearly.',
     taxNote: 'Taxes may apply.',
     isActive: true,
     order: 1,
@@ -48,14 +54,25 @@ const DEFAULT_PLANS = [
   },
   {
     key: 'WHOLESALER_499',
-    name: 'Wholesaler Plan',
+    name: 'Pro Monthly',
     price: 499,
     billingPeriod: 'MONTHLY',
-    description: 'Everything you need to run and grow your wholesale business.',
+    description: 'Advanced tools for your wholesale business, billed monthly.',
     taxNote: 'Taxes may apply.',
     isActive: true,
     order: 2,
     recommended: true,
+  },
+  {
+    key: 'WHOLESALER_PRO_YEARLY',
+    name: 'Pro Yearly',
+    price: 4999,
+    billingPeriod: 'YEARLY',
+    description: 'Advanced tools for your wholesale business, billed yearly.',
+    taxNote: 'Taxes may apply.',
+    isActive: true,
+    order: 3,
+    recommended: false,
   },
 ].map((plan) => ({
   ...plan,
@@ -84,15 +101,7 @@ function configured() {
 class SubscriptionService {
   static async ensurePlanCatalog() {
     let catalog = await SubscriptionPlanCatalog.findOne({ key: CATALOG_KEY });
-    if (catalog?.initialized) return;
-
-    const legacyPlan = await SubscriptionPlan.findOne({ key: LEGACY_PLAN_KEY });
-    if (legacyPlan) {
-      await SubscriptionPlan.updateOne(
-        { _id: legacyPlan._id, key: LEGACY_PLAN_KEY },
-        { $set: { key: 'WHOLESALER_499', order: 2, recommended: true } },
-      );
-    }
+    if (catalog?.initialized && catalog.version >= CATALOG_VERSION) return;
 
     try {
       catalog = await SubscriptionPlanCatalog.findOneAndUpdate(
@@ -105,12 +114,23 @@ class SubscriptionService {
       catalog = await SubscriptionPlanCatalog.findOne({ key: CATALOG_KEY });
     }
 
-    if (catalog?.initialized) return;
     await Promise.all(DEFAULT_PLANS.map(async (plan) => {
       try {
         await SubscriptionPlan.findOneAndUpdate(
           { key: plan.key },
-          { $setOnInsert: plan },
+          {
+            $set: {
+              name: plan.name,
+              price: plan.price,
+              billingPeriod: plan.billingPeriod,
+              description: plan.description,
+              taxNote: plan.taxNote,
+              isActive: plan.isActive,
+              order: plan.order,
+              recommended: plan.recommended,
+            },
+            $setOnInsert: { features: plan.features },
+          },
           { new: true, upsert: true, setDefaultsOnInsert: true },
         );
       } catch (error) {
@@ -118,12 +138,22 @@ class SubscriptionService {
         await SubscriptionPlan.findOne({ key: plan.key });
       }
     }));
-    await SubscriptionPlanCatalog.updateOne({ key: CATALOG_KEY }, { $set: { initialized: true } });
+    await SubscriptionPlanCatalog.updateOne(
+      { key: CATALOG_KEY },
+      { $set: { initialized: true, version: CATALOG_VERSION } },
+    );
   }
 
   static async getPlans({ includeInactive = false } = {}) {
     await this.ensurePlanCatalog();
     const query = includeInactive ? {} : { isActive: true };
+    return SubscriptionPlan.find(query).sort({ order: 1, createdAt: 1 });
+  }
+
+  static async getCustomerPlans({ includeInactive = false } = {}) {
+    await this.ensurePlanCatalog();
+    const query = { key: { $in: CANONICAL_PLAN_KEYS } };
+    if (!includeInactive) query.isActive = true;
     return SubscriptionPlan.find(query).sort({ order: 1, createdAt: 1 });
   }
 
@@ -182,6 +212,16 @@ class SubscriptionService {
 
   static async updatePlan(planId, payload) {
     const updates = this.validatePlanInput(payload);
+    const existing = await this.getPlan(planId);
+    if (
+      CANONICAL_PLAN_KEYS.includes(existing.key) &&
+      ((updates.name !== undefined && updates.name !== existing.name) ||
+        (updates.price !== undefined && updates.price !== existing.price) ||
+        (updates.billingPeriod !== undefined && updates.billingPeriod !== existing.billingPeriod) ||
+        updates.isActive === false)
+    ) {
+      throw new BadRequestError('The four standard wholesaler plans and their prices cannot be changed');
+    }
     const plan = await SubscriptionPlan.findByIdAndUpdate(
       planId,
       { $set: updates },
@@ -192,6 +232,10 @@ class SubscriptionService {
   }
 
   static async deletePlan(planId) {
+    const existing = await this.getPlan(planId);
+    if (CANONICAL_PLAN_KEYS.includes(existing.key)) {
+      throw new BadRequestError('The four standard wholesaler plans cannot be deleted');
+    }
     const plan = await SubscriptionPlan.findByIdAndDelete(planId);
     if (!plan) throw new NotFoundError('Subscription plan not found');
     return plan;
@@ -292,13 +336,14 @@ class SubscriptionService {
 
   static async getWholesalerSubscription(userId) {
     const [allPlans, profile, subscription, payments] = await Promise.all([
-      this.getPlans({ includeInactive: true }),
+      this.getCustomerPlans({ includeInactive: true }),
       WholesalerProfile.findOne({ userId, isDeleted: false }).select('_id'),
       WholesalerSubscription.findOne({ userId }),
       SubscriptionPayment.find({ userId }).sort({ createdAt: -1 }).lean(),
     ]);
     if (!profile) throw new NotFoundError('Wholesaler profile not found');
-    if (subscription?.status === 'ACTIVE' && subscription.renewalDate <= new Date()) {
+    const renewalTime = subscription?.renewalDate ? new Date(subscription.renewalDate).getTime() : 0;
+    if (subscription?.status === 'ACTIVE' && renewalTime <= Date.now()) {
       subscription.status = 'EXPIRED';
       await subscription.save();
     }
@@ -371,11 +416,15 @@ class SubscriptionService {
   static async createOrder(userId, planId) {
     if (!configured()) return { configured: false };
     if (!planId) throw new BadRequestError('A subscription plan is required');
+    await this.ensurePlanCatalog();
     const [plan, profile] = await Promise.all([
       this.getPlan(planId),
       WholesalerProfile.findOne({ userId, isDeleted: false }).select('_id businessName'),
     ]);
     if (!profile) throw new NotFoundError('Wholesaler profile not found');
+    if (!CANONICAL_PLAN_KEYS.includes(plan.key)) {
+      throw new BadRequestError('Choose one of the four standard wholesaler subscription plans');
+    }
     if (!plan.isActive) throw new ConflictError('Online subscriptions are currently unavailable');
     const amount = Math.round(plan.price * 100);
     const gatewayResponse = await fetch('https://api.razorpay.com/v1/orders', {

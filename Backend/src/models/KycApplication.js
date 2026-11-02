@@ -50,10 +50,10 @@ const kycApplicationSchema = new mongoose.Schema(
       country: { type: String, default: 'India' },
     },
     bankDetails: {
-      accountHolderName: { type: String, required: true },
-      accountNumber: { type: String, required: true },
-      ifscCode: { type: String, required: true },
-      bankName: { type: String, required: true },
+      accountHolderName: { type: String, default: '' },
+      accountNumber: { type: String, default: '' },
+      ifscCode: { type: String, default: '' },
+      bankName: { type: String, default: '' },
       branch: { type: String, default: '' },
     },
     documents: [

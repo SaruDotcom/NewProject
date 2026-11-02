@@ -82,7 +82,7 @@ function billingLabel(period: SubscriptionPlan['billingPeriod'] | WholesalerSubs
 }
 
 function durationLabel(period: SubscriptionPlan['billingPeriod'] | WholesalerSubscription['billingPeriod']) {
-  return period === 'YEARLY' ? '1 Year (365 Days)' : '1 Month (30 Days)';
+  return period === 'YEARLY' ? '1 Year' : '1 Month';
 }
 
 function getDaysRemaining(renewalDate?: string) {
@@ -204,7 +204,7 @@ export default function SubscriptionPage() {
           planName: plan.name,
           billingPeriod: plan.billingPeriod,
         },
-        theme: { color: '#20A66A' },
+        theme: { color: '#6D1D36' },
         handler: async (response: RazorpayResponse) => {
           isPaymentHandled = true;
           try {
@@ -402,85 +402,52 @@ export default function SubscriptionPage() {
           </div>
         )}
 
-        <div className="grid items-stretch gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 2xl:grid-cols-4">
           {plans.map((plan) => {
             const isCurrentPlan = Boolean(subscription && String(subscription.planId) === plan.id);
             const currentPlanActive = isCurrentPlan && isSubscriptionActive;
-            const taxes = calculateTaxBreakdown(plan.price);
 
             return (
               <article
                 key={plan.id}
                 className={`relative flex flex-col justify-between overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md ${
                   plan.recommended
-                    ? 'border-tradeflow-green ring-2 ring-tradeflow-green/20'
+                    ? 'border-[#7A233D] ring-2 ring-[#7A233D]/10'
                     : 'border-tradeflow-gray-200'
                 }`}
               >
-                {/* Recommended Badge */}
-                {plan.recommended && (
-                  <div className="flex items-center justify-center gap-1.5 bg-tradeflow-green py-2 text-xs font-extrabold uppercase tracking-wider text-tradeflow-navy">
-                    <Sparkles className="h-3.5 w-3.5" /> Most Popular Wholesaler Choice
-                  </div>
-                )}
-
-                <div className="p-6 space-y-5 flex-1">
+                <div className="flex-1 space-y-4 p-4">
                   {/* Plan Title & Badge */}
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-h-14 items-start justify-between gap-2">
                     <div>
-                      <h3 className="text-xl font-black text-tradeflow-navy">{plan.name}</h3>
-                      <p className="mt-1 text-xs text-gray-500 min-h-8">{plan.description}</p>
+                      <h3 className="text-base font-black text-[#5D1D32]">{plan.name}</h3>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">{plan.description}</p>
                     </div>
-                    {currentPlanActive && (
-                      <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-extrabold text-emerald-800">
-                        Current
+                    {plan.recommended && (
+                      <span className="shrink-0 rounded-full bg-[#F7EDE3] px-2 py-1 text-[10px] font-bold text-[#6D1D36]">
+                        Popular
                       </span>
                     )}
                   </div>
 
                   {/* Price & Duration */}
-                  <div className="rounded-xl bg-gray-50/80 p-4 border border-gray-100">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-3xl font-black text-tradeflow-navy">
+                  <div className="rounded-xl border border-[#E8D8C8] bg-[#FBF5EA] p-3">
+                    <div className="flex flex-wrap items-baseline gap-x-1.5">
+                      <span className="text-3xl font-black text-[#5D1D32]">
                         ₹{plan.price.toLocaleString('en-IN')}
                       </span>
-                      <span className="text-xs font-semibold text-gray-500">
-                        / {billingLabel(plan.billingPeriod)}
-                      </span>
+                      <span className="text-xs font-semibold text-[#6D514C]">/ {durationLabel(plan.billingPeriod)}</span>
                     </div>
-
-                    <div className="mt-2 flex items-center justify-between text-xs text-gray-600 border-t border-gray-200/60 pt-2">
-                      <span className="font-medium">Plan Validity:</span>
-                      <span className="font-bold text-gray-800">{durationLabel(plan.billingPeriod)}</span>
-                    </div>
-
-                    {/* Tax Breakdown */}
-                    <div className="mt-2 space-y-1 text-[11px] text-gray-500 bg-white p-2.5 rounded-lg border border-gray-200/80">
-                      <div className="flex justify-between">
-                        <span>Base Price:</span>
-                        <span className="font-medium text-gray-700">₹{taxes.basePrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Applicable GST (18%):</span>
-                        <span className="font-medium text-gray-700">₹{taxes.gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between font-bold text-gray-800 border-t border-dashed border-gray-200 pt-1">
-                        <span>Total Payable:</span>
-                        <span>₹{taxes.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <p className="text-[10px] text-emerald-700 font-medium pt-0.5">
-                        ✓ Inclusive of 18% GST · Tax invoice provided
-                      </p>
-                    </div>
+                    <p className="mt-1 text-[11px] font-medium text-[#6D514C]">Valid for {durationLabel(plan.billingPeriod)}</p>
                   </div>
 
                   {/* Features List */}
-                  <div className="space-y-2.5">
-                    <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Included Features</p>
-                    <ul className="space-y-2 text-xs text-gray-700">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Included Features</p>
+                    <ul className="space-y-1.5 text-[11px] text-gray-700">
                       {plan.features.filter((f) => f.enabled).map((feature) => (
                         <li key={feature.id} className="flex items-start gap-2">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#8A2C45]" />
                           <span>{feature.title}</span>
                         </li>
                       ))}
@@ -489,12 +456,12 @@ export default function SubscriptionPage() {
                 </div>
 
                 {/* Footer Action & Supported Payment Methods */}
-                <div className="border-t border-gray-100 bg-gray-50/50 p-6 space-y-3">
-                  <div className="flex items-center justify-between text-[11px] text-gray-500">
+                <div className="space-y-3 border-t border-[#E8D8C8] bg-[#FBF5EA]/70 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500">
                     <span className="flex items-center gap-1">
                       <CreditCard className="h-3.5 w-3.5 text-gray-400" /> UPI, Cards, Net Banking
                     </span>
-                    <span className="flex items-center gap-1 font-semibold text-emerald-700">
+                    <span className="flex items-center gap-1 font-semibold text-[#6D1D36]">
                       <Lock className="h-3 w-3" /> Razorpay
                     </span>
                   </div>
@@ -503,7 +470,7 @@ export default function SubscriptionPage() {
                     <button
                       type="button"
                       disabled
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-100 px-4 py-3 text-sm font-bold text-emerald-800 cursor-default"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-100 px-3 py-2.5 text-xs font-bold text-emerald-800 cursor-default"
                     >
                       <CheckCircle2 className="h-4 w-4" /> Current Plan Active
                     </button>
@@ -512,7 +479,7 @@ export default function SubscriptionPage() {
                       type="button"
                       onClick={() => handleStartCheckout(plan)}
                       disabled={Boolean(submittingPlanId) || !paymentConfigured}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-tradeflow-green px-4 py-3 text-sm font-extrabold text-tradeflow-navy shadow-sm transition hover:bg-tradeflow-green-hover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer active:scale-[0.99]"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6D1D36] px-3 py-2.5 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#541529] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer active:scale-[0.99]"
                     >
                       {submittingPlanId === plan.id ? (
                         <>
@@ -522,7 +489,7 @@ export default function SubscriptionPage() {
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4" />
-                          <span>{isCurrentPlan ? 'Renew Subscription' : 'Subscribe & Pay Now'}</span>
+                          <span>{isCurrentPlan ? 'Renew Plan' : 'Choose Plan'}</span>
                           <ArrowRight className="h-4 w-4" />
                         </>
                       )}

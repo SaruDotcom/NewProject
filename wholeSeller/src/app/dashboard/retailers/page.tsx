@@ -5,6 +5,7 @@ import { Check, Copy, Download, Eye, MessageCircle, RefreshCw, Search, Share2, S
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Retailer } from '@/lib/types';
 import api from '@/lib/api';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 
 type RetailerReferral = { code: string; signupsEnabled: boolean; joinedCount: number };
 type RetailerDetails = Retailer & {
@@ -113,7 +114,14 @@ function PrivateDocumentViewer({
 }
 
 export default function RetailersPage() {
-  const { profile, retailers, orders } = useWholesaler();
+  const {
+    profile,
+    retailers,
+    orders,
+    isProfileLoaded,
+    isSubscriptionStatusLoaded,
+    isBusinessActivated,
+  } = useWholesaler();
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedCredential, setCopiedCredential] = useState('');
   const [selectedRetailerDetails, setSelectedRetailerDetails] = useState<Retailer | null>(null);
@@ -163,10 +171,17 @@ export default function RetailersPage() {
   }, []);
 
   React.useEffect(() => {
+    if (!isBusinessActivated) {
+      setReferral(null);
+      setReferralError('');
+      setIsReferralLoading(false);
+      return;
+    }
     void loadReferral();
-  }, [loadReferral]);
+  }, [isBusinessActivated, loadReferral]);
 
   const updateReferral = async (action: () => Promise<{ data: RetailerReferral }>) => {
+    if (!isBusinessActivated) return;
     setIsReferralUpdating(true);
     setReferralError('');
     try {
@@ -280,6 +295,13 @@ export default function RetailersPage() {
         </div>
       </div>
 
+      <BusinessActivationNotice
+        kycStatus={profile.kycStatus}
+        subscriptionStatus={profile.subscriptionStatus}
+        isProfileLoaded={isProfileLoaded}
+        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
+      />
+
       <div className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-xs">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-tradeflow-gray-200 pb-3">
           <div>
@@ -310,19 +332,31 @@ export default function RetailersPage() {
             </div>
             <p className="text-xs font-semibold text-gray-700">{referral.joinedCount} retailer{referral.joinedCount === 1 ? '' : 's'} joined through your referral.</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => referralUrl && copyCredential(referralUrl)} disabled={!referralUrl} className="flex items-center justify-center gap-2 rounded-xl bg-tradeflow-navy px-4 py-2.5 text-xs font-black text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50">
+              <button
+                type="button"
+                onClick={() => referralUrl && isBusinessActivated && copyCredential(referralUrl)}
+                disabled={!referralUrl || !isBusinessActivated}
+                title={!isBusinessActivated ? 'Approved KYC and active subscription are required to copy invite links' : undefined}
+                className="flex items-center justify-center gap-2 rounded-xl bg-tradeflow-navy px-4 py-2.5 text-xs font-black text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 {copiedCredential === referralUrl ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
                 Copy Link
               </button>
-              <button type="button" onClick={() => referralUrl && window.open(`https://wa.me/?text=${encodeURIComponent(referralUrl)}`, '_blank', 'noopener,noreferrer')} disabled={!referralUrl} className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-xs font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <button
+                type="button"
+                onClick={() => referralUrl && isBusinessActivated && window.open(`https://wa.me/?text=${encodeURIComponent(referralUrl)}`, '_blank', 'noopener,noreferrer')}
+                disabled={!referralUrl || !isBusinessActivated}
+                title={!isBusinessActivated ? 'Approved KYC and active subscription are required to share invite links' : undefined}
+                className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-xs font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 <MessageCircle className="h-4 w-4" />
                 Share via WhatsApp
               </button>
-              <button type="button" onClick={handleRegenerateReferral} disabled={isReferralUpdating} className="flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold text-gray-700 disabled:opacity-50">
+              <button type="button" onClick={handleRegenerateReferral} disabled={isReferralUpdating || !isBusinessActivated} className="flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold text-gray-700 disabled:cursor-not-allowed disabled:opacity-50">
                 <RefreshCw className="h-4 w-4" />
                 Regenerate Code
               </button>
-              <button type="button" onClick={handleToggleSignups} disabled={isReferralUpdating} className="rounded-xl border px-4 py-2.5 text-xs font-bold text-gray-700 disabled:opacity-50">
+              <button type="button" onClick={handleToggleSignups} disabled={isReferralUpdating || !isBusinessActivated} className="rounded-xl border px-4 py-2.5 text-xs font-bold text-gray-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {referral.signupsEnabled ? 'Pause Sign-ups' : 'Resume Sign-ups'}
               </button>
             </div>

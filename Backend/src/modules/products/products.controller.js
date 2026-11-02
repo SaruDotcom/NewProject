@@ -4,10 +4,15 @@ const ProductTemplateService = require('./products.template.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 const { uploadProductImage } = require('../../services/cloudinary.service');
+const { ROLES } = require('../../config/constants');
+const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
 class ProductController {
   // Upload product images
   uploadImages = asyncHandler(async (req, res) => {
+    if (req.user?.role === ROLES.WHOLESALER) {
+      await assertWholesalerBusinessActivated(req.user._id || req.user.id);
+    }
     if (!req.files || req.files.length === 0) {
       return ApiResponse.error(res, 'No images uploaded', 400);
     }

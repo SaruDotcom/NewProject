@@ -1,14 +1,11 @@
 const {
   Category,
   Product,
-  WholesalerProfile,
 } = require('../../models');
-const {
-  KYC_STATUS,
-} = require('../../config/constants');
 const { getCategoryAttributeSchema, normalizeCategoryKey } = require('../../config/categoryAttributes');
 const ProductService = require('./products.service');
-const { BadRequestError, ForbiddenError } = require('../../utils/errors');
+const { BadRequestError } = require('../../utils/errors');
+const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
 const MAX_BULK_ROWS = 500;
 const GST_OPTIONS = [0, 5, 12, 18, 28];
@@ -485,10 +482,7 @@ class BulkProductService {
   }
 
   static async importValidRows(rows, wholesalerUser, req = null) {
-    const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
-    if (!profile || profile.kycStatus !== KYC_STATUS.APPROVED) {
-      throw new ForbiddenError('Wholesaler KYC must be approved before importing products', 'KYC_APPROVAL_REQUIRED');
-    }
+    await assertWholesalerBusinessActivated(wholesalerUser._id);
 
     const preview = await this.preview(rows, wholesalerUser);
     const imported = [];

@@ -660,21 +660,21 @@ export function KycDetailPage() {
         <DetailCard title="Bank and pickup details" icon={Landmark} tone="violet">
           <InfoField
             label="Account holder"
-            value={bank.accountHolderName || profileBank.accountHolderName}
+            value={bank.accountHolderName || profileBank.accountHolderName || "Not provided (optional)"}
           />
           <InfoField
             label="Account number"
-            value={bank.accountNumber || profileBank.accountNumber}
-            isMono
+            value={bank.accountNumber || profileBank.accountNumber || "Not provided (optional)"}
+            isMono={Boolean(bank.accountNumber || profileBank.accountNumber)}
           />
           <InfoField
             label="Bank name"
-            value={bank.bankName || profileBank.bankName}
+            value={bank.bankName || profileBank.bankName || "Not provided (optional)"}
           />
           <InfoField
             label="IFSC Code"
-            value={bank.ifscCode || profileBank.ifscCode}
-            badge
+            value={bank.ifscCode || profileBank.ifscCode || "Not provided (optional)"}
+            badge={Boolean(bank.ifscCode || profileBank.ifscCode)}
           />
           <InfoField
             label="Pickup address"

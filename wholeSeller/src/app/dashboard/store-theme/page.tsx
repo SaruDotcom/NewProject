@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, Palette, Store } from 'lucide-react';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api, { type WholesalerStoreTheme } from '@/lib/api';
 
@@ -36,7 +37,7 @@ const THEMES: Array<{
 ];
 
 export default function StoreThemePage() {
-  const { profile, updateProfile } = useWholesaler();
+  const { profile, updateProfile, isBusinessActivated } = useWholesaler();
   const [selectedTheme, setSelectedTheme] = useState<WholesalerStoreTheme>(profile.activeStoreTheme || 'DEFAULT');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -47,6 +48,7 @@ export default function StoreThemePage() {
   }, [profile.activeStoreTheme]);
 
   const saveTheme = async () => {
+    if (!isBusinessActivated) return;
     setIsSaving(true);
     setMessage('');
     setError('');
@@ -63,6 +65,7 @@ export default function StoreThemePage() {
 
   return (
     <div className="space-y-6">
+      <BusinessActivationNotice />
       <header className="flex items-start gap-3">
         <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green">
           <Palette className="h-5 w-5" />
@@ -116,7 +119,8 @@ export default function StoreThemePage() {
           <button
             type="button"
             onClick={() => void saveTheme()}
-            disabled={isSaving || selectedTheme === profile.activeStoreTheme}
+            disabled={isSaving || !isBusinessActivated || selectedTheme === profile.activeStoreTheme}
+            title={!isBusinessActivated ? 'Approved KYC and active subscription are required to update storefront theme' : undefined}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-tradeflow-green px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-tradeflow-green-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : 'Save theme'}

@@ -8,9 +8,7 @@ import {
   ArrowUpRight,
   Plus,
   CheckCircle2,
-  Clock,
   ChevronRight,
-  AlertTriangle,
   Flame,
   ShieldCheck,
   Globe,
@@ -33,6 +31,7 @@ import {
 } from 'recharts';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { ProductImage } from '@/components/products/ProductImage';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 
 // 14-Day Sales Snapshot Data
 const SALES_SNAPSHOT_DATA = [
@@ -53,7 +52,16 @@ const SALES_SNAPSHOT_DATA = [
 ];
 
 export default function OverviewPage() {
-  const { profile, products, retailers, orders, updateOrderStatus, isProfileLoaded } = useWholesaler();
+  const {
+    profile,
+    products,
+    retailers,
+    orders,
+    updateOrderStatus,
+    isProfileLoaded,
+    isSubscriptionStatusLoaded,
+    isBusinessActivated,
+  } = useWholesaler();
   const location = useLocation();
   const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(
     Boolean((location.state as { registrationSuccess?: boolean } | null)?.registrationSuccess),
@@ -102,7 +110,11 @@ export default function OverviewPage() {
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <Link
             to="/dashboard/products"
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md"
+            onClick={(event) => {
+              if (!isBusinessActivated) event.preventDefault();
+            }}
+            aria-disabled={!isBusinessActivated}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md ${isBusinessActivated ? '' : 'cursor-not-allowed opacity-50'}`}
           >
             <Plus className="w-4 h-4" />
             <span>Add Product</span>
@@ -119,54 +131,17 @@ export default function OverviewPage() {
 
       {showRegistrationSuccess && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
-          <span className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4" /> Registration Successful — your account is ready.</span>
+          <span className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4" /> Registration successful. Complete KYC and choose a subscription to activate business features.</span>
           <button type="button" onClick={() => setShowRegistrationSuccess(false)} aria-label="Dismiss registration confirmation" className="rounded p-1 hover:bg-emerald-100"><span aria-hidden="true">×</span></button>
         </div>
       )}
 
-      {isProfileLoaded && profile.kycStatus !== 'APPROVED' && (
-        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-2">
-            {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW' ? (
-              <Clock className="mt-0.5 size-4 shrink-0 text-amber-700" />
-            ) : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED' ? (
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600" />
-            ) : (
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-700" />
-            )}
-            <div>
-              <p className="font-bold">
-                {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-                  ? 'KYC verification is under review.'
-                  : profile.kycStatus === 'REJECTED'
-                    ? 'KYC application rejected.'
-                    : profile.kycStatus === 'RESUBMISSION_REQUIRED'
-                      ? 'KYC resubmission requested.'
-                      : 'Complete KYC before adding products or categories.'}
-              </p>
-              <p className="mt-0.5 text-xs text-amber-800">
-                {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-                  ? 'Your documents are being reviewed by the administration. Adding products and categories will unlock upon approval.'
-                  : profile.kycStatus === 'REJECTED'
-                    ? 'Your KYC submission was rejected. Please review feedback and resubmit your details.'
-                    : profile.kycStatus === 'RESUBMISSION_REQUIRED'
-                      ? 'Additional or updated documents were requested. Please resubmit your KYC details.'
-                      : 'Submit your business details for KYC review to unlock catalog creation.'}
-              </p>
-            </div>
-          </div>
-          <Link
-            to="/dashboard/profile?tab=kyc"
-            className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
-          >
-            {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-              ? 'View KYC Status'
-              : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED'
-                ? 'Resubmit KYC'
-                : 'Continue KYC'}
-          </Link>
-        </div>
-      )}
+      <BusinessActivationNotice
+        kycStatus={profile.kycStatus}
+        subscriptionStatus={profile.subscriptionStatus}
+        isProfileLoaded={isProfileLoaded}
+        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
+      />
 
       {/* 1. TOP ROW: 4 Summary Stat Cards (Soft-tint circular badges, big bold number, small label, subtle shadow, hover lift) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -516,7 +491,11 @@ export default function OverviewPage() {
               <span className="font-bold text-status-success">{retailers.length} Connected Stores</span>
               <Link
                 to="/dashboard/retailers"
-                className="px-3 py-1 bg-tradeflow-green text-tradeflow-navy text-[11px] font-bold rounded-lg hover:bg-tradeflow-green-hover transition-colors flex items-center gap-1"
+                onClick={(event) => {
+                  if (!isBusinessActivated) event.preventDefault();
+                }}
+                aria-disabled={!isBusinessActivated}
+                className={`px-3 py-1 bg-tradeflow-green text-tradeflow-navy text-[11px] font-bold rounded-lg hover:bg-tradeflow-green-hover transition-colors flex items-center gap-1 ${isBusinessActivated ? '' : 'cursor-not-allowed opacity-50'}`}
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>Share Invite Link</span>

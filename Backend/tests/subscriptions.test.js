@@ -25,10 +25,10 @@ describe('Wholesaler subscriptions', () => {
     global.fetch = originalFetch;
   });
 
-  test('the subscription plan model defaults to ₹499 monthly', () => {
+  test('the subscription plan model defaults to the Basic Monthly price', () => {
     const plan = new SubscriptionPlan({ name: 'Wholesaler Plan' });
 
-    expect(plan.price).toBe(499);
+    expect(plan.price).toBe(299);
     expect(plan.billingPeriod).toBe('MONTHLY');
     expect(plan.isActive).toBe(true);
   });

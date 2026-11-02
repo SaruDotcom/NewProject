@@ -22,6 +22,7 @@ import {
   Store,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 import api, { type WholesalerStoreTheme } from '@/lib/api';
 
 export interface BannerSlide {
@@ -62,7 +63,7 @@ const getTradeflowGradient = (gradient: string) =>
     : 'from-tradeflow-navy via-tradeflow-green to-tradeflow-navy';
 
 export default function BannerSlidesPage() {
-  const { categories, profile } = useWholesaler();
+  const { categories, profile, isBusinessActivated } = useWholesaler();
   const [slides, setSlides] = useState<BannerSlide[]>([]);
   const [presetOptions, setPresetOptions] = useState<BannerSlide[]>([]);
   const [businessCategory, setBusinessCategory] = useState<string>('CLOTHING');
@@ -330,6 +331,7 @@ export default function BannerSlidesPage() {
 
   return (
     <div className="space-y-6">
+      <BusinessActivationNotice />
       {/* Header */}
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -356,7 +358,9 @@ export default function BannerSlidesPage() {
           </button>
           <button
             onClick={handleOpenCreateModal}
-            className="px-4 py-2 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md flex items-center gap-2"
+            disabled={!isBusinessActivated}
+            title={!isBusinessActivated ? 'Approved KYC and active subscription are required to create custom banners' : undefined}
+            className="px-4 py-2 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="w-4 h-4" /> Add Custom Banner
           </button>
@@ -488,8 +492,9 @@ export default function BannerSlidesPage() {
                           void handleActivatePreset(preset);
                         }
                       }}
-                      disabled={saving}
-                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      disabled={saving || !isBusinessActivated}
+                      title={!isBusinessActivated ? 'Approved KYC and active subscription are required to activate offers' : undefined}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50 ${
                         isCurrentlyActive
                           ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                           : 'bg-tradeflow-gray-100 text-tradeflow-navy hover:bg-tradeflow-gray-200'

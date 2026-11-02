@@ -84,13 +84,13 @@ class KycService {
     }
 
     const accountNumber = (kycData.accountNumber || kycData.bankDetails?.accountNumber || '').trim();
-    if (!accountNumber || !/^\d{9,18}$/.test(accountNumber)) {
+    if (accountNumber && !/^\d{9,18}$/.test(accountNumber)) {
       throw new BadRequestError('Invalid Bank Account Number. Must be between 9 and 18 numeric digits.', 'INVALID_ACCOUNT_NUMBER');
     }
 
     const ifscCode = (kycData.ifscCode || kycData.bankDetails?.ifscCode || '').trim().toUpperCase();
     const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-    if (!ifscCode || !ifscRegex.test(ifscCode)) {
+    if (ifscCode && !ifscRegex.test(ifscCode)) {
       throw new BadRequestError('Invalid IFSC code format. Must be a valid 11-character Indian IFSC code (e.g. SBIN0001234 or PUNB0123400).', 'INVALID_IFSC');
     }
 
@@ -121,12 +121,12 @@ class KycService {
         state: kycData.state || '',
         pincode: kycData.pincode || '',
       },
-      bankDetails: kycData.bankDetails || {
-        accountHolderName: kycData.accountHolderName || '',
-        accountNumber: kycData.accountNumber || '',
-        ifscCode: kycData.ifscCode || '',
-        bankName: kycData.bankName || '',
-        branch: kycData.branch || '',
+      bankDetails: {
+        accountHolderName: (kycData.accountHolderName || kycData.bankDetails?.accountHolderName || '').trim(),
+        accountNumber,
+        ifscCode,
+        bankName: (kycData.bankName || kycData.bankDetails?.bankName || '').trim(),
+        branch: (kycData.branch || kycData.bankDetails?.branch || '').trim(),
       },
       documents: documentIds,
       status: KYC_STATUS.SUBMITTED,

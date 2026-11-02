@@ -25,12 +25,25 @@ import { Product, Category, WholesaleTier, CustomAttribute } from '@/lib/types';
 import { getCategoryAttributeSchema, CategoryAttributeDef } from '@/lib/categoryAttributes';
 import BulkProductUpload from '@/components/products/BulkProductUpload';
 import { ProductImage } from '@/components/products/ProductImage';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 import api from '@/lib/api';
 import type { ApiErrorDetail } from '@/lib/api';
 
 export default function ProductsPage() {
-  const { profile, products, categories, addProduct, updateProduct, deleteProduct, refreshData, isLoading, isProfileLoaded } = useWholesaler();
-  const canCreateProducts = isProfileLoaded && profile.kycStatus === 'APPROVED';
+  const {
+    profile,
+    products,
+    categories,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    refreshData,
+    isLoading,
+    isProfileLoaded,
+    isSubscriptionStatusLoaded,
+    isBusinessActivated,
+  } = useWholesaler();
+  const canCreateProducts = isBusinessActivated;
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -208,6 +221,7 @@ export default function ProductsPage() {
   }, [canCreateProducts, handleOpenAddModal, location.pathname, location.state, navigate]);
 
   const handleOpenEditModal = (product: Product) => {
+    if (!canCreateProducts) return;
     setEditingProduct(product);
     setFormError(null);
     setFormFieldErrors([]);
@@ -359,6 +373,10 @@ export default function ProductsPage() {
   // Form Submit Handler
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateProducts) {
+      setFormError('Approved KYC and an active subscription are required to manage products.');
+      return;
+    }
     setFormError(null);
     setFormFieldErrors([]);
 
@@ -563,9 +581,9 @@ export default function ProductsPage() {
 
           <button
             onClick={handleOpenAddModal}
-            disabled={isProfileLoaded && !canCreateProducts}
+            disabled={!canCreateProducts}
             className="flex items-center gap-2 px-4 py-2.5 bg-tradeflow-green text-tradeflow-navy text-xs font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
-            title={isProfileLoaded && !canCreateProducts ? 'Complete KYC verification before adding products' : undefined}
+            title={!canCreateProducts ? 'Approved KYC and an active subscription are required' : undefined}
           >
             <Plus className="w-4 h-4" />
             <span>Add Product</span>
@@ -573,12 +591,20 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {isProfileLoaded && !canCreateProducts && (
+      {profile.kycStatus === 'APPROVED' && (
+        <BusinessActivationNotice
+          kycStatus={profile.kycStatus}
+          subscriptionStatus={profile.subscriptionStatus}
+          isProfileLoaded={isProfileLoaded}
+          isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
+        />
+      )}
+      {isProfileLoaded && profile.kycStatus !== 'APPROVED' && (
         <div className="flex flex-col gap-3 border border-amber-500/30 bg-amber-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-bold text-status-warning-foreground">
               {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-                ? 'KYC verification is under review.'
+                ? 'Complete your KYC.'
                 : profile.kycStatus === 'REJECTED'
                   ? 'KYC application needs changes.'
                   : profile.kycStatus === 'RESUBMISSION_REQUIRED'
@@ -745,6 +771,7 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleOpenEditModal(product)}
+                      disabled={!canCreateProducts}
                       className="p-2 text-gray-500 hover:text-green-700 hover:bg-tradeflow-green-50 rounded-lg transition-colors"
                       title="Edit Product"
                     >
@@ -756,6 +783,7 @@ export default function ProductsPage() {
                           deleteProduct(product.id);
                         }
                       }}
+                      disabled={!canCreateProducts}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete Product"
                     >
@@ -814,6 +842,7 @@ export default function ProductsPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleOpenEditModal(product)}
+                            disabled={!canCreateProducts}
                             className="px-2.5 py-1 bg-tradeflow-gray-50 border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
                           >
                             <Edit className="w-3.5 h-3.5" />
@@ -825,6 +854,7 @@ export default function ProductsPage() {
                                 deleteProduct(product.id);
                               }
                             }}
+                            disabled={!canCreateProducts}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />

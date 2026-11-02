@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
-const { User, Category, Product, WholesalerProfile } = require('../src/models');
+const { User, Category, Product, WholesalerProfile, WholesalerSubscription } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
 
@@ -19,7 +19,7 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
   beforeEach(async () => {
     await clearDatabase();
 
-    // 1. Create Wholesaler 1 (Approved KYC)
+    // 1. Create Wholesaler 1 (Approved KYC & Active Subscription)
     const passHash = await User.hashPassword('Password@123');
     wholesalerUser = await User.create({
       name: 'Alpha Wholesaler',
@@ -32,6 +32,15 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
       userId: wholesalerUser._id,
       businessName: 'Alpha Wholesale House',
       kycStatus: KYC_STATUS.APPROVED,
+    });
+    await WholesalerSubscription.create({
+      userId: wholesalerUser._id,
+      planName: 'Basic Monthly',
+      status: 'ACTIVE',
+      amount: 299,
+      currency: 'INR',
+      billingPeriod: 'MONTHLY',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
     wholesalerToken = AuthService.generateTokens(wholesalerUser).accessToken;
 
@@ -47,6 +56,15 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
       userId: otherWholesalerUser._id,
       businessName: 'Beta Wholesale House',
       kycStatus: KYC_STATUS.APPROVED,
+    });
+    await WholesalerSubscription.create({
+      userId: otherWholesalerUser._id,
+      planName: 'Basic Monthly',
+      status: 'ACTIVE',
+      amount: 299,
+      currency: 'INR',
+      billingPeriod: 'MONTHLY',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
     otherWholesalerToken = AuthService.generateTokens(otherWholesalerUser).accessToken;
 

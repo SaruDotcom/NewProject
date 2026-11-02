@@ -6,7 +6,7 @@ const serializePlans = (plans) => plans.map((plan) => SubscriptionService.serial
 
 module.exports = {
   getPublicPlan: asyncHandler(async (_req, res) => {
-    const plans = await SubscriptionService.getPlans();
+    const plans = await SubscriptionService.getCustomerPlans();
     return ApiResponse.success(res, { plans: serializePlans(plans) }, 'Subscription plans retrieved');
   }),
 

@@ -4,13 +4,14 @@ const authenticate = require('../../middleware/authenticate');
 const authorize = require('../../middleware/authorize');
 const { referralLookupRateLimiter } = require('../../middleware/rateLimiter');
 const { ROLES } = require('../../config/constants');
+const { requireActiveWholesaler } = require('../../middleware/wholesalerAccess');
 
 const publicRoutes = express.Router();
 publicRoutes.get('/:code', referralLookupRateLimiter, controller.lookup);
 publicRoutes.get('/:code/products', referralLookupRateLimiter, controller.getReferralProducts);
 
 const wholesalerRoutes = express.Router();
-wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));
+wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER), requireActiveWholesaler);
 wholesalerRoutes.get('/', controller.getWholesalerReferral);
 wholesalerRoutes.post('/regenerate', controller.regenerate);
 wholesalerRoutes.patch('/', controller.updateSettings);

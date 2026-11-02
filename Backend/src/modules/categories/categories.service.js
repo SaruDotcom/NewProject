@@ -1,9 +1,10 @@
 const slugify = require('slugify');
-const { Category, Product, WholesalerProfile } = require('../../models');
+const { Category, Product } = require('../../models');
 const { BadRequestError, NotFoundError, ConflictError, ForbiddenError } = require('../../utils/errors');
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
-const { AUDIT_ACTION, KYC_STATUS } = require('../../config/constants');
+const { AUDIT_ACTION } = require('../../config/constants');
+const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
 const getDuplicateCategoryScope = (wholesalerId) => (
   wholesalerId
@@ -275,13 +276,7 @@ class CategoryService {
     const { name, description, imageUrl, icon, parentId, sortOrder } = categoryData || {};
 
     if (user.role === 'WHOLESALER') {
-      const wholesalerProfile = await WholesalerProfile.findOne({ userId: user._id });
-      if (!wholesalerProfile || wholesalerProfile.kycStatus !== KYC_STATUS.APPROVED) {
-        throw new ForbiddenError(
-          'Wholesaler KYC must be approved before creating categories',
-          'KYC_APPROVAL_REQUIRED'
-        );
-      }
+      await assertWholesalerBusinessActivated(user._id);
     }
 
     if (typeof name !== 'string' || name.trim().length === 0) {
@@ -351,6 +346,9 @@ class CategoryService {
    */
   static async updateCategory(categoryId, updateData, user, req = null) {
     updateData = updateData || {};
+    if (user?.role === 'WHOLESALER') {
+      await assertWholesalerBusinessActivated(user._id);
+    }
     const category = String(categoryId).match(/^[0-9a-fA-F]{24}$/)
       ? await Category.findById(categoryId)
       : await Category.findOne({
@@ -434,6 +432,9 @@ class CategoryService {
    * cascades to child subcategories, and allows deleting global or wholesaler-owned categories.
    */
   static async deleteCategory(categoryId, user, req = null) {
+    if (user?.role === 'WHOLESALER') {
+      await assertWholesalerBusinessActivated(user._id);
+    }
     const category = String(categoryId).match(/^[0-9a-fA-F]{24}$/)
       ? await Category.findById(categoryId)
       : await Category.findOne({

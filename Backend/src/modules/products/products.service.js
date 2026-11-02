@@ -10,7 +10,6 @@ const {
 } = require('../../models');
 const {
   PRODUCT_STATUS,
-  KYC_STATUS,
   INVENTORY_TRANSACTION_TYPE,
   AUDIT_ACTION,
   ROLES,
@@ -24,7 +23,10 @@ const {
 } = require('../../utils/errors');
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
-const { assertWholesalerAvailable } = require('../../services/wholesaler-access.service');
+const {
+  assertWholesalerAvailable,
+  assertWholesalerBusinessActivated,
+} = require('../../services/wholesaler-access.service');
 
 function validateTaxDetails(tax) {
   const { cgst, sgst, igst } = tax;
@@ -404,15 +406,7 @@ class ProductService {
   static async createProduct(productData, wholesalerUser, req = null) {
     const wholesalerId = wholesalerUser._id;
     validateTaxDetails(productData);
-
-    // Check KYC status before allowing product publication
-    const wholesalerProfile = await WholesalerProfile.findOne({ userId: wholesalerId });
-    if (!wholesalerProfile || wholesalerProfile.kycStatus !== KYC_STATUS.APPROVED) {
-      throw new ForbiddenError(
-        'Wholesaler KYC must be approved before publishing products',
-        'KYC_APPROVAL_REQUIRED'
-      );
-    }
+    await assertWholesalerBusinessActivated(wholesalerId);
 
     const {
       name,
@@ -566,6 +560,9 @@ class ProductService {
     const productWholesalerId = String(product.wholesalerId?._id || product.wholesalerId || '');
     if (user.role === ROLES.WHOLESALER && userWholesalerId !== productWholesalerId) {
       throw new ForbiddenError('You can only update your own products');
+    }
+    if (user.role === ROLES.WHOLESALER) {
+      await assertWholesalerBusinessActivated(user._id || user.id);
     }
 
     const beforeState = product.toJSON();
@@ -854,6 +851,9 @@ class ProductService {
 
     if (user.role === ROLES.WHOLESALER && String(product.wholesalerId) !== String(user._id)) {
       throw new ForbiddenError('You can only delete your own products');
+    }
+    if (user.role === ROLES.WHOLESALER) {
+      await assertWholesalerBusinessActivated(user._id || user.id);
     }
 
     product.isDeleted = true;

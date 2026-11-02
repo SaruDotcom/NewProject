@@ -23,6 +23,7 @@ import { useWholesaler } from '@/context/WholesalerContext';
 import { Category } from '@/lib/types';
 import { CategoryCard } from '@/components/categories/CategoryCard';
 import api, { ApiError } from '@/lib/api';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 import { Link } from 'react-router-dom';
 
 // Helper to determine the nesting depth of a category (Level 1: Root, Level 2: Subcategory, Level 3: Sub-subcategory)
@@ -55,8 +56,19 @@ function getAllDescendantCategoryIds(catId: string, categoriesList: Category[]):
 }
 
 export default function CategoriesPage() {
-  const { profile, categories, products, addCategory, updateCategory, deleteCategory, isLoading, isProfileLoaded } = useWholesaler();
-  const canCreateCategories = isProfileLoaded && profile.kycStatus === 'APPROVED';
+  const {
+    profile,
+    categories,
+    products,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+    isLoading,
+    isProfileLoaded,
+    isSubscriptionStatusLoaded,
+    isBusinessActivated,
+  } = useWholesaler();
+  const canCreateCategories = isBusinessActivated;
 
   // UI View Mode (Grid or List/Table)
   const [viewMode, setViewMode] = useState<'GRID' | 'TABLE'>('TABLE');
@@ -138,6 +150,7 @@ export default function CategoriesPage() {
   };
 
   const handleOpenEditModal = (category: Category) => {
+    if (!canCreateCategories) return;
     setEditingCategory(category);
     setName(category.name);
     setDescription(category.description || '');
@@ -151,6 +164,10 @@ export default function CategoriesPage() {
 
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateCategories) {
+      setFormError('Approved KYC and an active subscription are required to manage categories.');
+      return;
+    }
     const trimmedName = name.trim();
     if (!trimmedName) {
       setFormError('Category name is required.');
@@ -242,12 +259,13 @@ export default function CategoriesPage() {
   };
 
   const handleDeleteClick = (category: Category) => {
+    if (!canCreateCategories) return;
     // Direct deletion confirmation for safe interaction (products are unlinked safely without deletion)
     setConfirmDeleteCategory(category);
   };
 
   const handleConfirmDirectDelete = async () => {
-    if (!confirmDeleteCategory) return;
+    if (!canCreateCategories || !confirmDeleteCategory) return;
     const cat = confirmDeleteCategory;
     setConfirmDeleteCategory(null);
 
@@ -260,7 +278,7 @@ export default function CategoriesPage() {
   };
 
   const handleReassignAndDelete = async () => {
-    if (!categoryToDelete || !replacementCategoryId) return;
+    if (!canCreateCategories || !categoryToDelete || !replacementCategoryId) return;
     const replacement = categories.find((item) => !item.parentId && item.id === replacementCategoryId);
     if (!replacement) return;
 
@@ -407,7 +425,7 @@ export default function CategoriesPage() {
           <button
             type="button"
             onClick={() => handleOpenAddModal()}
-            disabled={isProfileLoaded && !canCreateCategories}
+            disabled={!canCreateCategories}
             className="flex items-center gap-2 px-4 py-2 bg-tradeflow-green text-white text-xs font-semibold rounded-xl hover:bg-tradeflow-green-hover shadow-xs transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
           >
             <Plus className="w-4 h-4 text-white" />
@@ -416,13 +434,20 @@ export default function CategoriesPage() {
         </div>
       </div>
 
-      {/* KYC Warning Banner */}
-      {isProfileLoaded && !canCreateCategories && (
+      {profile.kycStatus === 'APPROVED' && (
+        <BusinessActivationNotice
+          kycStatus={profile.kycStatus}
+          subscriptionStatus={profile.subscriptionStatus}
+          isProfileLoaded={isProfileLoaded}
+          isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
+        />
+      )}
+      {isProfileLoaded && profile.kycStatus !== 'APPROVED' && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 text-xs sm:flex-row sm:items-center sm:justify-between shadow-2xs">
           <div>
             <p className="font-bold text-amber-900">
               {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-                ? 'KYC verification is under review.'
+                ? 'Complete Your KYC.'
                 : profile.kycStatus === 'REJECTED'
                   ? 'KYC verification needs changes.'
                   : profile.kycStatus === 'RESUBMISSION_REQUIRED'
@@ -570,7 +595,7 @@ export default function CategoriesPage() {
                     <button
                       type="button"
                       onClick={() => handleOpenEditModal(cat)}
-                      disabled={!canManageCategory}
+                      disabled={!canManageCategory || !canCreateCategories}
                       className="p-1.5 rounded-lg bg-black/45 hover:bg-black/75 text-white/95 backdrop-blur-xs transition-colors shadow-2xs"
                       title="Edit Category"
                       aria-label={`Edit ${cat.name}`}
@@ -580,7 +605,7 @@ export default function CategoriesPage() {
                     <button
                       type="button"
                       onClick={() => handleDeleteClick(cat)}
-                      disabled={!canManageCategory}
+                      disabled={!canManageCategory || !canCreateCategories}
                       className="p-1.5 rounded-lg bg-black/45 hover:bg-red-600 text-white/95 backdrop-blur-xs transition-colors shadow-2xs"
                       title="Delete Category"
                       aria-label={`Delete ${cat.name}`}
@@ -659,7 +684,7 @@ export default function CategoriesPage() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(subcat)}
-                                disabled={!canManageSubcategory}
+                                disabled={!canManageSubcategory || !canCreateCategories}
                                 className="p-1 text-gray-400 hover:text-tradeflow-green hover:bg-white rounded transition-colors"
                                 title={`Edit ${subcat.name}`}
                                 aria-label={`Edit ${subcat.name}`}
@@ -669,7 +694,7 @@ export default function CategoriesPage() {
                               <button
                                 type="button"
                                 onClick={() => handleDeleteClick(subcat)}
-                                disabled={!canManageSubcategory}
+                                disabled={!canManageSubcategory || !canCreateCategories}
                                 className="p-1 text-gray-400 hover:text-red-600 hover:bg-white rounded transition-colors"
                                 title={`Delete ${subcat.name}`}
                                 aria-label={`Delete ${subcat.name}`}
@@ -710,7 +735,7 @@ export default function CategoriesPage() {
                                       <button
                                         type="button"
                                         onClick={() => handleOpenEditModal(level3)}
-                                        disabled={!canManageLevel3}
+                                        disabled={!canManageLevel3 || !canCreateCategories}
                                         className="p-1 text-gray-400 hover:text-tradeflow-green hover:bg-white rounded transition-colors"
                                         title={`Edit ${level3.name}`}
                                         aria-label={`Edit ${level3.name}`}
@@ -720,7 +745,7 @@ export default function CategoriesPage() {
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteClick(level3)}
-                                        disabled={!canManageLevel3}
+                                        disabled={!canManageLevel3 || !canCreateCategories}
                                         className="p-1 text-gray-400 hover:text-red-600 hover:bg-white rounded transition-colors"
                                         title={`Delete ${level3.name}`}
                                         aria-label={`Delete ${level3.name}`}
@@ -857,7 +882,7 @@ export default function CategoriesPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(cat)}
-                              disabled={!canManageCategory}
+                              disabled={!canManageCategory || !canCreateCategories}
                               className="px-3 py-1.5 bg-[#FAF9F6] border border-[#E7E5E4] hover:border-tradeflow-green/30 hover:text-tradeflow-green text-xs font-bold rounded-xl transition-colors flex items-center gap-1 text-[#1C1917]"
                             >
                               <Edit className="w-3.5 h-3.5" />
@@ -866,7 +891,7 @@ export default function CategoriesPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteClick(cat)}
-                              disabled={!canManageCategory}
+                              disabled={!canManageCategory || !canCreateCategories}
                               className="p-1.5 text-[#78716C] hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete Category"
                             >
@@ -1044,14 +1069,14 @@ export default function CategoriesPage() {
                     setShowAddModal(false);
                     setEditingCategory(null);
                   }}
-                  disabled={isUploading}
+                  disabled={isUploading || !canCreateCategories}
                   className="px-4 py-2 font-bold text-gray-600 hover:text-gray-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploading}
+                  disabled={isUploading || !canCreateCategories}
                   className="px-5 py-2.5 bg-tradeflow-green text-white font-bold rounded-xl hover:bg-tradeflow-green-hover shadow-sm transition-all"
                 >
                   {isUploading ? 'Uploading...' : editingCategory ? 'Save Changes' : 'Create Category'}
@@ -1086,7 +1111,8 @@ export default function CategoriesPage() {
               <button
                 type="button"
                 onClick={handleConfirmDirectDelete}
-                className="flex-1 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-700 shadow-xs"
+                disabled={!canCreateCategories}
+                className="flex-1 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-red-700 shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Delete
               </button>
@@ -1136,7 +1162,7 @@ export default function CategoriesPage() {
               <button
                 type="button"
                 onClick={() => setCategoryToDelete(null)}
-                disabled={isReassigning}
+                disabled={isReassigning || !canCreateCategories}
                 className="rounded-xl px-4 py-2 text-xs font-bold text-gray-600 hover:bg-[#FAF9F6] disabled:opacity-50"
               >
                 Cancel
@@ -1147,6 +1173,7 @@ export default function CategoriesPage() {
                 disabled={
                   !replacementCategoryId ||
                   isReassigning ||
+                  !canCreateCategories ||
                   !categories.some((category) => !category.parentId && category.id !== categoryToDelete.id)
                 }
                 className="rounded-xl bg-tradeflow-green px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-tradeflow-green-hover disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"

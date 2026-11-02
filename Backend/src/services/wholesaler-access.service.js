@@ -1,8 +1,10 @@
-const { User } = require('../models');
-const { ROLES, USER_STATUS } = require('../config/constants');
+const { User, WholesalerProfile, WholesalerSubscription } = require('../models');
+const { ROLES, USER_STATUS, KYC_STATUS } = require('../config/constants');
 const { ForbiddenError } = require('../utils/errors');
 
 const WHOLESALER_UNAVAILABLE_MESSAGE = 'This wholesaler is currently unavailable.';
+const KYC_APPROVAL_REQUIRED_MESSAGE = 'Approved KYC is required to manage wholesaler business features.';
+const ACTIVE_SUBSCRIPTION_REQUIRED_MESSAGE = 'An active subscription is required to manage wholesaler business features.';
 
 const assertWholesalerAvailable = async (wholesalerId) => {
   const wholesaler = await User.findOne({
@@ -22,7 +24,51 @@ const assertWholesalerAvailable = async (wholesalerId) => {
   return wholesaler;
 };
 
+const assertWholesalerBusinessActivated = async (wholesalerId) => {
+  const profile = await WholesalerProfile.findOne({ userId: wholesalerId })
+    .select('kycStatus isDeleted')
+    .lean();
+
+  if (!profile || profile.isDeleted) {
+    throw new ForbiddenError('Complete KYC to continue', 'KYC_APPROVAL_REQUIRED');
+  }
+
+  const kycStatus = String(profile.kycStatus || '').trim().toUpperCase();
+
+  if (kycStatus !== KYC_STATUS.APPROVED) {
+    if (kycStatus === KYC_STATUS.SUBMITTED || kycStatus === 'UNDER_REVIEW' || kycStatus === 'PENDING') {
+      throw new ForbiddenError('Your KYC is under review', 'KYC_PENDING');
+    }
+    if (kycStatus === KYC_STATUS.REJECTED || kycStatus === 'RESUBMISSION_REQUIRED' || kycStatus === 'RESUBMIT_REQUESTED') {
+      throw new ForbiddenError(
+        'Your KYC was rejected. Please review feedback and resubmit your KYC details to continue',
+        'KYC_REJECTED'
+      );
+    }
+    throw new ForbiddenError('Complete KYC to continue', 'KYC_APPROVAL_REQUIRED');
+  }
+
+  const subscription = await WholesalerSubscription.findOne({ userId: wholesalerId });
+  const now = new Date();
+  const renewalTime = subscription?.renewalDate ? new Date(subscription.renewalDate).getTime() : 0;
+
+  if (!subscription || subscription.status !== 'ACTIVE') {
+    throw new ForbiddenError('Please purchase a subscription plan', 'ACTIVE_SUBSCRIPTION_REQUIRED');
+  }
+
+  if (renewalTime <= now.getTime()) {
+    if (subscription.status === 'ACTIVE') {
+      subscription.status = 'EXPIRED';
+      await subscription.save();
+    }
+    throw new ForbiddenError('Your subscription has expired. Renew to continue', 'SUBSCRIPTION_EXPIRED');
+  }
+
+  return { profile, subscription };
+};
+
 module.exports = {
   assertWholesalerAvailable,
+  assertWholesalerBusinessActivated,
   WHOLESALER_UNAVAILABLE_MESSAGE,
 };

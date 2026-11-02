@@ -4,14 +4,15 @@ const invitationController = require('./invitations.controller');
 const authenticate = require('../../middleware/authenticate');
 const authorize = require('../../middleware/authorize');
 const { ROLES } = require('../../config/constants');
+const { requireActiveWholesaler } = require('../../middleware/wholesalerAccess');
 
 // Retain listing/revocation of legacy links, but prevent issuing alternate registration links.
-router.get('/', authenticate, authorize(ROLES.WHOLESALER), invitationController.getWholesalerInvitations);
-router.patch('/:id/revoke', authenticate, authorize(ROLES.WHOLESALER), invitationController.revokeInvitation);
+router.get('/', authenticate, authorize(ROLES.WHOLESALER), requireActiveWholesaler, invitationController.getWholesalerInvitations);
+router.patch('/:id/revoke', authenticate, authorize(ROLES.WHOLESALER), requireActiveWholesaler, invitationController.revokeInvitation);
 
 // Named subroutes when mounted on root router
-router.get('/wholesaler/invite-links', authenticate, authorize(ROLES.WHOLESALER), invitationController.getWholesalerInvitations);
-router.patch('/wholesaler/invite-links/:id/revoke', authenticate, authorize(ROLES.WHOLESALER), invitationController.revokeInvitation);
+router.get('/wholesaler/invite-links', authenticate, authorize(ROLES.WHOLESALER), requireActiveWholesaler, invitationController.getWholesalerInvitations);
+router.patch('/wholesaler/invite-links/:id/revoke', authenticate, authorize(ROLES.WHOLESALER), requireActiveWholesaler, invitationController.revokeInvitation);
 
 // Public / Retailer invitation validation and acceptance
 router.get('/invitations/:token', invitationController.validateToken);

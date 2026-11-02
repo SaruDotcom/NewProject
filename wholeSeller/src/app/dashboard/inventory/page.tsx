@@ -28,9 +28,20 @@ import {
 import { Link } from 'react-router-dom';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { ProductImage } from '@/components/products/ProductImage';
+import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 
 export default function InventoryPage() {
-  const { products, categories, orders = [], inventoryLogs, adjustStock } = useWholesaler();
+  const {
+    profile,
+    products,
+    categories,
+    orders = [],
+    inventoryLogs,
+    adjustStock,
+    isProfileLoaded,
+    isSubscriptionStatusLoaded,
+    isBusinessActivated,
+  } = useWholesaler();
 
   // Filters & Settings
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,7 +161,7 @@ export default function InventoryPage() {
 
   const handleApplyStockAdjust = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProductId) return;
+    if (!isBusinessActivated || !selectedProductId) return;
     adjustStock(selectedProductId, Number(adjustAmount), adjustReason);
     setSelectedProductId(null);
   };
@@ -165,6 +176,13 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      <BusinessActivationNotice
+        kycStatus={profile.kycStatus}
+        subscriptionStatus={profile.subscriptionStatus}
+        isProfileLoaded={isProfileLoaded}
+        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
+      />
+
       {/* Top Header & Auto-Deduction Engine Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -263,12 +281,14 @@ export default function InventoryPage() {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedProductId(p.id);
                     setAdjustAmount(50);
                     setAdjustReason('Restocked / Factory Arrival');
                   }}
-                  className="px-3 py-1.5 bg-tradeflow-green text-tradeflow-navy text-[11px] font-bold rounded-lg hover:bg-tradeflow-green-hover transition-colors shrink-0"
+                  disabled={!isBusinessActivated}
+                  className="px-3 py-1.5 bg-tradeflow-green text-tradeflow-navy text-[11px] font-bold rounded-lg hover:bg-tradeflow-green-hover transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Restock +
                 </button>
@@ -456,12 +476,14 @@ export default function InventoryPage() {
                             <span>View Details</span>
                           </Link>
                           <button
+                            type="button"
                             onClick={() => {
                               setSelectedProductId(p.id);
                               setAdjustAmount(50);
                               setAdjustReason('Restocked / Factory Arrival');
                             }}
-                            className="px-2.5 py-1.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-xl transition-colors inline-flex items-center gap-1"
+                            disabled={!isBusinessActivated}
+                            className="px-2.5 py-1.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 hover:border-tradeflow-green hover:text-green-700 text-xs font-bold rounded-xl transition-colors inline-flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Sliders className="w-3.5 h-3.5" />
                             <span>Adjust Stock</span>
@@ -604,7 +626,8 @@ export default function InventoryPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover"
+                  disabled={!isBusinessActivated}
+                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold rounded-xl hover:bg-tradeflow-green-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Apply Stock Update
                 </button>

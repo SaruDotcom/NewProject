@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -91,7 +91,8 @@ export interface WholesalerProfile {
   twoFactorEnabled: boolean;
   apiKey: string;
   subscriptionPlan: '' | 'MONTHLY' | 'ANNUAL';
-  subscriptionStatus: '' | 'ACTIVE' | 'CANCELLED';
+  subscriptionStatus: '' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'NO_SUBSCRIPTION' | 'UNKNOWN';
+  subscriptionRenewalDate: string;
   nextBillingDate: string;
   accountStatus: '' | 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
   kycStatus: string;
@@ -133,6 +134,15 @@ interface WholesalerContextType {
   notifications: WholesalerNotification[];
   isLoading: boolean;
   isProfileLoaded: boolean;
+  isSubscriptionStatusLoaded: boolean;
+  isBusinessActivated: boolean;
+  accessControl: {
+    isAllowed: boolean;
+    reason: 'LOADING' | 'KYC_REQUIRED' | 'KYC_PENDING' | 'KYC_REJECTED' | 'SUBSCRIPTION_REQUIRED' | 'SUBSCRIPTION_EXPIRED' | 'ALLOWED';
+    message: string;
+    actionText: string;
+    actionLink: string;
+  };
 
   // Actions
   updateReturnStatus: (returnId: string, status: 'APPROVED' | 'REJECTED') => Promise<void>;
@@ -201,6 +211,7 @@ export const DEFAULT_PROFILE: WholesalerProfile = {
   apiKey: '',
   subscriptionPlan: '',
   subscriptionStatus: '',
+  subscriptionRenewalDate: '',
   nextBillingDate: '',
   accountStatus: '',
   kycStatus: ''
@@ -246,6 +257,98 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!token) return true;
     return localStorage.getItem('wholesaler_kyc_status') !== null;
   });
+  const [isSubscriptionStatusLoaded, setIsSubscriptionStatusLoaded] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const token = getAuthToken();
+    if (!token) return true;
+    const cachedProfileRaw = localStorage.getItem('wholesaler_cached_profile');
+    if (!cachedProfileRaw) return false;
+    try {
+      const parsed = JSON.parse(cachedProfileRaw);
+      return Boolean(parsed.subscriptionStatus);
+    } catch {
+      return false;
+    }
+  });
+
+  const accessControl = useMemo(() => {
+    if (!isProfileLoaded || !isSubscriptionStatusLoaded) {
+      return {
+        isAllowed: false,
+        reason: 'LOADING' as const,
+        message: '',
+        actionText: '',
+        actionLink: '',
+      };
+    }
+
+    const normKyc = String(profile.kycStatus || '').trim().toUpperCase();
+
+    // 1. KYC Checks
+    if (normKyc !== 'APPROVED') {
+      if (['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(normKyc)) {
+        return {
+          isAllowed: false,
+          reason: 'KYC_PENDING' as const,
+          message: 'Your KYC is under review',
+          actionText: 'View KYC Status',
+          actionLink: '/dashboard/kyc',
+        };
+      }
+      if (['REJECTED', 'RESUBMISSION_REQUIRED', 'RESUBMIT_REQUESTED'].includes(normKyc)) {
+        return {
+          isAllowed: false,
+          reason: 'KYC_REJECTED' as const,
+          message: 'Your KYC was rejected. Please review and resubmit',
+          actionText: 'Resubmit KYC',
+          actionLink: '/dashboard/kyc',
+        };
+      }
+      return {
+        isAllowed: false,
+        reason: 'KYC_REQUIRED' as const,
+        message: 'Complete KYC to continue',
+        actionText: 'Complete KYC',
+        actionLink: '/dashboard/kyc',
+      };
+    }
+
+    // 2. Subscription Checks
+    const now = Date.now();
+    const renewalTime = profile.subscriptionRenewalDate ? new Date(profile.subscriptionRenewalDate).getTime() : 0;
+    const subNotExpired = renewalTime > now;
+    const subStatus = String(profile.subscriptionStatus || '').trim().toUpperCase();
+
+    if (subStatus === 'EXPIRED' || (!subNotExpired && profile.subscriptionRenewalDate)) {
+      return {
+        isAllowed: false,
+        reason: 'SUBSCRIPTION_EXPIRED' as const,
+        message: 'Your subscription has expired. Renew to continue',
+        actionText: 'Renew Subscription',
+        actionLink: '/dashboard/subscription',
+      };
+    }
+
+    if (subStatus !== 'ACTIVE' || !subNotExpired) {
+      return {
+        isAllowed: false,
+        reason: 'SUBSCRIPTION_REQUIRED' as const,
+        message: 'Please purchase a subscription plan',
+        actionText: 'Purchase Subscription',
+        actionLink: '/dashboard/subscription',
+      };
+    }
+
+    return {
+      isAllowed: true,
+      reason: 'ALLOWED' as const,
+      message: '',
+      actionText: '',
+      actionLink: '',
+    };
+  }, [isProfileLoaded, isSubscriptionStatusLoaded, profile.kycStatus, profile.subscriptionRenewalDate, profile.subscriptionStatus]);
+
+  const isBusinessActivated = accessControl.isAllowed;
   const [notifications, setNotifications] = useState<WholesalerNotification[]>([]);
   const refreshDataRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
 
@@ -282,6 +385,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!token) {
       setProfile(DEFAULT_PROFILE);
       setIsProfileLoaded(true);
+      setIsSubscriptionStatusLoaded(false);
       setRawProducts([]);
       setRawCategories([]);
       setRawRetailers([]);
@@ -556,6 +660,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         clearAuthToken();
         setProfile(DEFAULT_PROFILE);
         setIsProfileLoaded(false);
+        setIsSubscriptionStatusLoaded(false);
         setRawProducts([]);
         setRawCategories([]);
         setRawRetailers([]);
@@ -733,6 +838,78 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       invalidateResources('kyc', 'profile');
     }
   }, []);
+
+  const refreshSubscriptionStatus = useCallback(async () => {
+    if (!profile.id || !getAuthToken()) return;
+
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: wholesalerQueryKeys.resource(profile.id, 'subscription'),
+      });
+      const response = await api.getWholesalerSubscription();
+      const subscription = response.data.subscription;
+      const renewalDate = subscription?.renewalDate || '';
+      const renewalTime = renewalDate ? new Date(renewalDate).getTime() : 0;
+      const status = !subscription
+        ? 'NO_SUBSCRIPTION'
+        : subscription.status === 'ACTIVE' && renewalTime > Date.now()
+          ? 'ACTIVE'
+          : subscription.status === 'ACTIVE'
+            ? 'EXPIRED'
+            : subscription.status;
+
+      updateProfile({
+        subscriptionPlan: subscription?.billingPeriod === 'YEARLY' ? 'ANNUAL' : subscription ? 'MONTHLY' : '',
+        subscriptionStatus: status,
+        subscriptionRenewalDate: renewalDate,
+        nextBillingDate: renewalDate ? new Date(renewalDate).toLocaleDateString('en-IN') : '',
+      });
+    } catch (error) {
+      console.error('Unable to verify wholesaler subscription status:', error);
+      updateProfile({ subscriptionStatus: 'UNKNOWN' });
+    } finally {
+      setIsSubscriptionStatusLoaded(true);
+    }
+  }, [profile.id, queryClient, updateProfile]);
+
+  useEffect(() => {
+    if (!profile.id || !getAuthToken()) {
+      setIsSubscriptionStatusLoaded(false);
+      return;
+    }
+
+    void refreshSubscriptionStatus();
+    const handleSubscriptionUpdate = () => {
+      void refreshSubscriptionStatus();
+    };
+    window.addEventListener('wholesaler-subscription-updated', handleSubscriptionUpdate);
+    return () => window.removeEventListener('wholesaler-subscription-updated', handleSubscriptionUpdate);
+  }, [location.pathname, profile.id, refreshSubscriptionStatus]);
+
+  useEffect(() => {
+    if (profile.subscriptionStatus !== 'ACTIVE' || !profile.subscriptionRenewalDate) return;
+
+    const renewalTime = new Date(profile.subscriptionRenewalDate).getTime();
+    if (!Number.isFinite(renewalTime) || renewalTime <= Date.now()) {
+      updateProfile({ subscriptionStatus: 'EXPIRED' });
+      void refreshSubscriptionStatus();
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (Date.now() >= renewalTime) {
+        updateProfile({ subscriptionStatus: 'EXPIRED' });
+        void refreshSubscriptionStatus();
+      }
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    profile.subscriptionRenewalDate,
+    profile.subscriptionStatus,
+    refreshSubscriptionStatus,
+    updateProfile,
+  ]);
 
   const addProduct = async (prod: Omit<Product, 'id' | 'wholesalerId' | 'isLowStock'>) => {
     try {
@@ -934,8 +1111,10 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...prev,
       subscriptionPlan: plan,
       subscriptionStatus: 'ACTIVE',
+      subscriptionRenewalDate: renewalDate || prev.subscriptionRenewalDate,
       nextBillingDate: renewalDate ? new Date(renewalDate).toLocaleDateString('en-IN') : prev.nextBillingDate,
     }));
+    setIsSubscriptionStatusLoaded(true);
     addAuditLog(`Verified subscription payment for ${plan} plan`);
   };
 
@@ -971,6 +1150,9 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         notifications,
         isLoading,
         isProfileLoaded,
+        isSubscriptionStatusLoaded,
+        isBusinessActivated,
+        accessControl,
         login,
         resendLoginOtp,
         verifyLoginOtp,
@@ -1016,6 +1198,15 @@ const fallbackWholesalerContext: WholesalerContextType = {
   notifications: [],
   isLoading: false,
   isProfileLoaded: false,
+  isSubscriptionStatusLoaded: false,
+  isBusinessActivated: false,
+  accessControl: {
+    isAllowed: false,
+    reason: 'LOADING',
+    message: '',
+    actionText: '',
+    actionLink: '',
+  },
   updateReturnStatus: async () => undefined,
   login: async () => ({ requiresTwoFactor: false }),
   resendLoginOtp: async () => ({ maskedEmail: '', resendAfterSeconds: 60 }),

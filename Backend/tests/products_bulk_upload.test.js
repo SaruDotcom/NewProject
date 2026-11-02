@@ -2,7 +2,7 @@ const request = require('supertest');
 const ExcelJS = require('exceljs');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
-const { User, WholesalerProfile, Category, Product } = require('../src/models');
+const { User, WholesalerProfile, Category, Product, WholesalerSubscription } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
 
@@ -51,6 +51,24 @@ describe('Bulk product upload', () => {
       userId: otherWholesaler._id,
       businessName: 'Other Wholesale',
       kycStatus: KYC_STATUS.APPROVED,
+    });
+    await WholesalerSubscription.create({
+      userId: wholesaler._id,
+      planName: 'Basic Monthly',
+      status: 'ACTIVE',
+      amount: 299,
+      currency: 'INR',
+      billingPeriod: 'MONTHLY',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+    await WholesalerSubscription.create({
+      userId: otherWholesaler._id,
+      planName: 'Basic Monthly',
+      status: 'ACTIVE',
+      amount: 299,
+      currency: 'INR',
+      billingPeriod: 'MONTHLY',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
     token = AuthService.generateTokens(wholesaler).accessToken;
 
