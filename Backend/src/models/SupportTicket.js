@@ -53,6 +53,7 @@ const supportTicketSchema = new mongoose.Schema(
     },
     subject: { type: String, required: true, trim: true, maxlength: 200 },
     message: { type: String, default: '', trim: true, maxlength: 5000 },
+    rating: { type: Number, min: 1, max: 5, default: null },
     priority: {
       type: String,
       enum: ['Low', 'Medium', 'High', 'LOW', 'MEDIUM', 'HIGH', 'URGENT'],

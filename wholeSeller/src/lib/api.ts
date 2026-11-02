@@ -803,7 +803,8 @@ export const api = {
       body: JSON.stringify({
         type: 'Feedback',
         subject: data.title?.trim() || 'Wholesaler Partner Feedback',
-        message: `Rating: ${data.rating}/5\n\n${data.comment.trim()}`,
+        message: data.comment.trim(),
+        rating: data.rating,
       }),
     }),
 

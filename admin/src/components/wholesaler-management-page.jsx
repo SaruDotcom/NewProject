@@ -352,7 +352,18 @@ export function WholesalerManagementPage() {
                             <TableBody>
                                 {result.items.map((row) => (
                                     <TableRow key={String(row.id)}>
-                                        <TableCell className="truncate font-semibold" title={row.businessName || row.name || ""}>{row.businessName || row.name || "—"}</TableCell>
+                                        <TableCell className="min-w-[220px]">
+                                            <div className="flex min-w-0 flex-col gap-1">
+                                                <span className="truncate font-semibold" title={row.businessName || row.name || ""}>{row.businessName || row.name || "—"}</span>
+                                                <Link
+                                                    to={`/wholesalers/${row.id}`}
+                                                    className="w-fit max-w-full break-all text-xs font-medium text-primary underline-offset-2 hover:underline"
+                                                    title={`View wholesaler ${row.id}`}
+                                                >
+                                                    ID: {row.id}
+                                                </Link>
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="truncate" title={row.email || ""}>{row.email || "—"}</TableCell>
                                         <TableCell>{row.phone || "—"}</TableCell>
                                         <TableCell className="truncate" title={row.city || ""}>{row.city || "—"}</TableCell>

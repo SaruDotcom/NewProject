@@ -90,6 +90,8 @@ class WholesalerService {
       registrationSource: profile.registrationSource || 'DIRECT',
       gstStatus: profile.gstStatus || '',
       gstin: profile.gstin || '',
+      pan: profile.pan || profile.registrationDetails?.pan || '',
+      hasGst: Boolean(profile.hasGst),
       businessType: profile.businessType || '',
       description: profile.description || '',
       streetAddress: address.street || '',
@@ -228,11 +230,31 @@ class WholesalerService {
     const userId = profile.userId?._id || profile.userId;
 
     // Fetch related aggregated stats
-    const [kycApplication, retailersCount, productsCount, ordersCount, earningsSum, recentAudit, connectedRetailers, products, recentOrders] =
+    const [
+      kycApplication,
+      retailersCount,
+      productsCount,
+      categoryStats,
+      ordersCount,
+      earningsSum,
+      paymentRecords,
+      paymentStats,
+      recentAudit,
+      connectedRetailers,
+      products,
+      recentOrders,
+    ] =
       await Promise.all([
         KycApplication.findOne({ wholesalerId: userId }).populate('documents'),
         WholesalerRetailerRelationship.countDocuments({ wholesalerId: userId, status: 'ACTIVE' }),
         Product.countDocuments({ wholesalerId: userId, isDeleted: false }),
+        Product.aggregate([
+          { $match: { wholesalerId: userId, isDeleted: false } },
+          { $project: { category: { $ifNull: ['$categoryId', '$category'] } } },
+          { $match: { category: { $ne: null } } },
+          { $group: { _id: '$category' } },
+          { $count: 'count' },
+        ]),
         Order.countDocuments({ wholesalerId: userId }),
         Earning.aggregate([
           { $match: { wholesalerId: userId } },
@@ -242,6 +264,33 @@ class WholesalerService {
               totalGross: { $sum: '$grossAmount' },
               totalNet: { $sum: '$wholesalerAmount' },
               totalCommission: { $sum: '$platformCommission' },
+            },
+          },
+        ]),
+        Payment.find({ wholesalerId: userId })
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .populate('orderId', 'orderNumber')
+          .lean(),
+        Payment.aggregate([
+          { $match: { wholesalerId: userId } },
+          {
+            $group: {
+              _id: null,
+              totalCount: { $sum: 1 },
+              totalAmount: { $sum: '$amount' },
+              paidAmount: {
+                $sum: { $cond: [{ $eq: ['$status', 'PAID'] }, '$amount', 0] },
+              },
+              pendingAmount: {
+                $sum: {
+                  $cond: [
+                    { $in: ['$status', ['PENDING', 'AUTHORIZED', 'PROCESSING', 'OVERDUE']] },
+                    '$amount',
+                    0,
+                  ],
+                },
+              },
             },
           },
         ]),
@@ -255,6 +304,7 @@ class WholesalerService {
           .lean(),
         Product.find({ wholesalerId: userId, isDeleted: false })
           .populate('categoryId', 'name')
+          .populate('category', 'name')
           .sort({ createdAt: -1 })
           .limit(20)
           .lean(),
@@ -283,17 +333,28 @@ class WholesalerService {
       products: products.map((product) => ({
         ...product,
         id: String(product._id),
-        category: product.categoryId,
+        category: product.categoryId || product.category,
       })),
       recentOrders: recentOrders.map((order) => ({
         ...order,
         id: String(order._id),
         retailer: order.retailerId,
       })),
-      paymentSummary: [],
+      paymentSummary: paymentRecords.map((payment) => ({
+        ...payment,
+        id: String(payment._id),
+        order: payment.orderId,
+      })),
+      paymentMetrics: paymentStats[0] || {
+        totalCount: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        pendingAmount: 0,
+      },
       metrics: {
         connectedRetailers: retailersCount,
         totalProducts: productsCount,
+        totalCategories: categoryStats[0]?.count || 0,
         totalOrders: ordersCount,
         earnings: earningsSum[0] || { totalGross: 0, totalNet: 0, totalCommission: 0 },
       },

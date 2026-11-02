@@ -129,6 +129,7 @@ class SupportService {
       type: input.type,
       subject: input.subject,
       message: input.message,
+      rating: input.rating,
       priority: input.priority,
       relatedOrderId: input.relatedOrderId || null,
       orderId: input.relatedOrderId || null,
@@ -218,6 +219,15 @@ class SupportService {
 
     if (['WHOLESALER', 'RETAILER'].includes(query.role)) {
       filters.push({ $or: [{ 'createdBy.role': query.role }, { creatorRole: query.role }] });
+    }
+    if (query.creatorId) {
+      if (!mongoose.Types.ObjectId.isValid(query.creatorId)) {
+        throw new BadRequestError('Creator ID is invalid');
+      }
+      const creatorId = new mongoose.Types.ObjectId(query.creatorId);
+      filters.push({
+        $or: [{ 'createdBy.userId': creatorId }, { creatorId }],
+      });
     }
     if (['Open', 'In Progress', 'Resolved', 'Closed'].includes(query.status)) {
       const legacyStatus = {

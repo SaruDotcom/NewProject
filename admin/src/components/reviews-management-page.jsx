@@ -121,12 +121,13 @@ export function ReviewsManagementPage() {
   const exportCsv = () => {
     const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
     const csv = [
-      ["Reviewer Name", "Role", "Email", "Subject/Product", "Rating", "Review", "Status", "Date"],
+      ["Reviewer Name", "Role", "Email", "Subject/Product", "Related Wholesaler", "Rating", "Review", "Status", "Date"],
       ...result.items.map((row) => [
         row.reviewer?.name || row.retailer?.name || "User",
         row.userRole || row.reviewer?.role || "RETAILER",
         row.reviewer?.email || "",
         row.product?.name || row.title || "Feedback",
+        row.wholesaler?.name || "",
         row.rating,
         row.comment,
         row.status,
@@ -286,12 +287,13 @@ export function ReviewsManagementPage() {
           <div className="p-8 text-sm text-destructive text-center">{error}</div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[1100px]">
+            <Table className="min-w-[1250px]">
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead>Reviewer</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Subject / Product</TableHead>
+                  <TableHead>Related wholesaler</TableHead>
                   <TableHead>Rating</TableHead>
                   <TableHead>Review Comment</TableHead>
                   <TableHead>Status</TableHead>
@@ -302,7 +304,7 @@ export function ReviewsManagementPage() {
               <TableBody>
                 {result.items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground text-sm">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground text-sm">
                       No feedback or reviews found.
                     </TableCell>
                   </TableRow>
@@ -327,6 +329,15 @@ export function ReviewsManagementPage() {
                       {/* Subject / Product */}
                       <TableCell className="font-semibold text-foreground">
                         {row.product?.name || row.title || "General Feedback"}
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex min-w-[150px] flex-col">
+                          <span className="font-medium">{row.wholesaler?.name || "Platform"}</span>
+                          {row.wholesaler?.email && (
+                            <span className="text-[11px] text-muted-foreground">{row.wholesaler.email}</span>
+                          )}
+                        </div>
                       </TableCell>
 
                       {/* Rating */}

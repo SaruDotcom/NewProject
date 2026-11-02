@@ -24,6 +24,7 @@ describe('Super Admin wholesaler block and unblock', () => {
   let activeRetailerToken;
   let blockedProduct;
   let blockedProfile;
+  let activeProfile;
   let order;
 
   beforeEach(async () => {
@@ -71,7 +72,7 @@ describe('Super Admin wholesaler block and unblock', () => {
       retailerReferralCode: 'BLOCKA',
       retailerSignupsEnabled: true,
     });
-    await WholesalerProfile.create({
+    activeProfile = await WholesalerProfile.create({
       userId: activeWholesaler._id,
       businessName: 'Business B',
       kycStatus: KYC_STATUS.APPROVED,
@@ -223,5 +224,38 @@ describe('Super Admin wholesaler block and unblock', () => {
       .get('/api/v1/products/wholesaler')
       .set('Authorization', `Bearer ${AuthService.generateTokens(blockedWholesaler).accessToken}`);
     expect(restoredWholesalerApi.status).toBe(200);
+  });
+
+  test('returns the selected wholesaler profile and its own related records for profile or user IDs', async () => {
+    const [first, second, firstByUserId] = await Promise.all([
+      request(app)
+        .get(`/api/v1/admin/wholesalers/${blockedProfile._id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+      request(app)
+        .get(`/api/v1/admin/wholesalers/${activeProfile._id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+      request(app)
+        .get(`/api/v1/admin/wholesalers/${blockedWholesaler._id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(firstByUserId.status).toBe(200);
+    expect(first.body.data.profile).toMatchObject({
+      id: String(blockedProfile._id),
+      userId: String(blockedWholesaler._id),
+      businessName: 'Business A',
+    });
+    expect(second.body.data.profile.businessName).toBe('Business B');
+    expect(firstByUserId.body.data.profile.id).toBe(String(blockedProfile._id));
+    expect(first.body.data.products.map((product) => product.name)).toEqual(['Product A']);
+    expect(second.body.data.products.map((product) => product.name)).toEqual(['Product B']);
+    expect(first.body.data.metrics).toMatchObject({
+      totalProducts: 1,
+      totalCategories: 1,
+      totalOrders: 1,
+    });
+    expect(first.body.data.paymentMetrics.totalCount).toBe(0);
   });
 });

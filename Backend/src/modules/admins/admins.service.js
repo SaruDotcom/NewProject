@@ -1653,7 +1653,17 @@ class AdminService {
    * Reviews Endpoints
    */
   static async getReviews(query = {}) {
-    const { page = 1, limit = 10, search = '', status = 'all', rating = 'all', userRole = 'all', dateFrom, dateTo } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      status = 'all',
+      rating = 'all',
+      userRole = 'all',
+      wholesalerId,
+      dateFrom,
+      dateTo,
+    } = query;
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, parseInt(limit, 10) || 10);
     const skip = (pageNum - 1) * limitNum;
@@ -1662,6 +1672,12 @@ class AdminService {
     if (status !== 'all' && status) filter.status = status;
     if (rating !== 'all' && rating) filter.rating = parseInt(rating, 10);
     if (userRole !== 'all' && userRole) filter.userRole = userRole.toUpperCase();
+    if (wholesalerId) {
+      if (!mongoose.Types.ObjectId.isValid(wholesalerId)) {
+        throw new BadRequestError('Wholesaler ID is invalid');
+      }
+      filter.wholesalerId = new mongoose.Types.ObjectId(wholesalerId);
+    }
 
     if (dateFrom || dateTo) {
       filter.createdAt = {};
@@ -1676,7 +1692,7 @@ class AdminService {
 
     const [reviews, total, approvedCount, pendingCount, hiddenCount] = await Promise.all([
       Review.find(filter)
-        .populate('userId', 'name email businessName role')
+        .populate('userId', 'name email phone businessName role')
         .populate('wholesalerId', 'name email businessName')
         .populate('productId', 'name title')
         .sort({ createdAt: -1 })
@@ -1688,6 +1704,14 @@ class AdminService {
       Review.countDocuments({ isDeleted: false, status: 'pending' }),
       Review.countDocuments({ isDeleted: false, status: 'hidden' }),
     ]);
+
+    const wholesalerIds = reviews.map((review) => review.wholesalerId?._id).filter(Boolean);
+    const wholesalerProfiles = await WholesalerProfile.find({ userId: { $in: wholesalerIds } })
+      .select('userId businessName')
+      .lean();
+    const wholesalerBusinessNames = new Map(
+      wholesalerProfiles.map((profile) => [String(profile.userId), profile.businessName]),
+    );
 
     const items = reviews.map((r) => {
       const reviewerName = r.userId?.businessName || r.userId?.name || 'Anonymous User';
@@ -1713,10 +1737,17 @@ class AdminService {
         reviewer: {
           name: reviewerName,
           email: r.userId?.email || '',
+          phone: r.userId?.phone || '',
           role,
         },
         wholesaler: r.wholesalerId
-          ? { name: r.wholesalerId.businessName || r.wholesalerId.name }
+          ? {
+              id: String(r.wholesalerId._id),
+              name: wholesalerBusinessNames.get(String(r.wholesalerId._id))
+                || r.wholesalerId.businessName
+                || r.wholesalerId.name,
+              email: r.wholesalerId.email || '',
+            }
           : null,
       };
     });

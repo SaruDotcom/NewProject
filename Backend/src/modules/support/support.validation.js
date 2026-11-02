@@ -14,6 +14,7 @@ const createTicketSchema = Joi.object({
   type: Joi.string().valid(...ticketTypes).default('Other'),
   subject: Joi.string().trim().min(1).max(200).required(),
   message: Joi.string().trim().min(1).max(5000).required(),
+  rating: Joi.number().integer().min(1).max(5).optional(),
   priority: Joi.string().valid(...priorities).default('Medium'),
   relatedOrderId: objectId.allow('', null).default(null),
   attachments: Joi.array().items(attachment).max(3).default([]),

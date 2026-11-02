@@ -1,14 +1,25 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
-const { User, AdminProfile, RetailerProfile, SupportTicket, Notification, AuditLog } = require('../src/models');
+const {
+  User,
+  AdminProfile,
+  WholesalerProfile,
+  RetailerProfile,
+  Review,
+  SupportTicket,
+  Notification,
+  AuditLog,
+} = require('../src/models');
 const { ROLES, USER_STATUS } = require('../src/config/constants');
 
 setupTestDB();
 
 describe('Support ticket routes', () => {
   let retailer;
+  let wholesaler;
   let retailerToken;
+  let wholesalerToken;
   let otherRetailerToken;
   let adminToken;
 
@@ -30,6 +41,18 @@ describe('Support ticket routes', () => {
       ownerName: 'Retailer Contact',
     });
 
+    wholesaler = await User.create({
+      name: 'Wholesaler Contact',
+      email: 'wholesaler-support@test.example',
+      passwordHash,
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerProfile.create({
+      userId: wholesaler._id,
+      businessName: 'Wholesaler Business',
+    });
+
     const otherRetailer = await User.create({
       name: 'Other Contact',
       email: 'other-retailer-support@test.example',
@@ -48,12 +71,14 @@ describe('Support ticket routes', () => {
     });
     await AdminProfile.create({ userId: admin._id, isSuperAdmin: true });
 
-    const [retailerLogin, otherRetailerLogin, adminLogin] = await Promise.all([
+    const [retailerLogin, wholesalerLogin, otherRetailerLogin, adminLogin] = await Promise.all([
       request(app).post('/api/v1/auth/login').send({ email: retailer.email, password: 'SupportTest123' }),
+      request(app).post('/api/v1/auth/login').send({ email: wholesaler.email, password: 'SupportTest123' }),
       request(app).post('/api/v1/auth/login').send({ email: otherRetailer.email, password: 'SupportTest123' }),
       request(app).post('/api/v1/auth/login').send({ email: admin.email, password: 'SupportTest123' }),
     ]);
     retailerToken = retailerLogin.body.data.token;
+    wholesalerToken = wholesalerLogin.body.data.token;
     otherRetailerToken = otherRetailerLogin.body.data.token;
     adminToken = adminLogin.body.data.token;
   });
@@ -104,6 +129,77 @@ describe('Support ticket routes', () => {
     expect(adminList.status).toBe(200);
     expect(adminList.body.data.items).toHaveLength(1);
     expect(adminList.body.data.stats.open).toBe(1);
+  });
+
+  test('saves wholesaler feedback ratings and filters submissions by creator ID', async () => {
+    const first = await request(app)
+      .post('/api/v1/support/tickets')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({
+        type: 'Feedback',
+        subject: 'Store feedback',
+        message: 'The new dashboard is helpful.',
+        rating: 4,
+      });
+    const second = await request(app)
+      .post('/api/v1/support/tickets')
+      .set('Authorization', `Bearer ${otherRetailerToken}`)
+      .send({
+        type: 'Feedback',
+        subject: 'Other feedback',
+        message: 'Another retailer response.',
+        rating: 2,
+      });
+
+    expect(first.status).toBe(201);
+    expect(first.body.data.rating).toBe(4);
+    expect(second.status).toBe(201);
+
+    const response = await request(app)
+      .get(`/api/v1/admin/support/tickets?creatorId=${wholesaler._id}&role=WHOLESALER&type=Feedback`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.items).toHaveLength(1);
+    expect(response.body.data.items[0].subject).toBe('Store feedback');
+    expect(response.body.data.items[0].businessName).toBe('Wholesaler Business');
+    expect(response.body.data.items[0].rating).toBe(4);
+  });
+
+  test('filters reviews by the related wholesaler account and returns its business name', async () => {
+    const wholesaler = await User.create({
+      name: 'Wholesale Owner',
+      email: 'wholesaler-review@test.example',
+      passwordHash: await User.hashPassword('SupportTest123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    const otherWholesaler = await User.create({
+      name: 'Other Wholesale Owner',
+      email: 'other-wholesaler-review@test.example',
+      passwordHash: await User.hashPassword('SupportTest123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerProfile.create({ userId: wholesaler._id, businessName: 'Wholesale Business' });
+    await WholesalerProfile.create({ userId: otherWholesaler._id, businessName: 'Other Wholesale Business' });
+    await Review.create([
+      { userId: retailer._id, wholesalerId: wholesaler._id, rating: 5, comment: 'Great service.' },
+      { userId: retailer._id, wholesalerId: otherWholesaler._id, rating: 3, comment: 'Could improve.' },
+    ]);
+
+    const response = await request(app)
+      .get(`/api/v1/admin/reviews?wholesalerId=${wholesaler._id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.items).toHaveLength(1);
+    expect(response.body.data.items[0]).toMatchObject({
+      comment: 'Great service.',
+      rating: 5,
+      reviewer: { name: 'Retailer Contact', email: retailer.email },
+      wholesaler: { id: String(wholesaler._id), name: 'Wholesale Business' },
+    });
   });
 
   test('admin replies mark the owner ticket unread and status changes are retained', async () => {
