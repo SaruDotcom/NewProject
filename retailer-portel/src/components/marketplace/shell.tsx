@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
-import { money, TradeFlowMark } from "./primitives";
+import { money, TradeFlowMark, WholesalerLogo } from "./primitives";
 import { FeedbackModal } from "./FeedbackModal";
 
 const primary = [
@@ -167,9 +167,9 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const safeRetailerProfile = retailerProfile ?? null;
   const retailerOwnerName = safeRetailerProfile?.ownerName?.trim() || "Retailer";
   const retailerBusinessName = safeRetailerProfile?.businessName?.trim() || "Your business";
-  const linkedWholesalerName = linkedWholesaler?.name?.trim() || "NEXORA";
-  const linkedWholesalerOwner = linkedWholesaler?.ownerName?.trim() || linkedWholesaler?.name?.trim() || "Supplier";
-  const linkedWholesalerLocation = linkedWholesaler?.location?.trim() || "India";
+  const linkedWholesalerName = linkedWholesaler?.businessName?.trim() || linkedWholesaler?.name?.trim() || "No wholesaler linked";
+  const linkedWholesalerOwner = linkedWholesaler?.ownerName?.trim() || linkedWholesalerName;
+  const linkedWholesalerLocation = linkedWholesaler?.location?.trim() || "";
 
   if (isAuthRoute) return <>{children}</>;
 
@@ -314,12 +314,16 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                 <div className="mt-4 space-y-6">
                   {/* Linked Wholesaler Badge in Drawer */}
                   <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-3.5 text-xs">
-                    <Store className="size-5 text-primary shrink-0" />
-                    <div>
+                    {linkedWholesaler ? (
+                      <WholesalerLogo src={linkedWholesaler.logo} name={linkedWholesalerName} className="size-10 rounded-lg bg-white text-xs" />
+                    ) : (
+                      <Store className="size-5 text-primary shrink-0" />
+                    )}
+                    <div className="min-w-0">
                       <p className="text-[10px] uppercase font-extrabold text-primary tracking-wider">Shopping With</p>
-                      <p className="font-extrabold text-ink text-sm">{linkedWholesalerName}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {linkedWholesalerOwner} • {linkedWholesalerLocation}
+                      <p className="truncate font-extrabold text-ink text-sm">{linkedWholesalerName}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {[linkedWholesalerOwner, linkedWholesalerLocation].filter(Boolean).join(" • ")}
                       </p>
                     </div>
                   </div>

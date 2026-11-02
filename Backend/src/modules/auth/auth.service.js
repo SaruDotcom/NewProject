@@ -24,6 +24,7 @@ const EmailOtpService = require('../../services/emailOtp.service');
 const ReferralService = require('../referrals/referrals.service');
 const WholesalerInvitesService = require('../wholesaler-invites/wholesalerInvites.service');
 const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
+const { uploadBusinessLogo, deleteUploadedProductImage } = require('../../services/cloudinary.service');
 const PasswordResetService = require('../../services/passwordReset.service');
 
 class AuthService {
@@ -175,7 +176,6 @@ class AuthService {
       loginId,
       role: rawRole,
       businessName,
-      businessLogoUrl,
       businessType,
       city,
       state,
@@ -287,6 +287,7 @@ class AuthService {
       : null;
     let inviteCompleted = false;
     let uncommittedIdentityAssets = [];
+    let uncommittedBusinessLogo;
     try {
     const passwordHash = await User.hashPassword(password);
 
@@ -299,6 +300,10 @@ class AuthService {
       role,
       status: USER_STATUS.ACTIVE,
     });
+
+    if (role === ROLES.WHOLESALER && req?.files?.businessLogo?.[0]) {
+      uncommittedBusinessLogo = await uploadBusinessLogo(req.files.businessLogo[0], user._id, req);
+    }
 
     let retailerIdentity = {};
     if (role === ROLES.RETAILER) {
@@ -325,7 +330,8 @@ class AuthService {
       const wholesalerProfile = await WholesalerProfile.create({
         userId: user._id,
         businessName: businessName || name,
-        businessLogoUrl: businessLogoUrl || '',
+        businessLogoUrl: uncommittedBusinessLogo?.url || '',
+        businessLogoPublicId: uncommittedBusinessLogo?.publicId || '',
         businessType: businessType || 'Proprietorship',
         gstin: isGstRegistered === false ? undefined : (gstin || undefined),
         gstStatus: isGstRegistered === false || gstStatus === 'UNREGISTERED' ? 'UNREGISTERED' : 'REGISTERED',
@@ -490,6 +496,15 @@ class AuthService {
     };
     } catch (error) {
       await RetailerIdentityService.deleteUploadedFiles(uncommittedIdentityAssets);
+      if (uncommittedBusinessLogo?.publicId) {
+        try {
+          await deleteUploadedProductImage(uncommittedBusinessLogo.publicId);
+        } catch (cleanupError) {
+          require('../../config/logger').error('Unable to remove an uncommitted wholesaler business logo', {
+            error: cleanupError.message,
+          });
+        }
+      }
       if (inviteClaim && !inviteCompleted) {
         try {
           await WholesalerInvitesService.releaseClaim(inviteClaim.claimId);

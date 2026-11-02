@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@/lib/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Inventory, CheckCircle, HeadsetMic, CurrencyRupee, Business, Handshake, ShoppingCart, Favorite, FlashOn } from "@mui/icons-material";
-import { ProductCard, ProductGrid, ProductVisual, SectionHeading, StatusBadge, WholesalerCard, money } from "./primitives";
+import { ProductCard, ProductGrid, ProductVisual, SectionHeading, StatusBadge, WholesalerCard, WholesalerLogo, money } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -162,7 +162,7 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
   const [sort, setSort] = useState("popular");
   const [list, setList] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40);
-  const { relationships, connectedWholesalers, products, categories } = useStore();
+  const { relationships, connectedWholesalers, linkedWholesaler, products, categories } = useStore();
 
   useEffect(() => {
     setVisibleCount(40);
@@ -302,6 +302,21 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
           <p className="mt-1 text-sm text-muted-foreground">
             {shown.length} product{shown.length === 1 ? "" : "s"} available from {connectedWholesalers.length} connected wholesaler{connectedWholesalers.length === 1 ? "" : "s"}
           </p>
+          {linkedWholesaler && (
+            <div className="mt-3 inline-flex max-w-full items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2">
+              <WholesalerLogo
+                src={linkedWholesaler.logo}
+                name={linkedWholesaler.businessName || linkedWholesaler.name}
+                className="size-9 rounded-lg border border-border bg-white text-xs"
+              />
+              <div className="min-w-0">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Store by</span>
+                <span className="block truncate text-xs font-extrabold text-ink">
+                  {linkedWholesaler.businessName || linkedWholesaler.name}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">

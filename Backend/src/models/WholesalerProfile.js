@@ -37,6 +37,11 @@ const wholesalerProfileSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    businessLogoPublicId: {
+      type: String,
+      default: '',
+      select: false,
+    },
     businessCategory: {
       type: String,
       enum: ['', 'CLOTHING', 'COSMETICS', 'GENERAL_STORE', 'FOOTWEAR', 'ELECTRONICS', 'OTHER'],

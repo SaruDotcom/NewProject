@@ -8,11 +8,14 @@ const payoutController = require('../payouts/payouts.controller');
 const idempotency = require('../../middleware/idempotency');
 const wholesalerController = require('./wholesalers.controller');
 const { createTicketLimit } = require('../support/support.routes');
+const { businessLogoUpload } = require('../../middleware/upload');
 
 router.use(authenticate, authorize(ROLES.WHOLESALER, ROLES.SUPER_ADMIN, ROLES.ADMIN));
 router.post('/help-center', authorize(ROLES.WHOLESALER), createTicketLimit, Controller.submitHelpRequest);
 router.get('/profile', Controller.getProfile);
 router.patch('/profile', Controller.updateProfile);
+router.post('/profile/logo', businessLogoUpload.single('businessLogo'), Controller.updateBusinessLogo);
+router.delete('/profile/logo', Controller.removeBusinessLogo);
 router.get('/store', Controller.getProfile);
 router.patch('/store', Controller.updateProfile);
 router.get('/banners', Controller.getBanners);

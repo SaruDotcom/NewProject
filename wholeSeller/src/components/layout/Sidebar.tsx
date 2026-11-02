@@ -12,7 +12,6 @@ import {
   CreditCard,
   ShieldCheck,
   LogOut,
-  Building2,
   Sparkles,
   MessageSquare,
   Sliders,
@@ -27,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
+import BusinessLogo from '@/components/BusinessLogo';
 import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
 import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
@@ -113,12 +113,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
             onClick={onClose}
             className="flex items-center gap-3 group"
           >
-            <div className="w-10 h-10 rounded-xl bg-tradeflow-green text-white flex items-center justify-center font-bold text-xl shadow-xs group-hover:scale-105 transition-transform">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
+            <BusinessLogo
+              src={profile.businessLogoUrl}
+              name={profile.businessName || 'Your business'}
+              className="h-10 w-10 rounded-xl bg-white text-tradeflow-green shadow-xs transition-transform group-hover:scale-105"
+            />
             <div className="flex flex-col">
-              <span className="font-bold text-base tracking-tight text-white">
-                Apex<span className="text-tradeflow-green">Wholesale</span>
+              <span className="max-w-40 truncate font-bold text-base tracking-tight text-white">
+                {profile.businessName || 'Your business'}
               </span>
               <span className="text-[10px] uppercase tracking-wider font-semibold text-tradeflow-green flex items-center gap-1">
                 Verified Partner
@@ -235,13 +237,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
               aria-label="Open wholesaler contact information"
               className="flex min-w-0 items-center gap-2.5 overflow-hidden text-left"
             >
-              {profile.businessLogoUrl ? (
-                <img src={profile.businessLogoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full border border-[#E7E5E4] bg-white object-contain" />
-              ) : (
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-tradeflow-green text-xs font-bold text-white">
-                  {profile.businessName?.charAt(0) || profile.ownerName?.charAt(0) || 'W'}
-                </span>
-              )}
+              <BusinessLogo
+                src={profile.businessLogoUrl}
+                name={profile.businessName || 'Your business'}
+                className="h-8 w-8 rounded-full border border-[#E7E5E4] bg-white text-tradeflow-green"
+              />
               <span className="flex min-w-0 flex-col truncate">
                 <span className="truncate text-xs font-bold text-[#1C1917]">
                   {profile.businessName || profile.ownerName || 'Wholesaler'}

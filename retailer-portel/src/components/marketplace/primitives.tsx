@@ -20,6 +20,40 @@ export function TradeFlowMark({ className = "size-9" }: { className?: string }) 
   );
 }
 
+export function WholesalerLogo({
+  src,
+  name,
+  className = "size-12",
+}: {
+  src?: string;
+  name: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "WH";
+
+  useEffect(() => setFailed(false), [src]);
+
+  return (
+    <div
+      role="img"
+      aria-label={`${name} logo`}
+      className={cn("grid shrink-0 place-items-center overflow-hidden rounded-xl bg-[#E9F7F0] font-heading font-black text-[#20A66A]", className)}
+    >
+      {src && !failed ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full bg-white object-contain p-1"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
+  );
+}
+
 export function StatusBadge({ status }: { status: string }) {
   const good = ["Connected", "Delivered", "Confirmed", "In stock"].includes(status);
   const warn = ["Pending", "Processing", "Request Pending", "Out of stock"].includes(status);
@@ -349,7 +383,7 @@ export function WholesalerCard({ wholesaler, premium = false }: { wholesaler: Wh
   if (!premium)
     return (
       <article className="group flex h-full flex-col border bg-card p-5 interactive rounded-2xl">
-        <div className="grid size-14 place-items-center bg-ink text-lg font-extrabold text-primary-foreground rounded-xl">{wholesaler.initials}</div>
+        <WholesalerLogo src={wholesaler.logo} name={wholesaler.businessName || wholesaler.name} className="size-14 rounded-xl bg-ink text-lg text-primary-foreground" />
         <Link to="/wholesalers/$wholesalerId" params={{ wholesalerId: wholesaler.id }} className="mt-5 flex items-center gap-1 text-lg font-extrabold text-ink group-hover:text-primary">
           {wholesaler.name}
           {wholesaler.verified && <Verified className="size-5 text-primary" />}
@@ -397,8 +431,8 @@ export function WholesalerCard({ wholesaler, premium = false }: { wholesaler: Wh
   return (
     <article className="group flex h-full flex-col rounded-2xl border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg">
       <div className="flex items-start gap-4">
-        <div className="relative grid size-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-ink text-lg font-extrabold text-primary-foreground shadow-sm">
-          <span>{wholesaler.initials}</span>
+        <div className="relative shrink-0">
+          <WholesalerLogo src={wholesaler.logo} name={wholesaler.businessName || wholesaler.name} className="size-16 rounded-2xl bg-gradient-to-br from-primary to-ink text-lg text-primary-foreground shadow-sm" />
           {wholesaler.verified && (
             <span className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full border-2 border-card bg-primary text-primary-foreground" title="Verified partner">
               <Verified className="size-3.5" />
@@ -638,7 +672,7 @@ export function CartItem({ product, quantity }: { product: Product; quantity: nu
 
 export function OrderCard({ order }: { order: Order }) {
   const { linkedWholesaler, products, categories } = useStore();
-  const supplierName = linkedWholesaler?.name || linkedWholesaler?.businessName || "Connected wholesaler";
+  const supplierName = linkedWholesaler?.businessName || linkedWholesaler?.name || "Connected wholesaler";
   const units = order.items.reduce((sum, item) => sum + item.quantity, 0);
   return (
     <article className="rounded-2xl border border-border/80 bg-card p-5 transition-all duration-200 hover:border-primary/40 shadow-xs">
@@ -648,10 +682,13 @@ export function OrderCard({ order }: { order: Order }) {
           <span className="text-xs font-medium text-muted-foreground">Placed {order.date}</span>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-1.5 font-extrabold text-ink text-base sm:text-lg">
-            {supplierName}
-            {linkedWholesaler?.verified && <Verified className="size-4 text-primary" />}
-          </h3>
+          <div className="flex min-w-0 items-center gap-2">
+            {linkedWholesaler && <WholesalerLogo src={linkedWholesaler.logo} name={supplierName} className="size-8 rounded-lg border border-border bg-white text-[10px]" />}
+            <h3 className="flex min-w-0 items-center gap-1.5 truncate font-extrabold text-ink text-base sm:text-lg">
+              <span className="truncate">{supplierName}</span>
+              {linkedWholesaler?.verified && <Verified className="size-4 shrink-0 text-primary" />}
+            </h3>
+          </div>
           <div className="flex items-center gap-2">
             {order.isCreditOrder ? (
               <Badge className="bg-tradeflow-navy text-white dark:bg-tradeflow-navy-hover dark:text-white font-bold border-tradeflow-navy/20">

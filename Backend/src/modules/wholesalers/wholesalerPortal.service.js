@@ -11,6 +11,8 @@ const WholesalerReportsService = require('../../services/wholesalerReports.servi
 const SupportService = require('../support/support.service');
 const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
 const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
+const { uploadBusinessLogo, deleteUploadedProductImage } = require('../../services/cloudinary.service');
+const logger = require('../../config/logger');
 
 class WholesalerPortalService {
   static formatRetailerRelationship(row) {
@@ -69,7 +71,7 @@ class WholesalerPortalService {
 
   static async updateProfile(userId, payload, actor, req) {
     const allowedUser = ['name', 'phone'];
-    const allowedProfile = ['businessName', 'businessLogoUrl', 'description', 'businessType', 'businessCategory', 'address', 'bankDetails', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
+    const allowedProfile = ['businessName', 'description', 'businessType', 'businessCategory', 'address', 'bankDetails', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
     const userUpdate = Object.fromEntries(allowedUser.filter((key) => payload[key] !== undefined).map((key) => [key, payload[key]]));
     
     if (userUpdate.phone) {
@@ -91,6 +93,70 @@ class WholesalerPortalService {
     const profile = await WholesalerProfile.findOneAndUpdate({ userId, isDeleted: false }, profileUpdate, { new: true, runValidators: true });
     if (!profile) throw new NotFoundError('Wholesaler profile not found');
     await AuditService.log({ actorId: actor._id, actorRole: actor.role, action: 'UPDATE', entityType: 'WholesalerProfile', entityId: profile._id, metadata: { fields: Object.keys({ ...userUpdate, ...profileUpdate }) }, req });
+    return this.getProfile(userId);
+  }
+
+  static async updateBusinessLogo(userId, file, actor, req) {
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false }).select('+businessLogoPublicId');
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+    const uploaded = await uploadBusinessLogo(file, userId, req);
+    const previousPublicId = profile.businessLogoPublicId;
+
+    try {
+      profile.businessLogoUrl = uploaded.url;
+      profile.businessLogoPublicId = uploaded.publicId;
+      await profile.save();
+    } catch (error) {
+      try {
+        await deleteUploadedProductImage(uploaded.publicId);
+      } catch (cleanupError) {
+        logger.error('Unable to remove an uncommitted wholesaler business logo', { error: cleanupError.message });
+      }
+      throw error;
+    }
+
+    await AuditService.log({
+      actorId: actor._id,
+      actorRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'WholesalerProfile',
+      entityId: profile._id,
+      metadata: { fields: ['businessLogoUrl'] },
+      req,
+    });
+    if (previousPublicId && previousPublicId !== uploaded.publicId) {
+      try {
+        await deleteUploadedProductImage(previousPublicId);
+      } catch (error) {
+        logger.error('Unable to remove the previous wholesaler business logo', { error: error.message });
+      }
+    }
+    return this.getProfile(userId);
+  }
+
+  static async removeBusinessLogo(userId, actor, req) {
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false }).select('+businessLogoPublicId');
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+    const previousPublicId = profile.businessLogoPublicId;
+    profile.businessLogoUrl = '';
+    profile.businessLogoPublicId = '';
+    await profile.save();
+    await AuditService.log({
+      actorId: actor._id,
+      actorRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'WholesalerProfile',
+      entityId: profile._id,
+      metadata: { fields: ['businessLogoUrl'], removed: true },
+      req,
+    });
+    if (previousPublicId) {
+      try {
+        await deleteUploadedProductImage(previousPublicId);
+      } catch (error) {
+        logger.error('Unable to remove a deleted wholesaler business logo asset', { error: error.message });
+      }
+    }
     return this.getProfile(userId);
   }
 

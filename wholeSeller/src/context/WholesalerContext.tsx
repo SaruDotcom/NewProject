@@ -102,6 +102,7 @@ export interface WholesalerAccountRegistration {
   ownerName: string;
   email: string;
   phone: string;
+  businessLogo?: File;
   inviteToken?: string;
   ref?: string;
   adminCode?: string;
@@ -320,7 +321,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: u.id || u._id || prev.id,
               accountStatus: u.status === 'SUSPENDED' || u.status === 'BLOCKED' ? u.status : 'ACTIVE',
               businessName: wp.businessName || u.businessName || prev.businessName,
-              businessLogoUrl: wp.businessLogoUrl || prev.businessLogoUrl,
+              businessLogoUrl: wp.businessLogoUrl ?? prev.businessLogoUrl,
               activeStoreTheme: wp.activeStoreTheme || 'DEFAULT',
               businessType: wp.businessType || prev.businessType,
               ownerName: u.name || prev.ownerName,
@@ -696,6 +697,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         password: passwordInput,
         businessName: data.businessName,
         phone: data.phone,
+        businessLogo: data.businessLogo,
         isGstRegistered: false,
         gstin: '',
         gstStatus: 'UNREGISTERED',

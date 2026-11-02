@@ -39,7 +39,6 @@ const registerSchema = Joi.object({
       then: Joi.string().optional().allow('', null),
       otherwise: Joi.string().trim().required().min(2).max(150),
     }),
-  businessLogoUrl: Joi.string().optional().allow('', null),
   businessType: Joi.string().optional().allow('', null),
   city: Joi.string()
     .when('role', {

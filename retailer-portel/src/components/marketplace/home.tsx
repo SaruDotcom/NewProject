@@ -11,7 +11,7 @@ import {
 } from "@mui/icons-material";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/state/store";
-import { ProductGrid, SectionHeading, WholesalerCard } from "./primitives";
+import { ProductGrid, SectionHeading, WholesalerCard, WholesalerLogo } from "./primitives";
 import { categoryImages } from "./storefront";
 import { CategoryCard } from "./CategoryCard";
 import { WholesalerBannerCarousel } from "./WholesalerBannerCarousel";
@@ -57,6 +57,21 @@ export function HomePage() {
             <span className="inline-flex items-center gap-2 border border-primary-foreground/25 bg-ink/50 px-3 py-1.5 text-[11px] sm:text-xs font-bold uppercase backdrop-blur rounded-full">
               Direct Wholesaler Network • {connectedWholesalers.length} Connected Partner{connectedWholesalers.length === 1 ? "" : "s"}
             </span>
+            {linkedWholesaler && (
+              <div className="mt-4 inline-flex max-w-full items-center gap-2.5 rounded-xl border border-primary-foreground/20 bg-ink/50 p-2.5 text-left backdrop-blur">
+                <WholesalerLogo
+                  src={linkedWholesaler.logo}
+                  name={linkedWholesaler.businessName || linkedWholesaler.name}
+                  className="size-10 rounded-lg bg-white text-sm"
+                />
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Your wholesaler</span>
+                  <span className="block truncate text-xs font-extrabold text-primary-foreground sm:text-sm">
+                    {linkedWholesaler.businessName || linkedWholesaler.name}
+                  </span>
+                </div>
+              </div>
+            )}
             <h1 className="mt-4 sm:mt-6 text-3xl font-black leading-tight sm:text-5xl lg:text-6xl tracking-tight">
               {heroHeading}
             </h1>

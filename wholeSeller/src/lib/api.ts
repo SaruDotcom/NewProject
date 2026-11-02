@@ -467,7 +467,7 @@ export const api = {
     email: string;
     password: string;
     businessName: string;
-    businessLogoUrl?: string;
+    businessLogo?: File;
     phone?: string;
     address?: string;
     streetAddress?: string;
@@ -488,11 +488,23 @@ export const api = {
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
-  }) =>
-    request<{ success: boolean; message: string; data: { user: any; token?: string; accessToken?: string; refreshToken?: string } }>('/auth/register', {
+  }) => {
+    const body = payload.businessLogo
+      ? (() => {
+          const formData = new FormData();
+          Object.entries({ ...payload, role: 'wholesaler' }).forEach(([key, value]) => {
+            if (value !== undefined && key !== 'businessLogo') formData.append(key, String(value));
+          });
+          formData.append('businessLogo', payload.businessLogo!);
+          return formData;
+        })()
+      : JSON.stringify({ ...payload, role: 'wholesaler' });
+
+    return request<{ success: boolean; message: string; data: { user: any; token?: string; accessToken?: string; refreshToken?: string } }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ ...payload, role: 'wholesaler' }),
-    }),
+      body,
+    });
+  },
 
   getWholesalerInvite: (token: string) =>
     request<{ success: boolean; data: { contactName: string; email: string; phone: string; businessName: string; expiresAt: string } }>(
@@ -513,6 +525,23 @@ export const api = {
     request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile', {
       method: 'PATCH',
       body: JSON.stringify({ activeStoreTheme }),
+    }),
+  updateBusinessProfile: (data: { businessName: string }) =>
+    request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  uploadBusinessLogo: (file: File) => {
+    const formData = new FormData();
+    formData.append('businessLogo', file);
+    return request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile/logo', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  removeBusinessLogo: () =>
+    request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile/logo', {
+      method: 'DELETE',
     }),
 
   getBanners: () =>

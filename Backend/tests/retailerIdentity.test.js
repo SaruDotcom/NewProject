@@ -9,6 +9,7 @@ const {
   RetailerIdentityService,
   detectFileType,
 } = require('../src/services/retailerIdentity.service');
+const { validateBusinessLogo } = require('../src/services/cloudinary.service');
 const { RetailerProfile, WholesalerRetailerRelationship } = require('../src/models');
 const mongoose = require('mongoose');
 
@@ -128,6 +129,20 @@ describe('Retailer identity registration and privacy', () => {
     };
     expect(detectFileType(jpeg, 'panImage')).toBe('image/jpeg');
     expect(() => detectFileType({ ...jpeg, mimetype: 'image/png' }, 'panImage')).toThrow();
+  });
+
+  test('accepts only valid supported business logo images up to 5 MB', () => {
+    const png = {
+      buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      mimetype: 'image/png',
+      originalname: 'business.png',
+    };
+    expect(validateBusinessLogo(png)).toBe('png');
+    expect(() => validateBusinessLogo({ ...png, mimetype: 'image/jpeg' })).toThrow();
+
+    const oversized = Buffer.alloc(5 * 1024 * 1024 + 1);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(oversized);
+    expect(() => validateBusinessLogo({ ...png, buffer: oversized })).toThrow(/5 MB/);
   });
 
   test('limits wholesaler identity access to an active owned relationship', async () => {

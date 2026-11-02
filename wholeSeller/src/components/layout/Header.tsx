@@ -4,7 +4,6 @@ import {
   Bell,
   Search,
   Plus,
-  Building2,
   X,
   ArrowRight,
   Check,
@@ -14,6 +13,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
+import BusinessLogo from '@/components/BusinessLogo';
 import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
@@ -162,13 +162,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
             aria-expanded={showProfile}
             aria-label="Open business information"
           >
-            {profile.businessLogoUrl ? (
-              <img src={profile.businessLogoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full border border-tradeflow-navy-hover bg-white object-contain" />
-            ) : (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-tradeflow-green text-xs font-bold text-white">
-                {profile.businessName?.charAt(0) || <Building2 className="h-4 w-4" />}
-              </span>
-            )}
+            <BusinessLogo
+              src={profile.businessLogoUrl}
+              name={profile.businessName || 'Your business'}
+              className="h-8 w-8 rounded-full border border-tradeflow-navy-hover bg-white text-tradeflow-green"
+            />
             <span className="hidden truncate text-xs font-bold text-white sm:block">
               {profile.businessName || 'Your business'}
             </span>

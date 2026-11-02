@@ -5,6 +5,8 @@ const WholesalerPortalService = require('./wholesalerPortal.service');
 class WholesalerPortalController {
   getProfile = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.getProfile(req.user._id), 'Wholesaler profile retrieved'));
   updateProfile = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.updateProfile(req.user._id, req.body, req.user, req), 'Wholesaler profile updated'));
+  updateBusinessLogo = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.updateBusinessLogo(req.user._id, req.file, req.user, req), 'Business logo updated'));
+  removeBusinessLogo = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.removeBusinessLogo(req.user._id, req.user, req), 'Business logo removed'));
   // Wholesaler gets connected retailers list
   getConnectedRetailers = asyncHandler(async (req, res) => {
     const { retailers, meta } = await WholesalerPortalService.listRetailers(req.user._id, req.query);

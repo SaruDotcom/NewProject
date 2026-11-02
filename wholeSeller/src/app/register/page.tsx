@@ -10,7 +10,9 @@ import {
   Phone,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  ImagePlus,
+  X,
 } from 'lucide-react';
 import { WholesalerProvider, useWholesaler } from '@/context/WholesalerContext';
 import api from '@/lib/api';
@@ -55,6 +57,8 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   const [phone, setPhone] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [ownerName, setOwnerName] = useState('');
+  const [businessLogo, setBusinessLogo] = useState<File | null>(null);
+  const [businessLogoPreview, setBusinessLogoPreview] = useState('');
 
   // Password & Confirm Password
   const [password, setPassword] = useState('');
@@ -67,6 +71,16 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registrationResult, setRegistrationResult] = useState<{ businessName: string; email: string } | null>(null);
   const submissionInProgress = useRef(false);
+
+  useEffect(() => {
+    if (!businessLogo) {
+      setBusinessLogoPreview('');
+      return;
+    }
+    const preview = URL.createObjectURL(businessLogo);
+    setBusinessLogoPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [businessLogo]);
 
   useEffect(() => {
     if (!refCode) return;
@@ -161,6 +175,7 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
       const attribution = readUtmAttribution();
       await registerWholesaler({
         businessName,
+        businessLogo: businessLogo || undefined,
         ownerName,
         email,
         phone,
@@ -182,6 +197,24 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
       submissionInProgress.current = false;
       setIsSubmitting(false);
     }
+  };
+
+  const selectBusinessLogo = (file?: File) => {
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedExtensions = /\.(jpe?g|png|webp)$/i;
+    if (!allowedTypes.includes(file.type) || !allowedExtensions.test(file.name)) {
+      setBusinessLogo(null);
+      setErrors((previous) => ({ ...previous, businessLogo: 'Choose a JPG, JPEG, PNG, or WebP image.' }));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setBusinessLogo(null);
+      setErrors((previous) => ({ ...previous, businessLogo: 'Business logo must be 5 MB or smaller.' }));
+      return;
+    }
+    setErrors((previous) => ({ ...previous, businessLogo: '' }));
+    setBusinessLogo(file);
   };
 
   if (registrationResult) {
@@ -317,6 +350,47 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
                   </div>
                   {errors.phone && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.phone}</span>}
                 </div>
+              </div>
+              <div className="mt-4 rounded-xl border border-dashed border-tradeflow-gray-300 bg-tradeflow-gray-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-tradeflow-gray-200 bg-white text-tradeflow-green">
+                    {businessLogoPreview ? (
+                      <img src={businessLogoPreview} alt="Business logo preview" className="h-full w-full object-contain" />
+                    ) : (
+                      <Building2 className="h-7 w-7" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor="business-logo" className="block font-bold text-gray-700">Business Logo (Optional)</label>
+                    <p className="mt-1 text-[11px] text-gray-500">JPG, JPEG, PNG, or WebP · up to 5 MB</p>
+                    {businessLogo && <p className="mt-1 truncate text-[11px] font-semibold text-tradeflow-navy">{businessLogo.name}</p>}
+                    {errors.businessLogo && <p className="mt-1 text-[11px] font-semibold text-red-600">{errors.businessLogo}</p>}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <label htmlFor="business-logo" className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-tradeflow-gray-200 bg-white px-3 py-2 text-xs font-bold text-tradeflow-navy hover:bg-tradeflow-gray-50">
+                      <ImagePlus className="h-4 w-4" /> {businessLogo ? 'Change' : 'Choose logo'}
+                    </label>
+                    {businessLogo && (
+                      <button
+                        type="button"
+                        onClick={() => setBusinessLogo(null)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-tradeflow-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
+                      >
+                        <X className="h-4 w-4" /> Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="business-logo"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    selectBusinessLogo(event.target.files?.[0]);
+                    event.currentTarget.value = '';
+                  }}
+                />
               </div>
             </div>
 

@@ -17,6 +17,7 @@ const { ROLES } = require('../config/constants');
 
 const FILES = [
   { name: 'shopPhoto', maxCount: 1 },
+  { name: 'businessLogo', maxCount: 1 },
   { name: 'panImage', maxCount: 1 },
   { name: 'aadhaarFront', maxCount: 1 },
   { name: 'aadhaarBack', maxCount: 1 },
@@ -27,7 +28,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 const identityUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE, files: 4 },
+  limits: { fileSize: MAX_FILE_SIZE, files: 5 },
   fileFilter(_req, file, callback) {
     const extension = path.extname(file.originalname || '').toLowerCase();
     const typeMatchesExtension = {
@@ -36,8 +37,8 @@ const identityUpload = multer({
       'image/webp': ['.webp'],
       'application/pdf': ['.pdf'],
     };
-    const isShopPhoto = file.fieldname === 'shopPhoto';
-    const expectedTypes = isShopPhoto ? IMAGE_TYPES : ALLOWED_TYPES;
+    const isImageOnly = ['shopPhoto', 'businessLogo'].includes(file.fieldname);
+    const expectedTypes = isImageOnly ? IMAGE_TYPES : ALLOWED_TYPES;
     if (!expectedTypes.has(file.mimetype) || !typeMatchesExtension[file.mimetype]?.includes(extension)) {
       return callback(new BadRequestError(
         'Upload JPG, JPEG, PNG, WEBP, or PDF files up to 5 MB.',
@@ -76,7 +77,7 @@ function detectFileType(file, fieldName) {
   if (
     !detected ||
     detected !== file.mimetype ||
-    (fieldName === 'shopPhoto' && !IMAGE_TYPES.has(detected))
+    (['shopPhoto', 'businessLogo'].includes(fieldName) && !IMAGE_TYPES.has(detected))
   ) {
     throw new BadRequestError(
       'The uploaded file content does not match an allowed image or PDF type.',

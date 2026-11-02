@@ -15,7 +15,6 @@ import {
   ShoppingBag,
   ArrowRight,
   Menu,
-  Building2,
   Package,
   Clock,
   Sparkles,
@@ -24,7 +23,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/state/store";
 import { api, setAuthToken, ApiError } from "@/api/api";
-import { TradeFlowMark } from "./primitives";
+import { TradeFlowMark, WholesalerLogo } from "./primitives";
 import { toast } from "sonner";
 import {
   clearStoredReferralAttribution,
@@ -428,17 +427,11 @@ export function LandingPage() {
               {supplier ? (
                 <div className="p-4 bg-white rounded-2xl border-2 border-[#20A66A]/30 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3.5">
-                    {supplier.logo ? (
-                      <img
-                        src={supplier.logo}
-                        alt={supplier.businessName}
-                        className="size-13 rounded-xl object-contain border border-[#D8E1E5] p-1 bg-white shrink-0"
-                      />
-                    ) : (
-                      <div className="size-13 rounded-xl bg-[#E9F7F0] text-[#20A66A] font-heading font-black text-xl flex items-center justify-center shrink-0">
-                        {supplier.businessName.slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
+                    <WholesalerLogo
+                      src={supplier.logo}
+                      name={supplier.businessName}
+                      className="size-13 rounded-xl border border-[#D8E1E5] bg-white text-xl"
+                    />
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-heading font-bold text-base text-[#12304A]">{supplier.businessName}</span>
@@ -1111,17 +1104,11 @@ export function LandingPage() {
 
                 {/* Safe Supplier Card */}
                 <div className="p-4 bg-[#F4F7F8] rounded-2xl border border-[#D8E1E5] flex items-center gap-3.5">
-                  {supplier.logo ? (
-                    <img
-                      src={supplier.logo}
-                      alt={supplier.businessName}
-                      className="size-14 rounded-xl object-contain border border-[#D8E1E5] p-1 bg-white shrink-0"
-                    />
-                  ) : (
-                    <div className="size-14 rounded-xl bg-[#E9F7F0] text-[#20A66A] font-heading font-black text-xl flex items-center justify-center shrink-0">
-                      {supplier.businessName.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
+                  <WholesalerLogo
+                    src={supplier.logo}
+                    name={supplier.businessName}
+                    className="size-14 rounded-xl border border-[#D8E1E5] bg-white text-xl"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="font-heading font-bold text-base text-[#12304A] truncate">{supplier.businessName}</span>
@@ -1186,13 +1173,11 @@ export function LandingPage() {
                 </div>
 
                 <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  {supplier.logo ? (
-                    <img src={supplier.logo} alt="" className="size-12 rounded-lg object-cover" />
-                  ) : (
-                    <div className="flex size-12 items-center justify-center rounded-lg bg-white text-[#20A66A]">
-                      <Building2 className="size-6" />
-                    </div>
-                  )}
+                  <WholesalerLogo
+                    src={supplier.logo}
+                    name={supplier.businessName}
+                    className="size-12 rounded-lg border border-emerald-200 bg-white text-xs"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-[#647782]">You are joining:</p>
                     <p className="truncate font-bold text-[#12304A]">{supplier.businessName}{supplier.city ? `, ${supplier.city}` : ""}</p>

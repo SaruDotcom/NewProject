@@ -81,5 +81,21 @@ const productImageUpload = multer({
   },
 });
 
+const businessLogoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedMimeTypes.includes(file.mimetype) && allowedExts.includes(ext)) return cb(null, true);
+    return cb(new BadRequestError('Only JPG, JPEG, PNG, and WEBP business logos are allowed.', 'INVALID_IMAGE_TYPE'), false);
+  },
+});
+
 module.exports = upload;
 module.exports.productImageUpload = productImageUpload;
+module.exports.businessLogoUpload = businessLogoUpload;

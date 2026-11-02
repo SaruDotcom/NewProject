@@ -38,7 +38,7 @@ import {
   saveReferralAttribution,
   type ReferralAttribution,
 } from "@/lib/referral-attribution";
-import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, money } from "./primitives";
+import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, WholesalerLogo, money } from "./primitives";
 
 const AUTH_REDIRECT_KEY = "nexora_auth_redirect";
 const AUTH_IDENTIFIER_KEY = "nexora_auth_identifier";
@@ -3015,17 +3015,11 @@ export function AuthPage({
                   </span>
                 </div>
                 <div className="mt-3.5 flex items-center gap-3.5">
-                  {activeReferralWholesaler.logo ? (
-                    <img
-                      src={activeReferralWholesaler.logo}
-                      alt={activeReferralWholesaler.businessName}
-                      className="size-12 rounded-xl object-cover ring-2 ring-emerald-400/40 shadow-sm"
-                    />
-                  ) : (
-                    <div className="flex size-12 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 font-black text-lg text-white shadow-md">
-                      {activeReferralWholesaler.businessName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <WholesalerLogo
+                    src={activeReferralWholesaler.logo}
+                    name={activeReferralWholesaler.businessName}
+                    className="size-12 rounded-xl border border-emerald-400/40 bg-white text-base shadow-sm"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-medium text-slate-300">You are joining:</p>
                     <p className="truncate text-base font-extrabold text-white">
