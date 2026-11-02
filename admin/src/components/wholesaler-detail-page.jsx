@@ -22,6 +22,7 @@ const statusLabels = {
 };
 const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 const date = (value) => value ? new Date(value).toLocaleDateString("en-IN") : "—";
+const formatStatus = (value) => String(value || "").replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 const displayName = (user) => user?.businessName || user?.name || "—";
 const getDisplayStatus = (profile) => {
     if (profile.status === "BLOCKED") return "Blocked";
@@ -142,6 +143,8 @@ export function WholesalerDetailPage() {
     const products = details?.products || [];
     const orders = details?.recentOrders || [];
     const payments = details?.paymentSummary || [];
+    const subscription = details?.subscription || null;
+    const subscriptionPayments = details?.subscriptionPayments || [];
     const paymentMetrics = details?.paymentMetrics || {};
     const kycApplication = details?.kycApplication || {};
     const documents = Array.isArray(kycApplication.documents) ? kycApplication.documents : [];
@@ -314,7 +317,7 @@ export function WholesalerDetailPage() {
             </div>
             <Tabs defaultValue="overview">
                 <TabsList className="flex h-auto justify-start overflow-x-auto bg-transparent p-0">
-                    {[["overview", "Overview"], ["retailers", "Retailers"], ["products", "Products"], ["orders", "Orders"], ["payments", "Payments"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
+                    {[["overview", "Overview"], ["subscription", "Subscription"], ["retailers", "Retailers"], ["products", "Products"], ["orders", "Orders"], ["payments", "Payments"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
                 </TabsList>
                 <TabsContent value="overview" className="space-y-5">
                     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -343,6 +346,7 @@ export function WholesalerDetailPage() {
                             <p><strong>GSTIN:</strong> {profile.gstin || "—"}</p>
                             <p><strong>PAN:</strong> {pan || "—"}</p>
                             <p><strong>Registration date:</strong> {date(profile.createdAt)}</p>
+                            <p><strong>Registration source:</strong> {formatStatus(profile.registrationSource || "DIRECT")}</p>
                             <p><strong>Verified:</strong> {profile.isVerified ? "Yes" : "No"}</p>
                         </div>
                     </SectionCard>
@@ -406,6 +410,34 @@ export function WholesalerDetailPage() {
                             <KpiCard label="Payment transactions" value={String(paymentMetrics.totalCount || 0)} />
                             <KpiCard label="Paid amount" value={money(paymentMetrics.paidAmount)} />
                         </div>
+                    </SectionCard>
+                </TabsContent>
+                <TabsContent value="subscription" className="space-y-5">
+                    <SectionCard title="Subscription details" description="Plan and validity are sourced from this wholesaler's subscription record">
+                        {subscription ? (
+                            <div className="grid gap-3 p-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                                <p><strong>Plan:</strong> {subscription.planName || "—"}</p>
+                                <p><strong>Status:</strong> <StatusBadge status={statusLabels[subscription.status] || formatStatus(subscription.status)} /></p>
+                                <p><strong>Amount:</strong> {money(subscription.amount)} {subscription.currency || "INR"}</p>
+                                <p><strong>Billing period:</strong> {formatStatus(subscription.billingPeriod)}</p>
+                                <p><strong>Started:</strong> {date(subscription.startedAt)}</p>
+                                <p><strong>Valid until:</strong> {date(subscription.renewalDate)}</p>
+                            </div>
+                        ) : <p className="p-5 text-sm text-muted-foreground">No subscription record.</p>}
+                    </SectionCard>
+                    <SectionCard title="Subscription payments" description={`${subscriptionPayments.length} recorded payment transactions`}>
+                        <SimpleTable
+                            headers={["Plan", "Billing period", "Amount", "Payment status", "Order reference", "Payment reference", "Paid / verified"]}
+                            rows={subscriptionPayments.map((payment) => [
+                                payment.planName || "—",
+                                formatStatus(payment.billingPeriod),
+                                `${money(payment.amount)} ${payment.currency || "INR"}`,
+                                <StatusBadge key="status" status={payment.status} />,
+                                payment.razorpayOrderId || "—",
+                                payment.razorpayPaymentId || "—",
+                                date(payment.verifiedAt || payment.createdAt),
+                            ])}
+                        />
                     </SectionCard>
                 </TabsContent>
                 <TabsContent value="retailers"><SectionCard title="Connected retailers" description={`${retailers.length} linked records`}><SimpleTable headers={["Retailer", "Email", "Phone", "Status", "Connected"]} rows={retailers.map((retailer) => [displayName(retailer), retailer.email || "—", retailer.phone || "—", <StatusBadge key="status" status={statusLabels[retailer.status] || retailer.status} />, date(retailer.createdAt)])} /></SectionCard></TabsContent>

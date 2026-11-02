@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Ban, CheckCircle2, ChevronLeft, ChevronRight, Eye, Plus, Search, XCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, Ban, CheckCircle2, ChevronLeft, ChevronRight, Eye, Plus, Search } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
@@ -38,52 +38,40 @@ const statusLabels = {
     PENDING: "Pending",
     ACTIVE: "Active",
     BLOCKED: "Blocked",
-    SUSPENDED: "Rejected",
+    SUSPENDED: "Suspended",
 };
-const statusOptions = [
-    ["pending", "Pending"],
-    ["active", "Active"],
-    ["blocked", "Blocked"],
-    ["suspended", "Rejected"],
-];
+const accountStatusOptions = [["pending", "Pending"], ["active", "Active"], ["blocked", "Blocked"], ["suspended", "Suspended"]];
+const kycStatusOptions = [["draft", "Not submitted"], ["submitted", "Submitted"], ["pending", "Pending"], ["under_review", "Under review"], ["approved", "Approved"], ["rejected", "Rejected"], ["resubmission_required", "Resubmission required"], ["resubmit_requested", "Resubmission requested"], ["suspended", "Suspended"]];
+const subscriptionStatusOptions = [["active", "Active"], ["expired", "Expired"], ["cancelled", "Cancelled"], ["no_subscription", "No Subscription"]];
 const blankForm = { name: "", businessName: "", company: "", email: "", phone: "", city: "", state: "", password: "" };
 import { apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 const columns = [
-    ["businessName", "Business"],
-    ["email", "Email"],
-    ["phone", "Phone"],
-    ["city", "City"],
-    ["state", "State"],
-    ["totalConnectedRetailers", "Retailers"],
-    ["totalOrders", "Orders"],
-    ["totalSalesAmount", "Sales"],
-    ["status", "Status"],
-    ["registrationSource", "Registration source"],
-    ["createdAt", "Registered"],
+    ["id", "Wholesaler ID"],
+    ["businessName", "Business Name"],
+    ["name", "Contact Details"],
+    ["subscriptionStatus", "Subscription Status"],
+    ["kycStatus", "KYC Status"],
+    ["status", "Account Status"],
 ];
 
 const columnWidths = {
-    businessName: "min-w-[190px]",
-    email: "min-w-[220px]",
-    phone: "min-w-[130px]",
-    city: "min-w-[110px]",
-    state: "min-w-[130px]",
-    totalConnectedRetailers: "min-w-[90px] text-center",
-    totalOrders: "min-w-[80px] text-center",
-    totalSalesAmount: "min-w-[110px]",
+    id: "min-w-[150px]",
+    businessName: "min-w-[180px]",
+    name: "min-w-[220px]",
+    subscriptionStatus: "min-w-[180px]",
+    kycStatus: "min-w-[130px]",
     status: "min-w-[130px]",
-    registrationSource: "min-w-[170px]",
-    createdAt: "min-w-[130px]",
 };
 
-const getDisplayStatus = (row) => {
-    if (row.status === "BLOCKED") return "Blocked";
-    if (row.status === "SUSPENDED") return "Suspended";
-    if (row.status === "ACTIVE") return "Active";
-    return "Pending";
-};
-
-const isApproved = (row) => row.status === "ACTIVE" && row.kycStatus === "APPROVED";
+const formatStatus = (status) => String(status || "").replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+const accountStatus = (row) => statusLabels[row.status] || formatStatus(row.status) || "Pending";
+const kycStatus = (row) => !row.kycStatus || row.kycStatus === "DRAFT" ? "Not submitted" : formatStatus(row.kycStatus);
+const subscriptionStatus = (row) => row.subscription
+    ? formatStatus(row.subscription.status)
+    : "No Subscription";
+const renderSubscription = (row) => row.subscription
+    ? <div className="flex flex-col items-start gap-1"><span className="max-w-full break-words text-sm font-medium">{row.subscription.planName || "Plan name unavailable"}</span><StatusBadge status={subscriptionStatus(row)} /></div>
+    : <span className="text-sm text-muted-foreground">No Subscription</span>;
 
 export function WholesalerManagementPage() {
     const [search, setSearch] = useState("");
@@ -91,30 +79,27 @@ export function WholesalerManagementPage() {
     const [status, setStatus] = useState(() => {
         if (typeof window === "undefined") return "all";
         const value = new URLSearchParams(window.location.search).get("status")?.toLowerCase();
-        return ["pending", "active", "blocked"].includes(value) ? value : "all";
+        return ["pending", "active", "blocked", "suspended"].includes(value) ? value : "all";
     });
-    const [city, setCity] = useState("all");
-    const [state, setState] = useState("all");
-    const [dateFrom, setDateFrom] = useState("");
-    const [dateTo, setDateTo] = useState("");
-    const [sortBy, setSortBy] = useState("createdAt");
-    const [sortOrder, setSortOrder] = useState("desc");
+    const [kycFilter, setKycFilter] = useState("all");
+    const [subscriptionFilter, setSubscriptionFilter] = useState("all");
+    const [sortBy, setSortBy] = useState("businessName");
+    const [sortOrder, setSortOrder] = useState("asc");
     const [page, setPage] = useState(1);
     const [refreshKey, setRefreshKey] = useState(0);
     const [confirmation, setConfirmation] = useState(null);
     const [editing, setEditing] = useState(null);
     const [formMode, setFormMode] = useState("create");
     const [formErrors, setFormErrors] = useState({});
-    const [viewing, setViewing] = useState(null);
     const [editForm, setEditForm] = useState({});
     const [actionLoading, setActionLoading] = useState(false);
-    const [result, setResult] = useState({ items: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 }, cities: [], states: [] });
+    const [result, setResult] = useState({ items: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 } });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
         setPage(1);
-    }, [debouncedSearch, status, city, state, dateFrom, dateTo]);
+    }, [debouncedSearch, status, kycFilter, subscriptionFilter]);
 
     useEffect(() => {
         let mounted = true;
@@ -126,10 +111,8 @@ export function WholesalerManagementPage() {
         });
         if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
         if (status !== "all") params.set("status", status);
-        if (city !== "all") params.set("city", city);
-        if (state !== "all") params.set("state", state);
-        if (dateFrom) params.set("dateFrom", dateFrom);
-        if (dateTo) params.set("dateTo", dateTo);
+        if (kycFilter !== "all") params.set("kycStatus", kycFilter);
+        if (subscriptionFilter !== "all") params.set("subscriptionStatus", subscriptionFilter);
 
         async function load() {
             setLoading(true);
@@ -140,8 +123,6 @@ export function WholesalerManagementPage() {
                 setResult({
                     items: Array.isArray(payload?.items) ? payload.items : [],
                     pagination: payload?.pagination || { page: 1, limit: 10, total: 0, totalPages: 1 },
-                    cities: payload?.filters?.cities || [],
-                    states: payload?.filters?.states || [],
                 });
             } catch (err) {
                 if (!mounted) return;
@@ -156,17 +137,7 @@ export function WholesalerManagementPage() {
         return () => {
             mounted = false;
         };
-    }, [debouncedSearch, status, city, state, dateFrom, dateTo, sortBy, sortOrder, page, refreshKey]);
-
-    const confirmStatus = (row, nextStatus, options = {}) => setConfirmation({
-        kind: "status",
-        row,
-        nextStatus,
-        kycStatus: options.kycStatus,
-        reason: options.reason,
-        title: options.title,
-        description: options.description,
-    });
+    }, [debouncedSearch, status, kycFilter, subscriptionFilter, sortBy, sortOrder, page, refreshKey]);
 
     const confirmBlocked = (row, blocked) => setConfirmation({
         kind: "blocked",
@@ -187,13 +158,6 @@ export function WholesalerManagementPage() {
                     blocked: confirmation.blocked,
                 });
                 toast.success(confirmation.blocked ? "Wholesaler blocked successfully" : "Wholesaler unblocked successfully");
-            } else {
-                await apiPatch(`/admin/wholesalers/${confirmation.row.id}/status`, {
-                    status: confirmation.nextStatus,
-                    kycStatus: confirmation.kycStatus,
-                    reason: confirmation.reason,
-                });
-                toast.success("Wholesaler status updated successfully");
             }
             setConfirmation(null);
             setRefreshKey((current) => current + 1);
@@ -278,16 +242,29 @@ export function WholesalerManagementPage() {
         }
         setPage(1);
     };
-    const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString("en-IN")
-        }`;
-    const formatDate = (value) => value ? new Date(value).toLocaleDateString("en-IN") : "—";
+    const renderRowActions = (row) => (
+        <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="h-8 px-2 text-xs" title="View full profile">
+                <Link to={`/wholesalers/${row.id}`}><Eye className="size-3.5" />View</Link>
+            </Button>
+            {row.status === "BLOCKED" ? (
+                <Button variant="outline" size="sm" className="h-8 border-emerald-200 bg-emerald-50 px-2 text-xs text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800" title="Unblock wholesaler" onClick={() => confirmBlocked(row, false)}>
+                    <CheckCircle2 className="size-3.5" />Unblock
+                </Button>
+            ) : row.status === "ACTIVE" ? (
+                <Button variant="outline" size="sm" className="h-8 border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 hover:bg-slate-100" title="Block wholesaler" onClick={() => confirmBlocked(row, true)}>
+                    <Ban className="size-3.5" />Block
+                </Button>
+            ) : null}
+        </div>
+    );
     const pages = Math.max(1, result.pagination.totalPages || 1);
 
     return (
         <div className="space-y-6">
             <PageHeader
                 title="Wholesalers"
-                description="Manage and approve wholesalers."
+                description="Manage wholesaler accounts, subscriptions and verification."
                 action={<Button onClick={openCreate}><Plus /> Add Wholesaler</Button>}
             />
             <section className="admin-card overflow-hidden">
@@ -301,29 +278,27 @@ export function WholesalerManagementPage() {
                             className="pl-9 shadow-none"
                         />
                     </div>
+                    <Select value={subscriptionFilter} onValueChange={(value) => { setSubscriptionFilter(value); setPage(1); }}>
+                        <SelectTrigger className="w-full lg:w-48"><SelectValue placeholder="Subscription" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All subscriptions</SelectItem>
+                            {subscriptionStatusOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                    <Select value={kycFilter} onValueChange={(value) => { setKycFilter(value); setPage(1); }}>
+                        <SelectTrigger className="w-full lg:w-40"><SelectValue placeholder="KYC status" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All KYC statuses</SelectItem>
+                            {kycStatusOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
                     <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}>
-                        <SelectTrigger className="w-full lg:w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+                        <SelectTrigger className="w-full lg:w-40"><SelectValue placeholder="Account status" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All</SelectItem>
-                            {statusOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                            <SelectItem value="all">All accounts</SelectItem>
+                            {accountStatusOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                         </SelectContent>
                     </Select>
-                    <Select value={city} onValueChange={(value) => { setCity(value); setPage(1); }}>
-                        <SelectTrigger className="w-full lg:w-36"><SelectValue placeholder="City" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All</SelectItem>
-                            {result.cities.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    <Select value={state} onValueChange={(value) => { setState(value); setPage(1); }}>
-                        <SelectTrigger className="w-full lg:w-36"><SelectValue placeholder="State" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All</SelectItem>
-                            {result.states.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    <Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} aria-label="Registered from" />
-                    <Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} aria-label="Registered to" />
                 </div>
                 {loading ? (
                     <div className="p-8 text-sm text-muted-foreground">Loading wholesalers...</div>
@@ -332,132 +307,65 @@ export function WholesalerManagementPage() {
                 ) : result.items.length === 0 ? (
                     <div className="p-8 text-sm text-muted-foreground">No wholesalers found.</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <Table className="min-w-[1730px] table-fixed">
-                            <TableHeader>
-                                <TableRow className="bg-muted/40">
-                                    {columns.map(([key, label]) => (
-                                        <TableHead key={key} className={`whitespace-nowrap px-3 text-xs font-semibold uppercase text-muted-foreground ${columnWidths[key] || ""}`}>
-                                            <button className="inline-flex items-center gap-1" onClick={() => toggleSort(key)}>
-                                                {label}
-                                                {sortBy === key && (sortOrder === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
-                                            </button>
-                                        </TableHead>
-                                    ))}
-                                    <TableHead className="min-w-[360px] whitespace-nowrap px-3 text-xs font-semibold uppercase text-muted-foreground">
-                                        Actions
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {result.items.map((row) => (
-                                    <TableRow key={String(row.id)}>
-                                        <TableCell className="min-w-[220px]">
-                                            <div className="flex min-w-0 flex-col gap-1">
-                                                <span className="truncate font-semibold" title={row.businessName || row.name || ""}>{row.businessName || row.name || "—"}</span>
-                                                <Link
-                                                    to={`/wholesalers/${row.id}`}
-                                                    className="w-fit max-w-full break-all text-xs font-medium text-primary underline-offset-2 hover:underline"
-                                                    title={`View wholesaler ${row.id}`}
-                                                >
-                                                    ID: {row.id}
-                                                </Link>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="truncate" title={row.email || ""}>{row.email || "—"}</TableCell>
-                                        <TableCell>{row.phone || "—"}</TableCell>
-                                        <TableCell className="truncate" title={row.city || ""}>{row.city || "—"}</TableCell>
-                                        <TableCell className="truncate" title={row.state || ""}>{row.state || "—"}</TableCell>
-                                        <TableCell className="text-center">{row.totalConnectedRetailers ?? 0}</TableCell>
-                                        <TableCell className="text-center">{row.totalOrders ?? 0}</TableCell>
-                                        <TableCell>{formatCurrency(row.totalSalesAmount)}</TableCell>
-                                        <TableCell><StatusBadge status={getDisplayStatus(row)} /></TableCell>
-                                        <TableCell><StatusBadge status={(row.registrationSource || "DIRECT").replaceAll("_", " ")} /></TableCell>
-                                        <TableCell>{formatDate(row.createdAt)}</TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-1.5">
-                                                <Button asChild variant="outline" size="sm" className="h-8 px-2 text-xs" title="View full profile">
-                                                    <Link to={`/wholesalers/${row.id}`}>
-                                                        <Eye className="size-3.5" />
-                                                        View
-                                                    </Link>
-                                                </Button>
-                                                {!isApproved(row) && row.status !== "BLOCKED" && (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-8 border-emerald-200 bg-emerald-50 px-2 text-xs text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                                        title="Approve wholesaler"
-                                                        onClick={() => confirmStatus(row, "ACTIVE", {
-                                                            kycStatus: "APPROVED",
-                                                            title: "Approve wholesaler?",
-                                                            description: "This wholesaler will be approved and allowed to log in to the wholesaler dashboard.",
-                                                        })}
-                                                    >
-                                                        <CheckCircle2 className="size-3.5" />
-                                                        Approve
-                                                    </Button>
-                                                )}
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-8 w-8 border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800"
-                                                    title="Reject wholesaler"
-                                                    aria-label={`Reject ${row.businessName || row.name}`}
-                                                    onClick={() => confirmStatus(row, "SUSPENDED", {
-                                                        kycStatus: "REJECTED",
-                                                        reason: "Rejected by admin",
-                                                        title: "Reject wholesaler?",
-                                                        description: "The wholesaler registration will be rejected and dashboard login will remain blocked.",
-                                                    })}
-                                                >
-                                                    <XCircle className="size-3.5" />
-                                                </Button>
-                                                {row.status === "BLOCKED" ? (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-8 border-emerald-200 bg-emerald-50 px-2 text-xs text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                                        title="Unblock wholesaler"
-                                                        onClick={() => confirmBlocked(row, false)}
-                                                    >
-                                                        <CheckCircle2 className="size-3.5" />
-                                                        Unblock
-                                                    </Button>
-                                                ) : row.status === "ACTIVE" ? (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-8 border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 hover:bg-slate-100"
-                                                        title="Block wholesaler"
-                                                        onClick={() => confirmBlocked(row, true)}
-                                                    >
-                                                        <Ban className="size-3.5" />
-                                                        Block
-                                                    </Button>
-                                                ) : row.status === "SUSPENDED" ? (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-8 w-8 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                                        title="Reactivate wholesaler"
-                                                        aria-label={`Reactivate ${row.businessName || row.name}`}
-                                                        onClick={() => confirmStatus(row, "ACTIVE", {
-                                                            kycStatus: "APPROVED",
-                                                            title: "Reactivate wholesaler?",
-                                                            description: "This wholesaler will be active again.",
-                                                        })}
-                                                    >
-                                                        <CheckCircle2 className="size-3.5" />
-                                                    </Button>
-                                                ) : null}
-                                            </div>
-                                        </TableCell>
+                    <>
+                        <div className="space-y-3 p-3 xl:hidden">
+                            {result.items.map((row) => (
+                                <article key={String(row.id)} className="space-y-4 rounded-lg border bg-card p-4">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="font-semibold">{row.businessName || row.name || "—"}</span>
+                                        <Link to={`/wholesalers/${row.id}`} className="break-all text-xs font-medium text-primary underline-offset-2 hover:underline">
+                                            ID: {row.id}
+                                        </Link>
+                                    </div>
+                                    <div className="grid gap-3 text-sm sm:grid-cols-2">
+                                        <div className="min-w-0"><span className="text-xs font-semibold uppercase text-muted-foreground">Contact details</span><p className="break-words">{row.name || "—"}</p><p className="break-all text-muted-foreground">{row.email || "—"}</p><p className="text-muted-foreground">{row.phone || "—"}</p></div>
+                                        <div><span className="text-xs font-semibold uppercase text-muted-foreground">Subscription</span><div className="mt-1">{renderSubscription(row)}</div></div>
+                                        <div><span className="text-xs font-semibold uppercase text-muted-foreground">KYC status</span><div className="mt-1"><StatusBadge status={kycStatus(row)} /></div></div>
+                                        <div><span className="text-xs font-semibold uppercase text-muted-foreground">Account status</span><div className="mt-1"><StatusBadge status={accountStatus(row)} /></div></div>
+                                    </div>
+                                    <div className="border-t pt-3">{renderRowActions(row)}</div>
+                                </article>
+                            ))}
+                        </div>
+                        <div className="hidden overflow-x-auto xl:block">
+                            <Table className="min-w-[1120px] w-full table-fixed">
+                                <TableHeader>
+                                    <TableRow className="bg-muted/40">
+                                        {columns.map(([key, label]) => (
+                                            <TableHead key={key} className={`whitespace-nowrap px-3 text-xs font-semibold uppercase text-muted-foreground ${columnWidths[key] || ""}`}>
+                                                <button className="inline-flex items-center gap-1" onClick={() => toggleSort(key)}>
+                                                    {label}
+                                                    {sortBy === key && (sortOrder === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
+                                                </button>
+                                            </TableHead>
+                                        ))}
+                                        <TableHead className="min-w-[180px] whitespace-nowrap px-3 text-xs font-semibold uppercase text-muted-foreground">Actions</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
+                                </TableHeader>
+                                <TableBody>
+                                    {result.items.map((row) => (
+                                        <TableRow key={String(row.id)}>
+                                            <TableCell className="break-all font-mono text-xs">
+                                                <Link to={`/wholesalers/${row.id}`} className="text-primary underline-offset-2 hover:underline">ID: {row.id}</Link>
+                                            </TableCell>
+                                            <TableCell className="whitespace-normal break-words font-semibold">{row.businessName || "—"}</TableCell>
+                                            <TableCell className="whitespace-normal">
+                                                <div className="space-y-1">
+                                                    <p className="break-words font-medium">{row.name || "—"}</p>
+                                                    <p className="break-all text-xs text-muted-foreground">{row.email || "—"}</p>
+                                                    <p className="text-xs text-muted-foreground">{row.phone || "—"}</p>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>{renderSubscription(row)}</TableCell>
+                                            <TableCell><StatusBadge status={kycStatus(row)} /></TableCell>
+                                            <TableCell><StatusBadge status={accountStatus(row)} /></TableCell>
+                                            <TableCell>{renderRowActions(row)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </>
                 )}
                 <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
                     <span>Showing {result.items.length ? (page - 1) * 10 + 1 : 0}–{Math.min(page * 10, result.pagination.total)} of {result.pagination.total}</span>
@@ -494,26 +402,6 @@ export function WholesalerManagementPage() {
                         <DialogFooter>
                             <Button variant="outline" onClick={closeForm} disabled={actionLoading}>Cancel</Button>
                             <Button onClick={saveForm} disabled={actionLoading}>{actionLoading ? "Saving..." : formMode === "create" ? "Create wholesaler" : "Save changes"}</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-                <Dialog open={Boolean(viewing)} onOpenChange={(open) => !open && setViewing(null)}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>{viewing?.businessName || viewing?.name || "Wholesaler"}</DialogTitle>
-                            <DialogDescription>Wholesaler profile</DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-3 text-sm sm:grid-cols-2">
-                            <p><strong>Owner:</strong> {viewing?.name || "—"}</p>
-                            <p><strong>Email:</strong> {viewing?.email || "—"}</p>
-                            <p><strong>Phone:</strong> {viewing?.phone || "—"}</p>
-                            <p><strong>Company:</strong> {viewing?.company || "—"}</p>
-                            <p><strong>City:</strong> {viewing?.city || "—"}</p>
-                            <p><strong>State:</strong> {viewing?.state || "—"}</p>
-                            <p><strong>Status:</strong> {statusLabels[viewing?.status] || viewing?.status || "—"}</p>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setViewing(null)}>Close</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

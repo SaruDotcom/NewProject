@@ -56,6 +56,14 @@ const collectProductImageIds = (value, ids = new Set()) => {
   return ids;
 };
 
+const getSubscriptionStatus = (subscription) => {
+  if (!subscription) return null;
+  const status = String(subscription.status || '').toUpperCase();
+  if (status === 'CANCELLED') return status;
+  if (subscription.renewalDate && new Date(subscription.renewalDate) <= new Date()) return 'EXPIRED';
+  return status;
+};
+
 class WholesalerService {
   static normalizeStatus(status) {
     if (!status) return undefined;
@@ -74,7 +82,7 @@ class WholesalerService {
     return Object.values(KYC_STATUS).includes(normalized) ? normalized : status;
   }
 
-  static mapWholesaler(profile, aggregates = {}) {
+  static mapWholesaler(profile, aggregates = null) {
     const user = profile.userId || {};
     const address = profile.address || {};
     return {
@@ -108,9 +116,11 @@ class WholesalerService {
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
       lastLoginAt: user.lastLoginAt || null,
-      totalConnectedRetailers: aggregates.totalConnectedRetailers || 0,
-      totalOrders: aggregates.totalOrders || 0,
-      totalSalesAmount: aggregates.totalSalesAmount || 0,
+      ...(aggregates ? {
+        totalConnectedRetailers: aggregates.totalConnectedRetailers || 0,
+        totalOrders: aggregates.totalOrders || 0,
+        totalSalesAmount: aggregates.totalSalesAmount || 0,
+      } : {}),
     };
   }
 
@@ -118,7 +128,7 @@ class WholesalerService {
    * List all wholesalers with search, filters, pagination
    */
   static async listWholesalers(query = {}) {
-    const { page, limit, skip, sort } = parsePagination(query);
+    const { page, limit, skip, sortOrder } = parsePagination(query);
     const filter = { isDeleted: false };
     const userFilter = {};
 
@@ -147,7 +157,6 @@ class WholesalerService {
     const allWholesalers = await WholesalerProfile.find(filter)
       .populate('userId', 'name email phone status createdAt lastLoginAt')
       .populate('walletId', 'availableBalance pendingBalance lockedBalance')
-      .sort(sort)
       .lean();
 
     let filtered = Object.keys(userFilter).length
@@ -168,43 +177,52 @@ class WholesalerService {
       ].some((value) => String(value || '').toLowerCase().includes(search)));
     }
 
-    const pageItems = filtered.slice(skip, skip + limit);
-    const userIds = pageItems.map((w) => w.userId?._id || w.userId).filter(Boolean);
-    const [retailerCounts, orderStats] = await Promise.all([
-      WholesalerRetailerRelationship.aggregate([
-        { $match: { wholesalerId: { $in: userIds }, status: 'ACTIVE' } },
-        { $group: { _id: '$wholesalerId', count: { $sum: 1 } } },
-      ]),
-      Order.aggregate([
-        { $match: { wholesalerId: { $in: userIds } } },
-        { $group: { _id: '$wholesalerId', count: { $sum: 1 }, totalSalesAmount: { $sum: '$totalAmount' } } },
-      ]),
-    ]);
-
-    const retailerMap = new Map(retailerCounts.map((row) => [String(row._id), row.count]));
-    const orderMap = new Map(orderStats.map((row) => [String(row._id), row]));
-    const items = pageItems.map((w) => {
-      const id = String(w.userId?._id || w.userId);
-      const orders = orderMap.get(id) || {};
-      return this.mapWholesaler(w, {
-        totalConnectedRetailers: retailerMap.get(id) || 0,
-        totalOrders: orders.count || 0,
-        totalSalesAmount: orders.totalSalesAmount || 0,
-      });
+    const subscriptionUserIds = filtered.map((wholesaler) => wholesaler.userId?._id || wholesaler.userId)
+      .filter(Boolean);
+    const subscriptions = await WholesalerSubscription.find({ userId: { $in: subscriptionUserIds } })
+      .select('userId planName amount currency billingPeriod status startedAt renewalDate')
+      .lean();
+    const subscriptionMap = new Map(subscriptions.map((subscription) => [
+      String(subscription.userId),
+      { ...subscription, status: getSubscriptionStatus(subscription) },
+    ]));
+    filtered = filtered.map((wholesaler) => {
+      const subscription = subscriptionMap.get(String(wholesaler.userId?._id || wholesaler.userId)) || null;
+      return {
+        ...this.mapWholesaler(wholesaler),
+        subscription,
+        subscriptionStatus: subscription?.status || 'NO_SUBSCRIPTION',
+      };
     });
 
+    if (query.subscriptionStatus) {
+      const subscriptionStatus = String(query.subscriptionStatus).toUpperCase().replace(/[\s-]+/g, '_');
+      filtered = filtered.filter((wholesaler) => wholesaler.subscriptionStatus === subscriptionStatus);
+    }
+
+    const sortBy = String(query.sortBy || 'createdAt');
+    const supportedSortFields = ['id', 'businessName', 'name', 'email', 'phone', 'subscriptionStatus', 'kycStatus', 'status', 'createdAt'];
+    const sortField = supportedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    filtered.sort((left, right) => {
+      const leftValue = left[sortField] || '';
+      const rightValue = right[sortField] || '';
+      const comparison = sortField === 'createdAt'
+        ? new Date(leftValue).getTime() - new Date(rightValue).getTime()
+        : String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: 'base' });
+      return comparison * (sortOrder === 'asc' ? 1 : -1);
+    });
+
+    const pageItems = filtered.slice(skip, skip + limit);
+
     return {
-      wholesalers: items,
+      wholesalers: pageItems,
       meta: {
         page,
         limit,
         total: filtered.length,
         totalPages: Math.ceil(filtered.length / limit),
       },
-      filters: {
-        cities: [...new Set(allWholesalers.map((w) => w.address?.city).filter(Boolean))].sort(),
-        states: [...new Set(allWholesalers.map((w) => w.address?.state).filter(Boolean))].sort(),
-      },
+      filters: {},
     };
   }
 
@@ -243,6 +261,8 @@ class WholesalerService {
       connectedRetailers,
       products,
       recentOrders,
+      subscription,
+      subscriptionPayments,
     ] =
       await Promise.all([
         KycApplication.findOne({ wholesalerId: userId }).populate('documents'),
@@ -313,7 +333,13 @@ class WholesalerService {
           .sort({ createdAt: -1 })
           .limit(10)
           .lean(),
+        WholesalerSubscription.findOne({ userId }).lean(),
+        SubscriptionPayment.find({ userId }).sort({ createdAt: -1 }).lean(),
       ]);
+
+    const mappedSubscription = subscription
+      ? { ...subscription, status: getSubscriptionStatus(subscription) }
+      : null;
 
     return {
       profile: this.mapWholesaler(profile.toObject ? profile.toObject() : profile, {
@@ -345,6 +371,8 @@ class WholesalerService {
         id: String(payment._id),
         order: payment.orderId,
       })),
+      subscription: mappedSubscription,
+      subscriptionPayments,
       paymentMetrics: paymentStats[0] || {
         totalCount: 0,
         totalAmount: 0,

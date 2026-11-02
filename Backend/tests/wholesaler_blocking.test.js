@@ -1,4 +1,5 @@
 const request = require('supertest');
+const mongoose = require('mongoose');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
@@ -9,6 +10,8 @@ const {
   Category,
   Product,
   Order,
+  WholesalerSubscription,
+  SubscriptionPayment,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
@@ -257,5 +260,113 @@ describe('Super Admin wholesaler block and unblock', () => {
       totalOrders: 1,
     });
     expect(first.body.data.paymentMetrics.totalCount).toBe(0);
+  });
+
+  test('lists purchased subscription statuses independently from account and KYC status', async () => {
+    const now = new Date();
+    const activePlanId = new mongoose.Types.ObjectId();
+    const expiredPlanId = new mongoose.Types.ObjectId();
+    await WholesalerSubscription.create([
+      {
+        userId: blockedWholesaler._id,
+        wholesalerProfileId: blockedProfile._id,
+        planId: activePlanId,
+        planName: 'Growth Monthly',
+        amount: 499,
+        status: 'ACTIVE',
+        startedAt: now,
+        renewalDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        razorpayOrderId: 'active-subscription-order',
+        razorpayPaymentId: 'active-subscription-payment',
+      },
+      {
+        userId: activeWholesaler._id,
+        wholesalerProfileId: activeProfile._id,
+        planId: expiredPlanId,
+        planName: 'Business Yearly',
+        amount: 3000,
+        status: 'ACTIVE',
+        startedAt: new Date(now.getTime() - 400 * 24 * 60 * 60 * 1000),
+        renewalDate: new Date(now.getTime() - 35 * 24 * 60 * 60 * 1000),
+        razorpayOrderId: 'expired-subscription-order',
+        razorpayPaymentId: 'expired-subscription-payment',
+      },
+    ]);
+    await SubscriptionPayment.create({
+      userId: blockedWholesaler._id,
+      wholesalerProfileId: blockedProfile._id,
+      planId: activePlanId,
+      planName: 'Growth Monthly',
+      amount: 499,
+      amountPaise: 49900,
+      status: 'PAID',
+      razorpayOrderId: 'paid-subscription-order',
+      razorpayPaymentId: 'paid-subscription-payment',
+      verifiedAt: now,
+    });
+    blockedWholesaler.status = USER_STATUS.BLOCKED;
+    await blockedWholesaler.save();
+    activeProfile.kycStatus = KYC_STATUS.REJECTED;
+    await activeProfile.save();
+
+    const noSubscriptionUser = await User.create({
+      name: 'Wholesaler C',
+      email: 'blocking-wholesaler-c@example.test',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    const noSubscriptionProfile = await WholesalerProfile.create({
+      userId: noSubscriptionUser._id,
+      businessName: 'Business C',
+      kycStatus: KYC_STATUS.DRAFT,
+    });
+
+    const listing = await request(app)
+      .get('/api/v1/admin/wholesalers?limit=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listing.status).toBe(200);
+    const byBusiness = new Map(listing.body.data.items.map((row) => [row.businessName, row]));
+    expect(byBusiness.get('Business A')).toMatchObject({
+      status: USER_STATUS.BLOCKED,
+      kycStatus: KYC_STATUS.APPROVED,
+      subscriptionStatus: 'ACTIVE',
+      subscription: { planName: 'Growth Monthly', status: 'ACTIVE' },
+    });
+    expect(byBusiness.get('Business B')).toMatchObject({
+      status: USER_STATUS.ACTIVE,
+      kycStatus: KYC_STATUS.REJECTED,
+      subscriptionStatus: 'EXPIRED',
+      subscription: { planName: 'Business Yearly', status: 'EXPIRED' },
+    });
+    expect(byBusiness.get('Business C')).toMatchObject({
+      status: USER_STATUS.ACTIVE,
+      kycStatus: KYC_STATUS.DRAFT,
+      subscription: null,
+      subscriptionStatus: 'NO_SUBSCRIPTION',
+    });
+
+    const filtered = await request(app)
+      .get('/api/v1/admin/wholesalers?limit=100&status=active&kycStatus=rejected&subscriptionStatus=expired')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.data.items.map((row) => row.id)).toEqual([String(activeProfile._id)]);
+
+    const noSubscription = await request(app)
+      .get('/api/v1/admin/wholesalers?limit=100&subscriptionStatus=no_subscription')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(noSubscription.status).toBe(200);
+    expect(noSubscription.body.data.items.map((row) => row.id)).toEqual([String(noSubscriptionProfile._id)]);
+
+    const details = await request(app)
+      .get(`/api/v1/admin/wholesalers/${blockedProfile._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(details.status).toBe(200);
+    expect(details.body.data.subscription.status).toBe('ACTIVE');
+    expect(details.body.data.subscriptionPayments).toHaveLength(1);
+    expect(details.body.data.subscriptionPayments[0]).toMatchObject({
+      planName: 'Growth Monthly',
+      status: 'PAID',
+    });
   });
 });
