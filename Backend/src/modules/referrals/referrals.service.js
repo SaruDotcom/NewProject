@@ -25,7 +25,6 @@ class ReferralService {
 
     let profile = await WholesalerProfile.findOne({
       retailerReferralCode: normalizedCode,
-      retailerSignupsEnabled: { $ne: false },
       isDeleted: false,
     }).lean();
 

@@ -144,6 +144,27 @@ describe('ReferralService', () => {
         'This wholesaler is currently undergoing verification.'
       );
     });
+
+    it('reports paused sign-ups for an existing referral code', async () => {
+      WholesalerProfile.findOne.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: 'prof123',
+          userId: 'user123',
+          retailerReferralCode: 'WDE15J',
+          kycStatus: KYC_STATUS.APPROVED,
+          retailerSignupsEnabled: false,
+          isDeleted: false,
+        }),
+      });
+
+      await expect(ReferralService.resolveActiveCode('WDE15J')).rejects.toThrow(
+        'This wholesaler has temporarily paused new retailer sign-ups.'
+      );
+      expect(WholesalerProfile.findOne).toHaveBeenCalledWith({
+        retailerReferralCode: 'WDE15J',
+        isDeleted: false,
+      });
+    });
   });
 
   describe('getPublicReferral', () => {
