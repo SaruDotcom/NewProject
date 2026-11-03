@@ -4,11 +4,12 @@ const { User, WholesalerProfile, PlatformSetting } = require('../src/models');
 const WholesalerInvitesService = require('../src/modules/wholesaler-invites/wholesalerInvites.service');
 const AuthService = require('../src/modules/auth/auth.service');
 
-async function runTests() {
-  console.log('--- Starting Admin Wholesaler Link Backend Tests ---');
-  await connectDB();
+describe('Admin Wholesaler Link', () => {
+  it('runs admin wholesaler link test workflow', async () => {
+    console.log('--- Starting Admin Wholesaler Link Backend Tests ---');
+    await connectDB();
 
-  try {
+    try {
     // 1. Get or initialize Admin link
     console.log('\nTest 1: Get Admin Link');
     const link1 = await WholesalerInvitesService.getAdminLink();
@@ -160,9 +161,5 @@ async function runTests() {
   } finally {
     await mongoose.disconnect();
   }
-}
-
-runTests().catch((err) => {
-  console.error('Test Failed:', err);
-  process.exit(1);
+  }, 30000);
 });

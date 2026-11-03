@@ -95,7 +95,7 @@ function addCalendarPeriod(date, billingPeriod) {
 }
 
 function configured() {
-  return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+  return Boolean(env.RAZORPAY_KEY_ID.trim() && env.RAZORPAY_KEY_SECRET.trim());
 }
 
 class SubscriptionService {

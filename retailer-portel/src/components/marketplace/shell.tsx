@@ -88,22 +88,54 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
 
 export function Logo({ variant = "default" }: { variant?: "default" | "light" }) {
   const { retailerProfile, linkedWholesaler } = useStore();
-  const hasCustomName = Boolean(linkedWholesaler?.businessName?.trim() || retailerProfile?.businessName?.trim());
-  const retailerName = linkedWholesaler?.businessName?.trim() || retailerProfile?.businessName?.trim() || "TradeFlow";
-  const tagline = linkedWholesaler?.businessTagline?.trim();
   const isLight = variant === "light";
+
+  if (linkedWholesaler) {
+    const wholesalerName = linkedWholesaler.businessName?.trim() || linkedWholesaler.name?.trim() || "Wholesaler Store";
+    const tagline = linkedWholesaler.businessTagline?.trim() || "Wholesale Partner Storefront";
+
+    return (
+      <Link to="/" className="flex items-center gap-2 sm:gap-3 group focus-visible:outline-none shrink-0 min-w-0">
+        <WholesalerLogo
+          src={linkedWholesaler.logo}
+          name={wholesalerName}
+          className="size-9 sm:size-11 rounded-xl border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105 shrink-0"
+        />
+        <div className="flex flex-col min-w-0 justify-center">
+          <div className="flex items-center gap-1.5">
+            <span
+              title={wholesalerName}
+              className={cn(
+                "font-black tracking-tight text-sm sm:text-lg leading-tight truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[280px]",
+                isLight ? "text-white" : "text-ink"
+              )}
+            >
+              {wholesalerName}
+            </span>
+            <span className="hidden sm:inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600">
+              Verified
+            </span>
+          </div>
+          <span
+            title={tagline}
+            className={cn(
+              "text-[10px] sm:text-xs font-semibold tracking-normal leading-tight truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[280px] mt-0.5",
+              isLight ? "text-emerald-300" : "text-primary font-bold"
+            )}
+          >
+            {tagline}
+          </span>
+        </div>
+      </Link>
+    );
+  }
+
+  const retailerName = retailerProfile?.businessName?.trim() || "TradeFlow";
+  const hasCustomName = Boolean(retailerProfile?.businessName?.trim());
 
   return (
     <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group focus-visible:outline-none shrink-0">
-      {linkedWholesaler ? (
-        <WholesalerLogo
-          src={linkedWholesaler.logo}
-          name={retailerName}
-          className="size-8 sm:size-10 rounded-xl border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105"
-        />
-      ) : (
-        <TradeFlowMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
-      )}
+      <TradeFlowMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
       <div className="flex flex-col min-w-0">
         <span className={cn("font-black tracking-tight text-base sm:text-xl leading-none truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[180px]", isLight ? "text-white" : "text-ink")}>
           {hasCustomName ? retailerName : (
@@ -113,10 +145,9 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
           )}
         </span>
         <span
-          title={tagline || (linkedWholesaler ? retailerName : "Retailer Portal")}
           className={cn("text-[9px] sm:text-[10px] font-extrabold tracking-wide leading-none mt-0.5 truncate hidden xs:block max-w-[110px] sm:max-w-[180px]", isLight ? "text-tradeflow-green" : "text-primary")}
         >
-          {tagline || (linkedWholesaler ? "Wholesale Store" : "Retailer Portal")}
+          Retailer Portal
         </span>
       </div>
     </Link>

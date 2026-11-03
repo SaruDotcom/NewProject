@@ -11,7 +11,7 @@ publicRoutes.get('/:code', referralLookupRateLimiter, controller.lookup);
 publicRoutes.get('/:code/products', referralLookupRateLimiter, controller.getReferralProducts);
 
 const wholesalerRoutes = express.Router();
-wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER), requireActiveWholesaler);
+wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));
 wholesalerRoutes.get('/', controller.getWholesalerReferral);
 wholesalerRoutes.post('/regenerate', controller.regenerate);
 wholesalerRoutes.patch('/', controller.updateSettings);

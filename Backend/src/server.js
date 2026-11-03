@@ -3,6 +3,7 @@ const env = require('./config/env');
 const logger = require('./config/logger');
 const { connectDB, disconnectDB } = require('./config/database');
 const ensureSuperAdmin = require('./services/ensureSuperAdmin');
+const ensureReferralCodes = require('./services/ensureReferralCodes');
 
 // Server entry point for B2B Wholesale Platform Backend
 let server;
@@ -14,6 +15,9 @@ const startServer = async () => {
 
     // 2. Ensure Default Super Admin Exists
     await ensureSuperAdmin();
+
+    // 3. Ensure Referral Codes for Wholesalers
+    await ensureReferralCodes();
 
     // 3. Start HTTP Server
     server = app.listen(env.PORT, () => {

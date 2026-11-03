@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
+import { resolveProductImageUrl } from '@/lib/api';
 
 type BusinessLogoProps = {
   src?: string;
@@ -24,7 +25,7 @@ export default function BusinessLogo({
     <span role="img" aria-label={`${name} logo`} className={`inline-flex shrink-0 items-center justify-center overflow-hidden ${className}`}>
       {src && !failed ? (
         <img
-          src={src}
+          src={resolveProductImageUrl(src) || src}
           alt=""
           className={`h-full w-full object-contain ${imageClassName}`}
           onError={() => setFailed(true)}

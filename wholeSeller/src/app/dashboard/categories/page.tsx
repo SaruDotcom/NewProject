@@ -22,7 +22,7 @@ import {
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Category } from '@/lib/types';
 import { CategoryCard } from '@/components/categories/CategoryCard';
-import api, { ApiError } from '@/lib/api';
+import api, { ApiError, resolveProductImageUrl } from '@/lib/api';
 import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 import { Link } from 'react-router-dom';
 
@@ -1035,7 +1035,7 @@ export default function CategoriesPage() {
                     />
                   ) : imageUrl ? (
                     <img
-                      src={imageUrl}
+                      src={resolveProductImageUrl(imageUrl) || imageUrl}
                       alt="preview"
                       className="w-full h-32 object-cover rounded-lg border border-[#E7E5E4] mx-auto"
                     />

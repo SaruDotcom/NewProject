@@ -772,7 +772,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   typeof rawWholesalerId === "object" && rawWholesalerId !== null
                     ? rawWholesalerId._id || rawWholesalerId.id
                     : rawWholesalerId || item.wholesaler?._id || item.wholesaler?.id;
-                return Boolean(productWholesalerId) && String(productWholesalerId) === wsId;
+                return !productWholesalerId || String(productWholesalerId) === wsId;
               })
               .map((item: ApiProduct, idx: number) => {
                 const mapped = mapProduct(item, idx);

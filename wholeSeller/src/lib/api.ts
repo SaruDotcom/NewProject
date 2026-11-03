@@ -5,7 +5,17 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
 export function resolveProductImageUrl(imagePath?: string | null): string | null {
   const value = imagePath?.trim();
   if (!value) return null;
-  if (/^https?:\/\//i.test(value)) return value;
+  if (/^(blob|data):/i.test(value)) return value;
+  if (/^https?:\/\//i.test(value)) {
+    if (!BASE_URL) return value;
+
+    const imageUrl = new URL(value);
+    const apiOrigin = new URL(BASE_URL);
+    if (imageUrl.protocol === 'http:' && apiOrigin.protocol === 'https:' && imageUrl.host === apiOrigin.host) {
+      imageUrl.protocol = 'https:';
+    }
+    return imageUrl.toString();
+  }
   if (!BASE_URL) return value;
 
   // API base URLs normally end in /api or /api/v1. Images are served from the
