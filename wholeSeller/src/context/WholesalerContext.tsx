@@ -139,7 +139,7 @@ interface WholesalerContextType {
   isBusinessActivated: boolean;
   accessControl: {
     isAllowed: boolean;
-    reason: 'LOADING' | 'KYC_REQUIRED' | 'KYC_PENDING' | 'KYC_REJECTED' | 'SUBSCRIPTION_REQUIRED' | 'SUBSCRIPTION_EXPIRED' | 'ALLOWED';
+    reason: 'LOADING' | 'KYC_REQUIRED' | 'KYC_PENDING' | 'KYC_REJECTED' | 'ALLOWED';
     message: string;
     actionText: string;
     actionLink: string;
@@ -274,7 +274,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   const accessControl = useMemo(() => {
-    if (!isProfileLoaded || !isSubscriptionStatusLoaded) {
+    if (!isProfileLoaded) {
       return {
         isAllowed: false,
         reason: 'LOADING' as const,
@@ -315,32 +315,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
     }
 
-    // 2. Subscription Checks
-    const now = Date.now();
-    const renewalTime = profile.subscriptionRenewalDate ? new Date(profile.subscriptionRenewalDate).getTime() : 0;
-    const subNotExpired = renewalTime > now;
-    const subStatus = String(profile.subscriptionStatus || '').trim().toUpperCase();
-
-    if (subStatus === 'EXPIRED' || (!subNotExpired && profile.subscriptionRenewalDate)) {
-      return {
-        isAllowed: false,
-        reason: 'SUBSCRIPTION_EXPIRED' as const,
-        message: 'Your subscription has expired. Renew to continue',
-        actionText: 'Renew Subscription',
-        actionLink: '/dashboard/subscription',
-      };
-    }
-
-    if (subStatus !== 'ACTIVE' || !subNotExpired) {
-      return {
-        isAllowed: false,
-        reason: 'SUBSCRIPTION_REQUIRED' as const,
-        message: 'Please purchase a subscription plan',
-        actionText: 'Purchase Subscription',
-        actionLink: '/dashboard/subscription',
-      };
-    }
-
     return {
       isAllowed: true,
       reason: 'ALLOWED' as const,
@@ -348,7 +322,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       actionText: '',
       actionLink: '',
     };
-  }, [isProfileLoaded, isSubscriptionStatusLoaded, profile.kycStatus, profile.subscriptionRenewalDate, profile.subscriptionStatus]);
+  }, [isProfileLoaded, profile.kycStatus]);
 
   const isBusinessActivated = accessControl.isAllowed;
   const [notifications, setNotifications] = useState<WholesalerNotification[]>([]);

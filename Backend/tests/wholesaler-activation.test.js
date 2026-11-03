@@ -2,7 +2,6 @@ const {
   SubscriptionPlan,
   SubscriptionPlanCatalog,
   WholesalerProfile,
-  WholesalerSubscription,
 } = require('../src/models');
 const SubscriptionService = require('../src/modules/subscriptions/subscriptions.service');
 const { assertWholesalerBusinessActivated } = require('../src/services/wholesaler-access.service');
@@ -19,55 +18,19 @@ describe('Wholesaler business activation', () => {
     });
   };
 
-  test('allows business operations only for approved KYC and an unexpired active subscription', async () => {
+  test('allows business operations for approved KYC without a subscription', async () => {
     const profile = { kycStatus: 'APPROVED' };
-    const subscription = {
-      status: 'ACTIVE',
-      renewalDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      save: jest.fn(),
-    };
     mockProfile(profile);
-    jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue(subscription);
 
     await expect(assertWholesalerBusinessActivated('wholesaler-1'))
-      .resolves.toEqual({ profile, subscription });
-    expect(subscription.save).not.toHaveBeenCalled();
+      .resolves.toEqual({ profile, subscription: null });
   });
 
-  test('requires approved KYC before checking subscription', async () => {
+  test('requires approved KYC', async () => {
     mockProfile({ kycStatus: 'SUBMITTED' });
-    const subscriptionLookup = jest.spyOn(WholesalerSubscription, 'findOne');
 
     await expect(assertWholesalerBusinessActivated('wholesaler-1'))
       .rejects.toMatchObject({ code: 'KYC_PENDING' });
-    expect(subscriptionLookup).not.toHaveBeenCalled();
-  });
-
-  test.each([
-    ['missing', null],
-    ['cancelled', { status: 'CANCELLED', save: jest.fn() }],
-  ])('blocks business operations when the subscription is %s', async (_label, subscription) => {
-    mockProfile({ kycStatus: 'APPROVED' });
-    jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue(subscription);
-
-    await expect(assertWholesalerBusinessActivated('wholesaler-1'))
-      .rejects.toMatchObject({ code: 'ACTIVE_SUBSCRIPTION_REQUIRED' });
-    if (subscription) expect(subscription.save).not.toHaveBeenCalled();
-  });
-
-  test('marks expired active subscriptions expired before denying access', async () => {
-    const subscription = {
-      status: 'ACTIVE',
-      renewalDate: new Date(Date.now() - 1000),
-      save: jest.fn().mockResolvedValue(undefined),
-    };
-    mockProfile({ kycStatus: 'APPROVED' });
-    jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue(subscription);
-
-    await expect(assertWholesalerBusinessActivated('wholesaler-1'))
-      .rejects.toMatchObject({ code: 'SUBSCRIPTION_EXPIRED' });
-    expect(subscription.status).toBe('EXPIRED');
-    expect(subscription.save).toHaveBeenCalledTimes(1);
   });
 
   test('migrates the existing subscription catalog to the four exact standard plans', async () => {

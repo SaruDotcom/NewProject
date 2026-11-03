@@ -120,7 +120,7 @@ export default function StoreThemePage() {
             type="button"
             onClick={() => void saveTheme()}
             disabled={isSaving || !isBusinessActivated || selectedTheme === profile.activeStoreTheme}
-            title={!isBusinessActivated ? 'Approved KYC and active subscription are required to update storefront theme' : undefined}
+            title={!isBusinessActivated ? 'Approved KYC is required to update storefront theme' : undefined}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-tradeflow-green px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-tradeflow-green-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : 'Save theme'}

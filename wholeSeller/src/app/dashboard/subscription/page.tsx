@@ -294,7 +294,7 @@ export default function SubscriptionPage() {
           </div>
           <h1 className="mt-1 text-2xl font-extrabold text-tradeflow-navy">Wholesaler Subscription Plans</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Select a plan to unlock full marketplace features, unlimited product catalogs, and direct retailer orders.
+            Subscription plans are optional. Your wholesaler portal remains available without a plan; choose one only if you want to subscribe.
           </p>
         </div>
         <button
@@ -393,7 +393,7 @@ export default function SubscriptionPage() {
         <div>
           <h2 className="text-lg font-bold text-tradeflow-navy">Select a Subscription Plan</h2>
           <p className="text-xs text-gray-500">
-            Choose the plan that best fits your business volume. 100% tax compliant with automated GST invoices.
+            Choose a plan only if you want to subscribe. Completed payments include automated GST invoices.
           </p>
         </div>
 

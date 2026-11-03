@@ -65,7 +65,6 @@ export default function CategoriesPage() {
     deleteCategory,
     isLoading,
     isProfileLoaded,
-    isSubscriptionStatusLoaded,
     isBusinessActivated,
   } = useWholesaler();
   const canCreateCategories = isBusinessActivated;
@@ -165,7 +164,7 @@ export default function CategoriesPage() {
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateCategories) {
-      setFormError('Approved KYC and an active subscription are required to manage categories.');
+      setFormError('Approved KYC is required to manage categories.');
       return;
     }
     const trimmedName = name.trim();
@@ -437,9 +436,7 @@ export default function CategoriesPage() {
       {profile.kycStatus === 'APPROVED' && (
         <BusinessActivationNotice
           kycStatus={profile.kycStatus}
-          subscriptionStatus={profile.subscriptionStatus}
           isProfileLoaded={isProfileLoaded}
-          isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
         />
       )}
       {isProfileLoaded && profile.kycStatus !== 'APPROVED' && (

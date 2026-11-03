@@ -359,7 +359,7 @@ export default function BannerSlidesPage() {
           <button
             onClick={handleOpenCreateModal}
             disabled={!isBusinessActivated}
-            title={!isBusinessActivated ? 'Approved KYC and active subscription are required to create custom banners' : undefined}
+            title={!isBusinessActivated ? 'Approved KYC is required to create custom banners' : undefined}
             className="px-4 py-2 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover transition-all shadow-md flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="w-4 h-4" /> Add Custom Banner
@@ -493,7 +493,7 @@ export default function BannerSlidesPage() {
                         }
                       }}
                       disabled={saving || !isBusinessActivated}
-                      title={!isBusinessActivated ? 'Approved KYC and active subscription are required to activate offers' : undefined}
+                      title={!isBusinessActivated ? 'Approved KYC is required to activate offers' : undefined}
                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50 ${
                         isCurrentlyActive
                           ? 'bg-emerald-600 text-white hover:bg-emerald-700'

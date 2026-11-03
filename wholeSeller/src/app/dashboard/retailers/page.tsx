@@ -119,7 +119,6 @@ export default function RetailersPage() {
     retailers,
     orders,
     isProfileLoaded,
-    isSubscriptionStatusLoaded,
     isBusinessActivated,
   } = useWholesaler();
   const [searchQuery, setSearchQuery] = useState('');
@@ -297,9 +296,7 @@ export default function RetailersPage() {
 
       <BusinessActivationNotice
         kycStatus={profile.kycStatus}
-        subscriptionStatus={profile.subscriptionStatus}
         isProfileLoaded={isProfileLoaded}
-        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
       />
 
       <div className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-xs">
@@ -336,7 +333,7 @@ export default function RetailersPage() {
                 type="button"
                 onClick={() => referralUrl && isBusinessActivated && copyCredential(referralUrl)}
                 disabled={!referralUrl || !isBusinessActivated}
-                title={!isBusinessActivated ? 'Approved KYC and active subscription are required to copy invite links' : undefined}
+                title={!isBusinessActivated ? 'Approved KYC is required to copy invite links' : undefined}
                 className="flex items-center justify-center gap-2 rounded-xl bg-tradeflow-navy px-4 py-2.5 text-xs font-black text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {copiedCredential === referralUrl ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
@@ -346,7 +343,7 @@ export default function RetailersPage() {
                 type="button"
                 onClick={() => referralUrl && isBusinessActivated && window.open(`https://wa.me/?text=${encodeURIComponent(referralUrl)}`, '_blank', 'noopener,noreferrer')}
                 disabled={!referralUrl || !isBusinessActivated}
-                title={!isBusinessActivated ? 'Approved KYC and active subscription are required to share invite links' : undefined}
+                title={!isBusinessActivated ? 'Approved KYC is required to share invite links' : undefined}
                 className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-xs font-black text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <MessageCircle className="h-4 w-4" />

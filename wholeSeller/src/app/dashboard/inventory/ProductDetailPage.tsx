@@ -48,7 +48,6 @@ export default function ProductDetailPage() {
     updateProduct,
     adjustStock,
     isProfileLoaded,
-    isSubscriptionStatusLoaded,
     isBusinessActivated,
   } = useWholesaler();
 
@@ -388,7 +387,7 @@ export default function ProductDetailPage() {
     e.preventDefault();
     if (!product) return;
     if (!isBusinessActivated) {
-      setFormError('Approved KYC and an active subscription are required to manage products.');
+      setFormError('Approved KYC is required to manage products.');
       return;
     }
     setFormError(null);
@@ -454,9 +453,7 @@ export default function ProductDetailPage() {
     <div className="space-y-6 pb-12">
       <BusinessActivationNotice
         kycStatus={profile.kycStatus}
-        subscriptionStatus={profile.subscriptionStatus}
         isProfileLoaded={isProfileLoaded}
-        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
       />
 
       {/* Top Header & Navigation Breadcrumb */}

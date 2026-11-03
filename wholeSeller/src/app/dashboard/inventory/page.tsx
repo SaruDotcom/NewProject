@@ -39,7 +39,6 @@ export default function InventoryPage() {
     inventoryLogs,
     adjustStock,
     isProfileLoaded,
-    isSubscriptionStatusLoaded,
     isBusinessActivated,
   } = useWholesaler();
 
@@ -177,9 +176,7 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <BusinessActivationNotice
         kycStatus={profile.kycStatus}
-        subscriptionStatus={profile.subscriptionStatus}
         isProfileLoaded={isProfileLoaded}
-        isSubscriptionStatusLoaded={isSubscriptionStatusLoaded}
       />
 
       {/* Top Header & Auto-Deduction Engine Banner */}

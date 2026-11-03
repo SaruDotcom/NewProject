@@ -5,8 +5,7 @@ const { ROLES } = require('../config/constants');
  * requireActiveWholesaler middleware
  * Ensures the requesting wholesaler has:
  *  1. kycStatus === 'APPROVED'
- *  2. subscriptionStatus === 'ACTIVE'
- *  3. subscriptionNotExpired (renewalDate > Date.now())
+ * Subscription plans are optional and do not gate business features.
  *
  * Super Admins and Admins bypass this check.
  */
