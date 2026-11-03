@@ -47,6 +47,8 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
       role: ROLES.WHOLESALER,
       status: USER_STATUS.ACTIVE,
     });
+    category.wholesalerId = wholesalerUser._id;
+    await category.save();
     const wsWallet = await Wallet.create({ ownerId: wholesalerUser._id, ownerType: 'WHOLESALER', availableBalance: 0 });
     await WholesalerProfile.create({
       userId: wholesalerUser._id,
@@ -255,6 +257,20 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
       expect(otherRetailerWholesalerRes.status).toBe(200);
       expect(otherRetailerWholesalerRes.body.data.activeStoreTheme).toBe('FESTIVE');
 
+      const globalCategory = await Category.create({
+        name: 'Global category',
+        slug: 'global-category',
+      });
+      await Product.create({
+        wholesalerId: wholesalerUser._id,
+        categoryId: globalCategory._id,
+        name: 'Global category product',
+        slug: 'global-category-product',
+        sku: 'GLOBAL-CATEGORY-PRODUCT',
+        wholesalePrice: 200,
+        status: 'ACTIVE',
+      });
+
       const catRes = await request(app)
         .get('/api/v1/retailer/categories')
         .set('Authorization', `Bearer ${retailerToken}`);
@@ -270,6 +286,12 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
       expect(prodRes.status).toBe(200);
       expect(prodRes.body.data.length).toBe(1);
       expect(prodRes.body.data[0].sku).toBe('DRILL-001');
+
+      const globalCategoryProducts = await request(app)
+        .get('/api/v1/retailer/products?category=global-category')
+        .set('Authorization', `Bearer ${retailerToken}`);
+      expect(globalCategoryProducts.status).toBe(200);
+      expect(globalCategoryProducts.body.data).toEqual([]);
     });
 
     it('should forbid store access for retailer with no active wholesaler relationship', async () => {
@@ -366,7 +388,7 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
             state: 'Maharashtra',
             postalCode: '411001',
           },
-          paymentMethod: 'COD',
+          paymentMethod: 'UPI',
         });
 
       expect(checkoutRes.status).toBe(201);
@@ -404,7 +426,7 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
             state: 'Maharashtra',
             postalCode: '411001',
           },
-          paymentMethod: 'COD',
+          paymentMethod: 'UPI',
         });
 
       const orderId = checkoutRes.body.data.order._id;
@@ -433,7 +455,7 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
         .set('Authorization', `Bearer ${retailerToken}`)
         .send({
           shippingAddress: { addressLine1: '12 Main Rd', city: 'Pune', state: 'Maharashtra', postalCode: '411001' },
-          paymentMethod: 'COD',
+          paymentMethod: 'UPI',
           items: [{ productId: product._id, quantity: 8 }],
         });
       const orderId = checkoutRes.body.data.order._id;
@@ -454,7 +476,7 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
         .set('Authorization', `Bearer ${retailerToken}`)
         .send({
           shippingAddress: { addressLine1: '12 Main Rd', city: 'Pune', state: 'Maharashtra', postalCode: '411001' },
-          paymentMethod: 'COD',
+          paymentMethod: 'UPI',
           items: [{ productId: product._id, quantity: 8 }],
         });
       const orderId = checkoutRes.body.data.order._id;

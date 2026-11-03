@@ -97,8 +97,10 @@ export type ApiWholesaler = {
   email?: string;
   phone?: string;
   businessName?: string;
+  businessTagline?: string;
   businessCategory?: string;
   businessLogoUrl?: string;
+  logo?: string;
   activeStoreTheme?: "DEFAULT" | "ROYAL" | "FESTIVE" | "MINIMAL";
   banners?: ApiBannerSlide[];
   description?: string;
@@ -477,6 +479,11 @@ export const api = {
   getDashboard: () => request<ApiEnvelope<any>>('/retailer/dashboard', { method: 'GET' }),
 
   getConnectedWholesaler: () => request<ApiEnvelope<ApiWholesaler | null>>('/retailer/wholesaler', { method: 'GET' }),
+  switchWholesalerByReferral: (referralCode: string) =>
+    request<ApiEnvelope<any>>('/retailer/referral/switch', {
+      method: 'POST',
+      body: JSON.stringify({ referralCode }),
+    }),
 
   getCreditInfo: () =>
     request<ApiEnvelope<{
@@ -612,6 +619,7 @@ export const api = {
     };
     paymentMethod?: string;
     couponCode?: string;
+    expectedQuoteHash?: string;
     idempotencyKey?: string;
     notes?: string; 
   }) =>
@@ -620,9 +628,32 @@ export const api = {
       headers: { 'Idempotency-Key': payload.idempotencyKey || `retailer-checkout-${Date.now()}-${Math.random().toString(36).slice(2)}` },
       body: JSON.stringify({
         ...payload,
-        paymentMethod: payload.paymentMethod || 'COD',
+        paymentMethod: payload.paymentMethod || 'UPI',
       }),
     }),
+  quoteCheckout: (payload: {
+    items: Array<{ productId: string; quantity: number }>;
+    shippingAddress: {
+      addressLine1: string;
+      city: string;
+      state: string;
+      postalCode?: string;
+      pincode?: string;
+      country?: string;
+      contactName?: string;
+      phone?: string;
+      addressLine2?: string;
+    };
+    paymentMethod?: string;
+    couponCode?: string;
+  }) => request<ApiEnvelope<{
+    subtotal: number;
+    discount: number;
+    couponCode: string;
+    tax: number;
+    grandTotal: number;
+    quoteHash: string;
+  }>>('/retailer/checkout/quote', { method: 'POST', body: JSON.stringify(payload) }),
 
   getRetailerPaymentOptions: (wholesalerId?: string) =>
     request<ApiEnvelope<{
@@ -704,7 +735,12 @@ export const api = {
 
   getPayments: () => request<ApiEnvelope<any[]>>('/retailer/payments', { method: 'GET' }),
 
-  getTransactions: () => request<ApiEnvelope<any[]>>('/retailer/transactions', { method: 'GET' }),
+  getTransactions: (params?: Record<string, string | number | boolean | null | undefined>) =>
+    request<ApiEnvelope<{
+      transactions: any[];
+      summary: { totalPaidAmount: number; totalOutstandingAmount: number };
+      meta: { page: number; limit: number; total: number; totalPages: number };
+    }>>(`/retailer/transactions${buildQueryString(params)}`, { method: 'GET' }),
 
   submitFeedback: (payload: { title?: string; comment: string; rating: number; wholesalerId?: string; productId?: string }) =>
     request<ApiEnvelope<any>>('/support/tickets', {

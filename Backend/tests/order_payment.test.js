@@ -13,6 +13,8 @@ const {
   Payment,
   Wallet,
   Earning,
+  Coupon,
+  InventoryTransaction,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS, RELATIONSHIP_STATUS, ORDER_STATUS, PAYMENT_STATUS } = require('../src/config/constants');
 
@@ -199,7 +201,10 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const shipRes = await request(app)
       .patch(`/api/v1/orders/${orderId}/status`)
       .set('Authorization', `Bearer ${wholesalerToken}`)
-      .send({ status: ORDER_STATUS.SHIPPED });
+      .send({
+        status: ORDER_STATUS.SHIPPED,
+        shippingDetails: { courierName: 'Test Courier', trackingNumber: 'TRACK-001' },
+      });
     expect(shipRes.status).toBe(200);
     expect(shipRes.body.data.orderStatus).toBe(ORDER_STATUS.SHIPPED);
 
@@ -329,6 +334,10 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const paidOrder = await Order.findById(checkout.body.data.order._id);
     expect(paidOrder.paymentStatus).toBe(PAYMENT_STATUS.PAID);
     expect(await Payment.countDocuments({ orderId: paidOrder._id, status: PAYMENT_STATUS.PAID })).toBe(2);
+    const financialSummary = await request(app)
+      .get('/api/v1/wholesaler/financial-summary')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(financialSummary.body.data.thisMonthIncome).toBe(2360);
   });
 
   test('retailer credit requests require approval and verified installments clear the balance once', async () => {
@@ -440,6 +449,9 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const paidOrder = await Order.findById(orderResponse.body.data.order._id);
     expect(paidOrder.creditPaymentStatus).toBe('PAID');
     expect(paidOrder.creditPaidAmount).toBe(2360);
+    expect(finalVerification.body.data.orderAllocations).toEqual([
+      expect.objectContaining({ orderId: String(paidOrder._id), amountPaise: 136000 }),
+    ]);
   });
 
   test('3. Insufficient stock rejected', async () => {
@@ -474,12 +486,40 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
 
     expect(statusRes.status).toBe(200);
     expect(statusRes.body.data.orderStatus).toBe(ORDER_STATUS.DELIVERED);
-    expect(statusRes.body.data.paymentStatus).toBe(PAYMENT_STATUS.PAID);
+    expect(statusRes.body.data.paymentStatus).toBe(PAYMENT_STATUS.PENDING);
+
+    const deliveredOrder = await Order.findById(orderId);
+    expect(deliveredOrder.inventoryState).toBe('SOLD');
+    expect(await Payment.findOne({ orderId })).toMatchObject({ status: PAYMENT_STATUS.PENDING });
+    const soldInventory = await Inventory.findOne({ productId: product._id });
+    expect(soldInventory.available).toBe(90);
+    expect(soldInventory.reserved).toBe(0);
+    expect(soldInventory.sold).toBe(10);
+    expect(await InventoryTransaction.countDocuments({ referenceId: deliveredOrder.orderNumber, type: 'SALE' })).toBe(1);
+
+    await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: ORDER_STATUS.DELIVERED })
+      .expect(200);
+    expect(await InventoryTransaction.countDocuments({ referenceId: deliveredOrder.orderNumber, type: 'SALE' })).toBe(1);
+
+    const summary = await request(app)
+      .get('/api/v1/wholesaler/financial-summary')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(summary.status).toBe(200);
+    expect(summary.body.data).toMatchObject({
+      thisMonthIncome: 0,
+      completedSales: 2360,
+    });
+    expect(summary.body.data.pendingPayments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ orderId, totalAmount: 2360, amountPaid: 0, remainingAmount: 2360 }),
+    ]));
 
     // Verify Earning record created
     const earning = await Earning.findOne({ orderId });
     expect(earning).not.toBeNull();
-    expect(earning.status).toBe('SETTLED');
+    expect(earning.status).toBe('PENDING');
     // Platform commission: 5% of 2000 = 100
     expect(earning.platformCommission).toBe(100);
     // Wholesaler net: 2360 - 100 = 2260
@@ -487,7 +527,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
 
     // Verify Wholesaler Wallet balance credited
     const wallet = await Wallet.findOne({ ownerId: wholesalerUser._id });
-    expect(wallet.availableBalance).toBe(2260);
+    expect(wallet.pendingBalance).toBe(2260);
   });
 
   test('5. Order CANCELLED transition releases reserved stock back to available', async () => {
@@ -512,5 +552,159 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const inv = await Inventory.findOne({ productId: product._id });
     expect(inv.available).toBe(100);
     expect(inv.reserved).toBe(0);
+  });
+
+  test('retailer checkout rejects COD and applies a valid coupon to the saved order total', async () => {
+    const cod = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ paymentMethod: 'COD', items: [{ productId: product._id, quantity: 10 }] });
+    expect(cod.status).toBe(400);
+    expect(cod.body.code).toBe('COD_DISABLED');
+    expect(await Order.countDocuments()).toBe(0);
+
+    const coupon = await Coupon.create({
+      wholesalerId: wholesalerUser._id,
+      code: 'SAVE10',
+      title: 'Ten percent off',
+      discountType: 'PERCENTAGE',
+      discountValue: 10,
+      applicableFor: 'RETAILER_ORDER',
+    });
+    const checkoutPayload = {
+      paymentMethod: 'UPI',
+      couponCode: 'SAVE10',
+      items: [{ productId: product._id, quantity: 10 }],
+      shippingAddress: {
+        addressLine1: '10 Main Road',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        pincode: '560001',
+      },
+    };
+    const quote = await request(app)
+      .post('/api/v1/retailer/checkout/quote')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send(checkoutPayload);
+    expect(quote.status).toBe(200);
+    expect(quote.body.data).toMatchObject({ subtotal: 2000, discount: 200, tax: 360, grandTotal: 2160 });
+    expect(await Order.countDocuments()).toBe(0);
+
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        ...checkoutPayload,
+        expectedQuoteHash: quote.body.data.quoteHash,
+      });
+
+    expect(checkout.status).toBe(201);
+    expect(checkout.body.data.order).toMatchObject({ discount: 200, couponCode: 'SAVE10', grandTotal: 2160 });
+    expect((await Coupon.findById(coupon._id)).usageCount).toBe(1);
+  });
+
+  test('approved credit checkout applies coupon discount before recording the credit due', async () => {
+    await request(app)
+      .patch('/api/v1/wholesaler/credit-policy')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ creditEnabled: true, defaultCreditLimit: 5000, creditPeriodDays: 15 })
+      .expect(200);
+    await request(app)
+      .patch(`/api/v1/wholesaler/retailers/${retailerUser._id}/credit-policy`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: 'APPROVED', customCreditLimit: 3000, creditPeriodDays: 30 })
+      .expect(200);
+    await Coupon.create({
+      wholesalerId: wholesalerUser._id,
+      code: 'CREDIT10',
+      title: 'Credit order discount',
+      discountType: 'PERCENTAGE',
+      discountValue: 10,
+      applicableFor: 'RETAILER_ORDER',
+    });
+
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CREDIT',
+        couponCode: 'CREDIT10',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          pincode: '560001',
+        },
+      });
+
+    expect(checkout.status).toBe(201);
+    expect(checkout.body.data.order).toMatchObject({
+      isCreditOrder: true,
+      discount: 200,
+      grandTotal: 2160,
+      creditPaidAmount: 0,
+    });
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      wholesalerId: wholesalerUser._id,
+      retailerId: retailerUser._id,
+    });
+    expect(relationship.currentOutstandingPaise).toBe(216000);
+  });
+
+  test('verified partial UPI payment remains due until the remaining installment is confirmed', async () => {
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'UPI',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          pincode: '560001',
+        },
+      });
+    const orderId = checkout.body.data.order._id;
+
+    const firstReport = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ orderId, amount: '1000', transactionReference: 'PARTIAL-DIRECT-10001' });
+    const firstVerification = await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${firstReport.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY', note: 'First installment' });
+    expect(firstVerification.status).toBe(200);
+    expect((await Order.findById(orderId)).paymentStatus).toBe(PAYMENT_STATUS.PARTIAL);
+
+    const history = await request(app)
+      .get('/api/v1/retailer/transactions')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(history.status).toBe(200);
+    expect(history.body.data).toMatchObject({
+      summary: { totalPaidAmount: 1000, totalOutstandingAmount: 1360 },
+      transactions: [
+        expect.objectContaining({
+          orderId: checkout.body.data.order.orderNumber,
+          wholesalerName: 'Omni Supplies',
+          amountPaid: 1000,
+          remainingDueAmount: 1360,
+          status: 'VERIFIED',
+        }),
+      ],
+    });
+
+    const secondReport = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ orderId, amount: '1360', transactionReference: 'PARTIAL-DIRECT-10002' });
+    await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${secondReport.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY', note: 'Final installment' })
+      .expect(200);
+    expect((await Order.findById(orderId)).paymentStatus).toBe(PAYMENT_STATUS.PAID);
   });
 });

@@ -55,10 +55,13 @@ class OrderService {
     const { wholesalerId: requestedWholesalerId, items, shippingAddress, billingAddress, paymentMethod, idempotencyKey, couponCode } =
       orderPayload;
     if (paymentMethod === 'ONLINE') {
-      throw new BadRequestError('Gateway checkout is no longer available. Choose direct UPI, COD, or approved credit.', 'GATEWAY_CHECKOUT_DISABLED');
+      throw new BadRequestError('Gateway checkout is no longer available. Choose direct UPI or approved credit.', 'GATEWAY_CHECKOUT_DISABLED');
     }
-    if (paymentMethod && !['UPI', 'COD', 'CREDIT'].includes(paymentMethod)) {
-      throw new BadRequestError('Choose direct UPI, COD, or approved credit for retailer checkout.', 'UNSUPPORTED_PAYMENT_METHOD');
+    if (paymentMethod === 'COD') {
+      throw new BadRequestError('Cash on Delivery is unavailable. Choose direct UPI or approved credit.', 'COD_DISABLED');
+    }
+    if (paymentMethod && !['UPI', 'CREDIT'].includes(paymentMethod)) {
+      throw new BadRequestError('Choose direct UPI or approved credit for retailer checkout.', 'UNSUPPORTED_PAYMENT_METHOD');
     }
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new BadRequestError('Order must contain at least one item', 'EMPTY_ORDER');
@@ -205,10 +208,8 @@ class OrderService {
         subtotal,
       });
 
-      if (validationResult && validationResult.valid) {
-        discountAmount = validationResult.discountAmount;
-        appliedCoupon = validationResult.coupon;
-      }
+      discountAmount = validationResult.discountAmount;
+      appliedCoupon = validationResult.coupon;
     }
 
     const grandTotal = Math.round(Math.max(0, subtotal + totalTax - discountAmount) * 100) / 100;
@@ -250,7 +251,21 @@ class OrderService {
           );
         }
       }
-      return { wholesalerId, amount: grandTotal, quoteHash };
+      return {
+        wholesalerId,
+        amount: grandTotal,
+        subtotal,
+        discount: discountAmount,
+        couponCode: appliedCoupon?.code || '',
+        tax: totalTax,
+        grandTotal,
+        quoteHash,
+      };
+    }
+
+    // Reject COD if requested
+    if (paymentMethod === 'COD' || paymentMethod === PAYMENT_METHOD.COD) {
+      throw new BadRequestError('Cash on Delivery (COD) is not available. Please pay via Direct UPI or Credit.', 'COD_NOT_ALLOWED');
     }
 
     // Check Credit Policy if requested
@@ -383,7 +398,8 @@ class OrderService {
       grandTotal,
       orderStatus: ORDER_STATUS.PENDING,
       paymentStatus: PAYMENT_STATUS.PENDING,
-      paymentMethod: paymentMethod || PAYMENT_METHOD.COD,
+      paymentMethod: isCreditOrder ? PAYMENT_METHOD.CREDIT : (paymentMethod || PAYMENT_METHOD.UPI),
+      inventoryState: 'RESERVED',
       isCreditOrder,
       creditDueDate,
       creditPeriodDays,
@@ -414,7 +430,7 @@ class OrderService {
       amount: grandTotal,
       currency: 'INR',
       status: PAYMENT_STATUS.PENDING,
-      paymentMethod: paymentMethod || PAYMENT_METHOD.COD,
+      paymentMethod: isCreditOrder ? PAYMENT_METHOD.CREDIT : (paymentMethod || PAYMENT_METHOD.UPI),
       transactionReference: generateReference('PAY'),
     });
 
@@ -555,6 +571,7 @@ class OrderService {
         status: o.orderStatus ? o.orderStatus.toLowerCase() : 'pending',
         orderStatus: o.orderStatus,
         paymentStatus: o.paymentStatus ? o.paymentStatus.toLowerCase() : 'pending',
+        shippingDetails: o.shippingDetails || null,
         createdAt: o.createdAt,
       };
     });
@@ -604,16 +621,23 @@ class OrderService {
     const totalQuantity = itemsCount;
     const totalAmount = order.grandTotal || order.subtotal || 0;
 
-    const formattedItems = (order.items || []).map((item) => ({
-      product: {
-        id: String(item.productId?._id || item.productId || ''),
-        name: item.productName || item.productId?.name || 'Product',
-        sku: item.sku || item.productId?.sku || '—',
-      },
-      quantity: item.quantity,
-      pricePerUnit: item.pricePerUnit || item.price || 0,
-      totalPrice: item.totalPrice || (item.quantity * (item.pricePerUnit || 0)),
-    }));
+    const formattedItems = (order.items || []).map((item) => {
+      const img = item.imageUrl || (Array.isArray(item.productId?.images) && item.productId.images[0]) || item.productId?.image || '';
+      return {
+        product: {
+          id: String(item.productId?._id || item.productId || ''),
+          name: item.productName || item.productId?.name || 'Product',
+          sku: item.sku || item.productId?.sku || '—',
+          imageUrl: img,
+          image: img,
+        },
+        imageUrl: img,
+        image: img,
+        quantity: item.quantity,
+        pricePerUnit: item.pricePerUnit || item.price || 0,
+        totalPrice: item.totalPrice || (item.quantity * (item.pricePerUnit || 0)),
+      };
+    });
 
     const formattedOrder = {
       ...order.toObject(),
@@ -624,6 +648,7 @@ class OrderService {
       totalAmount,
       total: totalAmount,
       items: formattedItems,
+      shippingDetails: order.shippingDetails || null,
       retailer: {
         id: String(order.retailerId?._id || order.retailerId || ''),
         name: order.retailerId?.name || '',
@@ -670,14 +695,14 @@ class OrderService {
         totalQuantity,
         totalAmount,
       },
-      allowedTransitions: ['pending', 'confirmed', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'],
+      allowedTransitions: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
     };
   }
 
   /**
    * Update order status (with state machine transitions and financial settlements)
    */
-  static async updateOrderStatus(orderId, { status, note, cancellationReason, cancellationNote }, user, req = null) {
+  static async updateOrderStatus(orderId, { status, note, cancellationReason, cancellationNote, shippingDetails }, user, req = null) {
     const order = await Order.findById(orderId);
     if (!order) {
       throw new NotFoundError('Order not found');
@@ -697,7 +722,40 @@ class OrderService {
     }
 
     const previousStatus = order.orderStatus;
-    if (previousStatus === normalizedStatus) {
+
+    // Validate and save shipping details if marking as SHIPPED
+    if (normalizedStatus === ORDER_STATUS.SHIPPED) {
+      const incoming = shippingDetails || {};
+      const existing = (order.shippingDetails && order.shippingDetails.toObject) ? order.shippingDetails.toObject() : (order.shippingDetails || {});
+      const mergedShipping = {
+        courierName: incoming.courierName !== undefined ? String(incoming.courierName).trim() : (existing.courierName || ''),
+        biltyNumber: incoming.biltyNumber !== undefined ? String(incoming.biltyNumber).trim() : (existing.biltyNumber || ''),
+        trackingNumber: incoming.trackingNumber !== undefined ? String(incoming.trackingNumber).trim() : (existing.trackingNumber || ''),
+        shippingDate: incoming.shippingDate || existing.shippingDate || new Date(),
+        estimatedDeliveryDate: incoming.estimatedDeliveryDate || existing.estimatedDeliveryDate || null,
+        biltyUrl: incoming.biltyUrl !== undefined ? incoming.biltyUrl : (existing.biltyUrl || ''),
+        biltyFileName: incoming.biltyFileName !== undefined ? incoming.biltyFileName : (existing.biltyFileName || ''),
+        shippingNotes: incoming.shippingNotes !== undefined ? incoming.shippingNotes : (existing.shippingNotes || ''),
+        shippedAt: existing.shippedAt || new Date(),
+      };
+
+      if (!mergedShipping.courierName) {
+        throw new BadRequestError('Transport / Courier Company Name is required to mark order as Shipped', 'SHIPPING_COURIER_REQUIRED');
+      }
+      if (!mergedShipping.biltyNumber && !mergedShipping.trackingNumber) {
+        throw new BadRequestError('Bilty / LR Number or Tracking Number is required to mark order as Shipped', 'SHIPPING_TRACKING_REQUIRED');
+      }
+
+      order.shippingDetails = mergedShipping;
+    } else if (shippingDetails && typeof shippingDetails === 'object') {
+      const existing = (order.shippingDetails && order.shippingDetails.toObject) ? order.shippingDetails.toObject() : (order.shippingDetails || {});
+      order.shippingDetails = {
+        ...existing,
+        ...shippingDetails,
+      };
+    }
+
+    if (previousStatus === normalizedStatus && !shippingDetails) {
       return order;
     }
 
@@ -713,15 +771,34 @@ class OrderService {
       updatedBy: user._id,
     });
 
-    // If order is DELIVERED, settle financial earnings and update inventory sold count
-    if (normalizedStatus === ORDER_STATUS.DELIVERED && previousStatus !== ORDER_STATUS.DELIVERED) {
-      order.paymentStatus = PAYMENT_STATUS.PAID;
-      await Payment.findOneAndUpdate(
-        { orderId: order._id },
-        { status: PAYMENT_STATUS.PAID, paidAt: new Date() }
-      );
+    const inventoryState = order.inventoryState || (
+      previousStatus === ORDER_STATUS.DELIVERED ? 'SOLD' : 'RESERVED'
+    );
+    if (normalizedStatus === ORDER_STATUS.CANCELLED && inventoryState !== 'RESERVED') {
+      throw new BadRequestError('Fulfilled orders must use the return workflow.', 'ORDER_ALREADY_FULFILLED');
+    }
+    if (normalizedStatus === ORDER_STATUS.RETURNED && inventoryState !== 'SOLD') {
+      throw new BadRequestError('Only delivered orders can be returned.', 'ORDER_NOT_FULFILLED');
+    }
+    if (normalizedStatus === ORDER_STATUS.DELIVERED && inventoryState !== 'RESERVED') {
+      throw new BadRequestError('This order inventory has already been settled.', 'ORDER_INVENTORY_ALREADY_SETTLED');
+    }
 
-      // Release reserved inventory into sold
+    // If order is DELIVERED, settle earnings and move reserved inventory into sold.
+    if (normalizedStatus === ORDER_STATUS.DELIVERED && previousStatus !== ORDER_STATUS.DELIVERED) {
+      const claimed = await Order.findOneAndUpdate(
+        {
+          _id: order._id,
+          $or: [{ inventoryState: 'RESERVED' }, { inventoryState: { $exists: false } }],
+        },
+        { $set: { inventoryState: 'SOLD' } },
+        { new: true }
+      );
+      if (!claimed) {
+        throw new BadRequestError('This order inventory has already been settled.', 'ORDER_INVENTORY_ALREADY_SETTLED');
+      }
+      order.inventoryState = 'SOLD';
+
       for (const item of order.items) {
         const inventory = await Inventory.findOne({ productId: item.productId });
         if (inventory) {
@@ -788,6 +865,18 @@ class OrderService {
 
     // If order is CANCELLED, release reserved stock back to available
     if (normalizedStatus === ORDER_STATUS.CANCELLED && previousStatus !== ORDER_STATUS.CANCELLED) {
+      const claimed = await Order.findOneAndUpdate(
+        {
+          _id: order._id,
+          $or: [{ inventoryState: 'RESERVED' }, { inventoryState: { $exists: false } }],
+        },
+        { $set: { inventoryState: 'RELEASED' } },
+        { new: true }
+      );
+      if (!claimed) {
+        throw new BadRequestError('This order inventory has already been settled.', 'ORDER_INVENTORY_ALREADY_SETTLED');
+      }
+      order.inventoryState = 'RELEASED';
       for (const item of order.items) {
         const inventory = await Inventory.findOne({ productId: item.productId });
         if (inventory) {
@@ -817,6 +906,18 @@ class OrderService {
 
     // If order is RETURNED, restore stock from sold to available
     if (normalizedStatus === ORDER_STATUS.RETURNED && previousStatus !== ORDER_STATUS.RETURNED) {
+      const claimed = await Order.findOneAndUpdate(
+        {
+          _id: order._id,
+          $or: [{ inventoryState: 'SOLD' }, { inventoryState: { $exists: false } }],
+        },
+        { $set: { inventoryState: 'RETURNED' } },
+        { new: true }
+      );
+      if (!claimed) {
+        throw new BadRequestError('This order inventory has already been settled.', 'ORDER_INVENTORY_ALREADY_SETTLED');
+      }
+      order.inventoryState = 'RETURNED';
       await WalletService.reverseOrderEarnings({
         ownerId: order.wholesalerId,
         orderNumber: order.orderNumber,

@@ -22,8 +22,9 @@ import {
   RateReview,
   LocalOffer,
   SupportAgent,
+  ReceiptLong,
 } from "@mui/icons-material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -44,6 +45,7 @@ const account = [
   { to: "/dashboard" as const, label: "Dashboard", icon: Dashboard },
   { to: "/coupons" as const, label: "Coupons", icon: LocalOffer },
   { to: "/orders" as const, label: "Orders", icon: Assignment },
+  { to: "/transactions" as const, label: "Transactions History", icon: ReceiptLong },
   { to: "/wishlist" as const, label: "Wishlist", icon: Favorite },
   {
     to: "/notifications" as const,
@@ -85,19 +87,19 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
 }
 
 export function Logo({ variant = "default" }: { variant?: "default" | "light" }) {
-  const { retailerProfile } = useStore();
-  const logoUrl = retailerProfile?.logo?.trim();
-  const hasCustomName = Boolean(retailerProfile?.businessName?.trim());
-  const retailerName = retailerProfile?.businessName?.trim() || "TradeFlow";
+  const { retailerProfile, linkedWholesaler } = useStore();
+  const hasCustomName = Boolean(linkedWholesaler?.businessName?.trim() || retailerProfile?.businessName?.trim());
+  const retailerName = linkedWholesaler?.businessName?.trim() || retailerProfile?.businessName?.trim() || "TradeFlow";
+  const tagline = linkedWholesaler?.businessTagline?.trim();
   const isLight = variant === "light";
 
   return (
     <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group focus-visible:outline-none shrink-0">
-      {logoUrl ? (
-        <img
-          src={logoUrl}
-          alt={retailerName}
-          className="size-8 sm:size-10 rounded-xl object-contain border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105 shrink-0"
+      {linkedWholesaler ? (
+        <WholesalerLogo
+          src={linkedWholesaler.logo}
+          name={retailerName}
+          className="size-8 sm:size-10 rounded-xl border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105"
         />
       ) : (
         <TradeFlowMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
@@ -110,8 +112,11 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
             </>
           )}
         </span>
-        <span className={cn("text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider sm:tracking-widest leading-none mt-0.5 truncate hidden xs:block", isLight ? "text-tradeflow-green" : "text-primary")}>
-          Retailer Portal
+        <span
+          title={tagline || (linkedWholesaler ? retailerName : "Retailer Portal")}
+          className={cn("text-[9px] sm:text-[10px] font-extrabold tracking-wide leading-none mt-0.5 truncate hidden xs:block max-w-[110px] sm:max-w-[180px]", isLight ? "text-tradeflow-green" : "text-primary")}
+        >
+          {tagline || (linkedWholesaler ? "Wholesale Store" : "Retailer Portal")}
         </span>
       </div>
     </Link>
@@ -170,6 +175,12 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const linkedWholesalerName = linkedWholesaler?.businessName?.trim() || linkedWholesaler?.name?.trim() || "No wholesaler linked";
   const linkedWholesalerOwner = linkedWholesaler?.ownerName?.trim() || linkedWholesalerName;
   const linkedWholesalerLocation = linkedWholesaler?.location?.trim() || "";
+
+  useEffect(() => {
+    document.title = linkedWholesaler?.businessName?.trim()
+      ? `${linkedWholesaler.businessName.trim()} | Retailer Store`
+      : "Retailer Wholesale Marketplace";
+  }, [linkedWholesaler?.businessName]);
 
   if (isAuthRoute) return <>{children}</>;
 
@@ -315,7 +326,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                   {/* Linked Wholesaler Badge in Drawer */}
                   <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-3.5 text-xs">
                     {linkedWholesaler ? (
-                      <WholesalerLogo src={linkedWholesaler.logo} name={linkedWholesalerName} className="size-10 rounded-lg bg-white text-xs" />
+                      <WholesalerLogo src={linkedWholesaler.logo || ""} name={linkedWholesalerName} className="size-10 rounded-lg bg-white text-xs" />
                     ) : (
                       <Store className="size-5 text-primary shrink-0" />
                     )}

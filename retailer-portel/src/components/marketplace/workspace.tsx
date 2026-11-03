@@ -20,6 +20,11 @@ import {
   Percent,
   Receipt,
   QrCode,
+  Copy,
+  ExternalLink,
+  Download,
+  Truck,
+  PackageCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,7 +74,7 @@ export function DashboardPage() {
   const connectedProducts = products.filter((p) => p.wholesalerId === linkedWholesalerId);
   const safeOwnerName = retailerProfile.ownerName?.trim() || "Retailer";
   const firstName = safeOwnerName.split(/\s+/)[0] || "Retailer";
-  const linkedSupplierName = linkedWholesaler?.name || "your supplier";
+  const linkedSupplierName = linkedWholesaler?.businessName || "your supplier";
 
   const creditQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
@@ -94,7 +99,7 @@ export function DashboardPage() {
         <div>
           <p className="text-xs font-bold uppercase text-primary">Retailer workspace</p>
           <h1 className="mt-2 text-3xl font-extrabold text-ink">Good morning, {firstName}</h1>
-          <p className="mt-2 text-muted-foreground">{retailerProfile.businessName || "Your business"} is linked with <strong className="text-ink">{linkedSupplierName}</strong>.</p>
+          <p className="mt-2 text-muted-foreground">{retailerProfile.businessName || "Your business"} shops with <strong className="text-ink">{linkedSupplierName}</strong>.</p>
         </div>
         <Button asChild><Link to="/products">Continue shopping</Link></Button>
       </div>
@@ -141,7 +146,7 @@ export function DashboardPage() {
         {[
           ["Active orders", orders.filter(o => !["Delivered", "Cancelled"].includes(o.status)).length, "/orders"],
           ["Pending orders", orders.filter(o => o.status === "Pending").length, "/orders"],
-          ["Linked Supplier", linkedSupplierName, "/products"],
+          ["Available products", connectedProducts.length, "/products"],
           ["Wishlist items", wishlist.length, "/wishlist"],
         ].map(([label, value, to]) => (
           <Link key={label as string} to={to as "/orders" | "/products" | "/wishlist"} className="border bg-card p-5 interactive rounded-2xl">
@@ -462,6 +467,150 @@ export function OrdersPage() {
   );
 }
 
+export function TransactionsHistoryPage() {
+  const { currentUser } = useStore();
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [status, setStatus] = useState("all");
+  const transactionsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "transactions", startDate, endDate, status),
+    queryFn: async () => (await api.getTransactions({
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+      ...(status !== "all" ? { status } : {}),
+      limit: 200,
+    })).data,
+    enabled: Boolean(currentUser?.id),
+    refetchInterval: 15000,
+    staleTime: 0,
+  });
+  const transactions = transactionsQuery.data?.transactions || [];
+  const summary = transactionsQuery.data?.summary;
+  const statusClass = (value: string) => value === "VERIFIED"
+    ? "bg-emerald-100 text-emerald-800"
+    : value === "FAILED" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800";
+
+  return (
+    <main className="shell py-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Retailer account</p>
+          <h1 className="mt-1 text-3xl font-extrabold text-ink">Transactions History</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Verified payments, UPI reports, and credit installments.</p>
+        </div>
+        <Button asChild variant="outline"><Link to="/orders">View Orders</Link></Button>
+      </div>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border bg-card p-5">
+          <span className="text-xs font-semibold text-muted-foreground">Total Paid</span>
+          <p className="mt-1 text-2xl font-black text-emerald-700">{money(Number(summary?.totalPaidAmount || 0))}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-5">
+          <span className="text-xs font-semibold text-muted-foreground">Total Outstanding</span>
+          <p className="mt-1 text-2xl font-black text-amber-700">{money(Number(summary?.totalOutstandingAmount || 0))}</p>
+        </div>
+      </div>
+
+      <section className="mt-6 rounded-2xl border bg-card p-4 sm:p-6">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-xs font-bold text-ink">
+            From
+            <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-ink">
+            To
+            <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+          </label>
+          <label className="grid gap-1 text-xs font-bold text-ink">
+            Payment status
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="all">All statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="VERIFIED">Verified</option>
+              <option value="FAILED">Failed</option>
+            </select>
+          </label>
+        </div>
+
+        {transactionsQuery.isLoading ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">Loading transactions…</p>
+        ) : transactionsQuery.isError ? (
+          <p role="alert" className="py-12 text-center text-sm font-semibold text-rose-700">
+            {transactionsQuery.error instanceof Error ? transactionsQuery.error.message : "Unable to load transaction history."}
+          </p>
+        ) : transactions.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">No transactions match these filters.</p>
+        ) : (
+          <>
+            <div className="mt-5 space-y-3 md:hidden">
+              {transactions.map((transaction: any, index: number) => (
+                <article key={`${transaction.transactionId}-${index}`} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-all font-mono text-[11px] font-bold text-ink">{transaction.transactionId}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Order {transaction.orderId}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold ${statusClass(transaction.status)}`}>{transaction.status}</span>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div><dt className="text-muted-foreground">Business</dt><dd className="font-bold text-ink">{transaction.wholesalerName}</dd></div>
+                    <div><dt className="text-muted-foreground">Method</dt><dd className="font-bold text-ink">{transaction.paymentMethod}</dd></div>
+                    <div><dt className="text-muted-foreground">Date</dt><dd className="font-semibold text-ink">{new Date(transaction.transactionDate).toLocaleDateString("en-IN")}</dd></div>
+                    <div><dt className="text-muted-foreground">Order total</dt><dd className="font-semibold text-ink">{money(transaction.totalOrderAmount)}</dd></div>
+                    <div><dt className="text-muted-foreground">Coupon discount</dt><dd className="font-semibold text-ink">{money(transaction.couponDiscount)}</dd></div>
+                    <div><dt className="text-muted-foreground">Amount reported</dt><dd className="font-semibold text-ink">{money(transaction.amountPaid)}</dd></div>
+                    <div className="col-span-2"><dt className="text-muted-foreground">Remaining due</dt><dd className="font-extrabold text-amber-700">{money(transaction.remainingDueAmount)}</dd></div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-5 hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[1100px] text-left text-xs">
+                <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="pb-3 pr-3">Transaction ID</th>
+                    <th className="pb-3 pr-3">Order ID</th>
+                    <th className="pb-3 pr-3">Business</th>
+                    <th className="pb-3 pr-3">Date</th>
+                    <th className="pb-3 pr-3">Method</th>
+                    <th className="pb-3 pr-3 text-right">Order Total</th>
+                    <th className="pb-3 pr-3 text-right">Coupon</th>
+                    <th className="pb-3 pr-3 text-right">Amount Paid</th>
+                    <th className="pb-3 pr-3 text-right">Remaining Due</th>
+                    <th className="pb-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {transactions.map((transaction: any, index: number) => (
+                    <tr key={`${transaction.transactionId}-${index}`}>
+                      <td className="max-w-40 break-all py-3 pr-3 font-mono text-[10px] font-semibold">{transaction.transactionId}</td>
+                      <td className="py-3 pr-3 font-mono font-bold">{transaction.orderId}</td>
+                      <td className="py-3 pr-3 font-semibold">{transaction.wholesalerName}</td>
+                      <td className="whitespace-nowrap py-3 pr-3">{new Date(transaction.transactionDate).toLocaleDateString("en-IN")}</td>
+                      <td className="py-3 pr-3">{transaction.paymentMethod}</td>
+                      <td className="py-3 pr-3 text-right">{money(transaction.totalOrderAmount)}</td>
+                      <td className="py-3 pr-3 text-right">{money(transaction.couponDiscount)}</td>
+                      <td className="py-3 pr-3 text-right font-semibold">{money(transaction.amountPaid)}</td>
+                      <td className="py-3 pr-3 text-right font-bold text-amber-700">{money(transaction.remainingDueAmount)}</td>
+                      <td className="py-3 text-right"><span className={`rounded-full px-2 py-1 text-[10px] font-extrabold ${statusClass(transaction.status)}`}>{transaction.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
 export function OrderDetailsPage({ orderId }: { orderId: string }) {
   const { currentUser, orders, returns, retailerProfile, linkedWholesaler, products, categories, refreshOrders, refreshData } = useStore();
   const queryClient = useQueryClient();
@@ -705,27 +854,326 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
         </div>
       )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_320px]">
-        <section className="border bg-card p-6 rounded-2xl shadow-xs">
-          <h2 className="text-xl font-bold">Order timeline</h2>
-          <div className="mt-6 grid gap-5">
-            {["Order placed", "Confirmed", "Processing", "Packed", "Shipped", "Delivered"].map((step, i) => {
-              const statusIdx = ["Pending", "Confirmed", "Processing", "Processing", "Shipped", "Delivered"].indexOf(order.status);
-              const isCompleted = i <= (statusIdx >= 0 ? statusIdx : 0);
-              return (
-                <div key={step} className="flex items-center gap-4">
-                  <span className={`grid size-8 place-items-center border rounded-full ${isCompleted ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground"}`}>
-                    {isCompleted ? <Check className="size-4" /> : i + 1}
-                  </span>
-                  <div>
-                    <b>{step}</b>
-                    <p className="text-xs text-muted-foreground">{isCompleted ? "Completed" : "Awaiting update"}</p>
+      {/* Order Tracking Timeline & Shipping Details */}
+      {order.status !== "Cancelled" && (
+        <section className="mt-8 rounded-2xl border border-border/80 bg-card p-6 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+            <div>
+              <h2 className="text-xl font-black text-ink">Order Tracking</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Real-time status updates from {wholesalerName}
+              </p>
+            </div>
+            <span className="rounded-full bg-primary/10 px-3.5 py-1 text-xs font-black text-primary border border-primary/20">
+              Current: {order.status}
+            </span>
+          </div>
+
+          {/* Stepper Progress Bar */}
+          <div className="mt-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { key: "Confirmed", label: "Confirmed", desc: "Wholesaler accepted order" },
+                { key: "Processing", label: "Processing", desc: "Preparing & packing items" },
+                { key: "Shipped", label: "Shipped", desc: "Dispatched with transport" },
+                { key: "Delivered", label: "Delivered", desc: "Delivered to your store" },
+              ].map((step, idx) => {
+                const stepOrder = ["Pending", "Confirmed", "Processing", "Shipped", "Delivered"];
+                const currentIdx = stepOrder.indexOf(order.status);
+                // Step is completed if currentIdx >= idx + 1 (Confirmed is idx 0 => stepOrder 1)
+                const isCompleted = currentIdx >= idx + 1;
+                const isCurrent = currentIdx === idx + 1 || (idx === 0 && order.status === "Pending");
+
+                return (
+                  <div
+                    key={step.key}
+                    className={cn(
+                      "relative rounded-xl border p-4 transition-all",
+                      isCompleted
+                        ? "border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20"
+                        : isCurrent
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/40 shadow-xs"
+                        : "border-border/60 bg-muted/20 opacity-70"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          "grid size-8 shrink-0 place-items-center rounded-full text-xs font-black transition-all",
+                          isCompleted
+                            ? "bg-emerald-600 text-white"
+                            : isCurrent
+                            ? "bg-primary text-primary-foreground animate-pulse"
+                            : "bg-muted text-muted-foreground border border-border"
+                        )}
+                      >
+                        {isCompleted ? <Check className="size-4" /> : idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <b className={cn("block text-sm truncate", isCurrent ? "text-primary" : "text-ink")}>
+                          {step.label}
+                        </b>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {isCompleted ? "Completed" : isCurrent ? (order.status === "Pending" ? "Awaiting confirmation" : "In progress") : "Pending"}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground leading-tight">
+                      {step.desc}
+                    </p>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </section>
+      )}
+
+      {/* Dedicated Shipping & Transport Details Card (when Shipped, Delivered, or shippingDetails present) */}
+      {(order.shippingDetails || order.status === "Shipped" || order.status === "Delivered") && (
+        <section className="mt-6 rounded-2xl border-2 border-primary/30 bg-card p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+                <Truck className="size-5" />
+              </span>
+              <div>
+                <h2 className="text-xl font-black text-ink">Shipping & Transport Details</h2>
+                <p className="text-xs text-muted-foreground">
+                  Consignment & tracking information provided by {wholesalerName}
+                </p>
+              </div>
+            </div>
+            <Badge className="bg-primary/15 text-primary border border-primary/25 font-black text-xs px-3 py-1">
+              Dispatched Consignment
+            </Badge>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-3">
+            {/* Left 2 Cols: Shipping Metadata & Bilty */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-border/80 bg-background/60 p-4">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                    Transport / Courier
+                  </span>
+                  <b className="mt-1 block text-base font-extrabold text-ink">
+                    {order.shippingDetails?.courierName || "—"}
+                  </b>
+                </div>
+
+                <div className="rounded-xl border border-border/80 bg-background/60 p-4">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                    Bilty / LR Number
+                  </span>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <b className="font-mono text-base font-extrabold text-primary">
+                      {order.shippingDetails?.biltyNumber || "—"}
+                    </b>
+                    {order.shippingDetails?.biltyNumber && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground hover:text-ink"
+                        title="Copy Bilty Number"
+                        onClick={() => {
+                          navigator.clipboard.writeText(order.shippingDetails?.biltyNumber || "");
+                          toast.success("Bilty / LR Number copied to clipboard");
+                        }}
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border/80 bg-background/60 p-4">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                    Tracking / Docket Number
+                  </span>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <b className="font-mono text-base font-extrabold text-ink">
+                      {order.shippingDetails?.trackingNumber || "—"}
+                    </b>
+                    {order.shippingDetails?.trackingNumber && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground hover:text-ink"
+                        title="Copy Tracking Number"
+                        onClick={() => {
+                          navigator.clipboard.writeText(order.shippingDetails?.trackingNumber || "");
+                          toast.success("Tracking number copied to clipboard");
+                        }}
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border/80 bg-background/60 p-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                        Shipped Date
+                      </span>
+                      <b className="mt-1 block text-xs font-bold text-ink">
+                        {order.shippingDetails?.shippingDate || "—"}
+                      </b>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                        Est. Delivery
+                      </span>
+                      <b className="mt-1 block text-xs font-bold text-emerald-600">
+                        {order.shippingDetails?.estimatedDeliveryDate || "—"}
+                      </b>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {order.shippingDetails?.shippingNotes && (
+                <div className="rounded-xl border border-border/80 bg-background/60 p-4 text-xs">
+                  <span className="font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                    Shipping Notes
+                  </span>
+                  <p className="text-ink leading-relaxed whitespace-pre-wrap">
+                    {order.shippingDetails.shippingNotes}
+                  </p>
+                </div>
+              )}
+
+              {/* Bilty Document Viewer & Download */}
+              {order.shippingDetails?.biltyUrl && (
+                <div className="rounded-xl border border-border/80 bg-background/80 p-4">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">
+                    Attached Shipping Document / Bilty
+                  </span>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary shrink-0">
+                        <FileText className="size-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-ink truncate">
+                          {order.shippingDetails.biltyFileName || "Shipping_Bilty_Document"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Official carrier receipt document
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button asChild size="sm" variant="outline" className="rounded-xl font-bold">
+                        <a
+                          href={order.shippingDetails.biltyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5"
+                        >
+                          <ExternalLink className="size-3.5" />
+                          View Document
+                        </a>
+                      </Button>
+                      <Button asChild size="sm" className="rounded-xl font-bold">
+                        <a
+                          href={order.shippingDetails.biltyUrl}
+                          download={order.shippingDetails.biltyFileName || "bilty"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5"
+                        >
+                          <Download className="size-3.5" />
+                          Download
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* If bilty is an image, show preview */}
+                  {order.shippingDetails.biltyUrl.match(/\.(jpg|jpeg|png|webp)($|\?)/i) && (
+                    <div className="mt-4 overflow-hidden rounded-xl border bg-muted/20">
+                      <img
+                        src={order.shippingDetails.biltyUrl}
+                        alt="Bilty document"
+                        className="max-h-64 w-full object-contain p-2"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Right Col: Ordered Product Items Visual */}
+            <div className="rounded-xl border border-border/80 bg-background/60 p-4">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">
+                Items In This Shipment
+              </span>
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {order.items.map((item, i) => {
+                  const linkedProduct = item.product || products.find((p) => String(p.id) === String(item.productId));
+                  const name = item.name || linkedProduct?.name || "Product";
+                  const imageUrl =
+                    item.imageUrl ||
+                    (linkedProduct?.images && linkedProduct.images.length > 0 ? linkedProduct.images[0] : "") ||
+                    linkedProduct?.imageUrl ||
+                    "";
+
+                  return (
+                    <div key={item.productId || i} className="flex items-center gap-3 rounded-lg border border-border/60 bg-card p-2.5">
+                      <div className="relative size-12 shrink-0 overflow-hidden rounded-lg border bg-muted">
+                        {imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt={name}
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                            No img
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-extrabold text-ink truncate">{name}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Qty: <strong className="text-ink">{item.quantity}</strong> · {money(item.pricePerUnit || 0)}/unit
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_320px]">
+        {/* Left column details */}
+        <div className="space-y-6">
+          <section className="border bg-card p-6 rounded-2xl shadow-xs">
+            <h2 className="text-xl font-bold">Fulfilment Status</h2>
+            <div className="mt-4 flex items-center justify-between p-4 rounded-xl border bg-canvas/40">
+              <div>
+                <span className="text-xs text-muted-foreground">Fulfilment Partner:</span>
+                <b className="block text-sm font-extrabold text-ink">{wholesalerName}</b>
+              </div>
+              <StatusBadge status={order.status} />
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Every status update is synchronized in real time with {wholesalerName}'s dispatch dashboard.
+            </p>
+          </section>
+        </div>
+
         <aside className="space-y-4">
           <div className="border bg-card p-5 rounded-2xl shadow-xs">
             <h2 className="font-bold">Order summary</h2>
@@ -739,7 +1187,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
             <h2 className="font-bold">Payment Information</h2>
             <div className="flex justify-between text-xs pt-1">
               <span className="text-muted-foreground">Payment Mode:</span>
-              <strong className="text-ink">{order.isCreditOrder ? "Credit" : order.paymentMethod === "UPI" ? "Direct UPI" : order.paymentMethod === "ONLINE" ? "Legacy Online Payment" : "Cash on Delivery"}</strong>
+              <strong className="text-ink">{order.isCreditOrder ? "Credit" : order.paymentMethod === "UPI" ? "Direct UPI" : order.paymentMethod === "ONLINE" ? "Legacy Online Payment" : "Direct UPI"}</strong>
             </div>
             {order.isCreditOrder && (
               <>
@@ -946,9 +1394,6 @@ export function CartPage() {
                 <Button asChild size="lg" className="rounded-xl bg-primary font-bold shadow-md">
                   <Link to="/products">Browse Products</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="rounded-xl font-semibold">
-                  <Link to="/wholesalers">View Wholesalers</Link>
-                </Button>
               </div>
             </div>
           </section>
@@ -1061,7 +1506,7 @@ export function CheckoutPage() {
   const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [placed, setPlaced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<"UPI" | "CREDIT" | "COD">("UPI");
+  const [paymentMode, setPaymentMode] = useState<"UPI" | "CREDIT">("UPI");
   const [reportedOrder, setReportedOrder] = useState<{ id: string; number: string; amount: number } | null>(null);
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -1124,13 +1569,7 @@ export function CheckoutPage() {
   const outstanding = Number(creditInfo?.currentOutstandingAmount || 0);
   const [requestingCredit, setRequestingCredit] = useState(false);
 
-  const meetsMinOrder = !minOrderForCredit || total >= minOrderForCredit;
-  const isCreditEligible = isCreditEnabled && meetsMinOrder && availableCredit >= total;
   const hasDirectUpi = Boolean(paymentOptions?.qrPaymentsEnabled || paymentOptions?.upiIdPaymentsEnabled);
-
-  useEffect(() => {
-    if (!paymentOptionsQuery.isLoading && !hasDirectUpi && paymentMode === "UPI") setPaymentMode("COD");
-  }, [paymentOptionsQuery.isLoading, hasDirectUpi, paymentMode]);
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + creditPeriodDays);
@@ -1261,7 +1700,58 @@ export function CheckoutPage() {
     }
   }, [total, appliedCoupon]);
 
-  const finalTotal = Math.max(0, total - discountAmount);
+  const checkoutItems = useMemo(
+    () => cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+    [cart]
+  );
+  const checkoutShippingAddress = useMemo(() => ({
+    addressLine1: retailerProfile.address || "Main Market Road",
+    city: retailerProfile.city || "New Delhi",
+    state: retailerProfile.state || "Delhi",
+    postalCode: retailerProfile.pincode || "110001",
+    pincode: retailerProfile.pincode || "110001",
+    country: "India",
+    contactName: retailerProfile.ownerName || "Retailer contact",
+    phone: retailerProfile.phone || "",
+  }), [
+    retailerProfile.address,
+    retailerProfile.city,
+    retailerProfile.state,
+    retailerProfile.pincode,
+    retailerProfile.ownerName,
+    retailerProfile.phone,
+  ]);
+  const quoteQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(
+      currentUser?.id || "unknown",
+      "checkout-quote",
+      checkoutItems,
+      appliedCoupon?.code || "",
+      paymentMode
+    ),
+    queryFn: async () => (await api.quoteCheckout({
+      items: checkoutItems,
+      shippingAddress: checkoutShippingAddress,
+      paymentMethod: paymentMode,
+      couponCode: appliedCoupon?.code || undefined,
+    })).data,
+    enabled: Boolean(currentUser?.id && checkoutItems.length),
+    staleTime: 0,
+  });
+  const quote = quoteQuery.data;
+  const quotedSubtotal = Number(quote?.subtotal ?? total);
+  const quotedDiscount = Number(quote?.discount ?? discountAmount);
+  const quotedTax = Number(quote?.tax || 0);
+  const finalTotal = Number(quote?.grandTotal ?? Math.max(0, total - discountAmount));
+  const meetsMinOrder = !minOrderForCredit || finalTotal >= minOrderForCredit;
+  const isCreditEligible = isCreditEnabled && meetsMinOrder && availableCredit >= finalTotal;
+
+  useEffect(() => {
+    if (!paymentOptionsQuery.isLoading && !hasDirectUpi && paymentMode === "UPI" && isCreditEligible) {
+      setPaymentMode("CREDIT");
+    }
+  }, [paymentOptionsQuery.isLoading, hasDirectUpi, paymentMode, isCreditEligible]);
+
   const checkoutStorageKey = `retailer-checkout-idempotency:${currentUser?.id || "unknown"}`;
   const clearCheckoutIdempotencyKey = () => {
     checkoutIdempotencyRef.current = null;
@@ -1322,26 +1812,18 @@ export function CheckoutPage() {
     setSubmitting(true);
     try {
       if (paymentMode === "CREDIT") {
-        await placeOrder("CREDIT", appliedCoupon?.code);
+        await placeOrder("CREDIT", appliedCoupon?.code, quote?.quoteHash);
         await refreshData(true);
         setPlaced(true);
         toast.success("Credit order placed successfully.");
       } else {
         const idempotencyKey = getCheckoutIdempotencyKey();
         const checkoutResponse = await api.checkout({
-          items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
-          shippingAddress: {
-            addressLine1: retailerProfile.address || "Main Market Road",
-            city: retailerProfile.city || "New Delhi",
-            state: retailerProfile.state || "Delhi",
-            postalCode: retailerProfile.pincode || "110001",
-            pincode: retailerProfile.pincode || "110001",
-            country: "India",
-            contactName: retailerProfile.ownerName || "Retailer contact",
-            phone: retailerProfile.phone || "",
-          },
+          items: checkoutItems,
+          shippingAddress: checkoutShippingAddress,
           paymentMethod: paymentMode,
           couponCode: appliedCoupon?.code,
+          expectedQuoteHash: quote?.quoteHash,
           idempotencyKey,
         });
         await refreshData(true);
@@ -1612,19 +2094,6 @@ export function CheckoutPage() {
                 </div>
               </div>
             </div>
-
-            <label
-              className={`flex items-start gap-3 border p-4 rounded-xl cursor-pointer transition-all ${
-                paymentMode === "COD" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border/80 hover:bg-muted/30"
-              }`}
-              onClick={() => setPaymentMode("COD")}
-            >
-              <input type="radio" name="payment" checked={paymentMode === "COD"} onChange={() => setPaymentMode("COD")} className="mt-1" />
-              <div>
-                <b className="block text-ink text-sm">Cash on Delivery</b>
-                <span className="mt-0.5 block text-xs text-muted-foreground">Pay on delivery.</span>
-              </div>
-            </label>
 
             <div
               className={`border p-4 rounded-xl transition-all ${
@@ -2026,12 +2495,18 @@ export function CheckoutPage() {
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal:</span>
-              <strong className="text-ink">{money(total)}</strong>
+              <strong className="text-ink">{money(quotedSubtotal)}</strong>
             </div>
-            {discountAmount > 0 && (
+            {quotedTax > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tax:</span>
+                <strong className="text-ink">{money(quotedTax)}</strong>
+              </div>
+            )}
+            {quotedDiscount > 0 && (
               <div className="flex justify-between text-emerald-700 font-bold">
                 <span>Discount ({appliedCoupon?.code}):</span>
-                <span>-{money(discountAmount)}</span>
+                <span>-{money(quotedDiscount)}</span>
               </div>
             )}
           </div>
@@ -2040,6 +2515,12 @@ export function CheckoutPage() {
             <span className="font-extrabold text-ink">Total</span>
             <strong className="text-2xl font-black text-primary">{money(finalTotal)}</strong>
           </div>
+          {quoteQuery.isLoading && <p className="text-center text-xs text-muted-foreground">Calculating verified checkout total…</p>}
+          {quoteQuery.isError && (
+            <p role="alert" className="text-xs font-semibold text-rose-700">
+              {quoteQuery.error instanceof Error ? quoteQuery.error.message : "Unable to validate this checkout total."}
+            </p>
+          )}
 
           <label className="flex items-start gap-2 text-xs text-muted-foreground font-medium pt-1 cursor-pointer">
             <input
@@ -2054,7 +2535,12 @@ export function CheckoutPage() {
           </label>
 
           {!reportedOrder && (
-            <Button className="w-full rounded-xl font-extrabold" size="lg" onClick={handlePlaceOrder} disabled={submitting}>
+            <Button
+              className="w-full rounded-xl font-extrabold"
+              size="lg"
+              onClick={handlePlaceOrder}
+              disabled={submitting || quoteQuery.isLoading || quoteQuery.isError || !quote || (paymentMode === "UPI" ? !hasDirectUpi : !isCreditEligible)}
+            >
               {submitting ? "Processing..." : "Place Order"}
             </Button>
           )}
@@ -2893,7 +3379,7 @@ export function AuthPage({
 
         await api.register({
           name: name.trim(),
-          loginId: trimmedLoginId || undefined,
+          ...(trimmedLoginId && { loginId: trimmedLoginId }),
           businessName: businessName.trim(),
           businessType: businessType.trim(),
           address: address.trim(),
@@ -2918,7 +3404,7 @@ export function AuthPage({
           utmCampaign: referralAttribution?.utmCampaign || "",
           utmTerm: referralAttribution?.utmTerm || "",
           utmContent: referralAttribution?.utmContent || "",
-          firstLandingAt: referralAttribution?.firstLandingAt,
+          ...(referralAttribution?.firstLandingAt && { firstLandingAt: referralAttribution.firstLandingAt }),
         });
 
         markRetailerRegistrationComplete();
@@ -2928,7 +3414,7 @@ export function AuthPage({
         } catch (error) {
           console.warn("Could not save the retailer login identifier", error);
         }
-        toast.success("Account created. Sign in to continue checkout.");
+        toast.success("Registration Successful! Please login to continue.");
         navigate({ to: "/login", search: { redirect: targetRedirect } });
       }
     } catch (err: unknown) {
@@ -3144,7 +3630,7 @@ export function AuthPage({
                   onClick={() => setMode("login")}
                   className="text-xs font-extrabold text-emerald-700 hover:text-emerald-800 underline underline-offset-4 cursor-pointer"
                 >
-                  Sign In →
+                  Already registered? Sign in
                 </button>
               )}
             </div>

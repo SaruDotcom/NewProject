@@ -18,6 +18,7 @@ class WholesalerPortalController {
   inventoryHistory = asyncHandler(async (req, res) => { const result = await WholesalerPortalService.inventoryHistory(req.user._id, req.params.productId, req.query); return ApiResponse.paginated(res, result.transactions, result.meta, 'Inventory history retrieved'); });
   adjustInventory = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.adjustInventory(req.user._id, req.params.productId, req.body.quantity, req.body.notes, req.user, req), 'Inventory adjusted'));
   analytics = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.analytics(req.user._id, req.query), 'Wholesaler analytics retrieved'));
+  getFinancialSummary = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.getFinancialSummary(req.user._id), 'Wholesaler financial summary retrieved'));
   exportAnalytics = asyncHandler(async (req, res) => {
     const { content, filename } = await WholesalerPortalService.exportAnalyticsCsv(req.user._id, req.query);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

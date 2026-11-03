@@ -37,6 +37,7 @@ import {
 
 export interface WholesalerPublicInfo {
   businessName: string;
+  businessTagline?: string;
   logo: string;
   city: string;
   categories?: string[];
@@ -106,6 +107,7 @@ export function LandingPage() {
       if (data && data.businessName) {
         const wholesalerInfo: WholesalerPublicInfo = {
           businessName: data.businessName,
+          businessTagline: data.businessTagline || "",
           logo: data.logo || "",
           city: data.city || "",
           categories: data.categories || [],
@@ -219,9 +221,9 @@ export function LandingPage() {
 
     setIsSubmittingReg(true);
     try {
-      const res = await api.register({
+      await api.register({
         name: regName.trim(),
-        loginId: trimmedLoginId || undefined,
+        ...(trimmedLoginId && { loginId: trimmedLoginId }),
         businessName: regBusinessName.trim() || `${regName.trim()}'s Store`,
         phone: regPhone.trim(),
         email: regEmail.trim(),
@@ -232,20 +234,13 @@ export function LandingPage() {
         utmCampaign: referralAttribution?.utmCampaign || "",
         utmTerm: referralAttribution?.utmTerm || "",
         utmContent: referralAttribution?.utmContent || "",
-        firstLandingAt: referralAttribution?.firstLandingAt,
+        ...(referralAttribution?.firstLandingAt && { firstLandingAt: referralAttribution.firstLandingAt }),
       });
 
-      const token = res.data?.token || res.data?.accessToken;
       markRetailerRegistrationComplete();
-      if (token) {
-        setAuthToken(token);
-        toast.success(`Registration Successful. You are now connected to ${supplier.businessName}`);
-        closeModal();
-        window.location.href = "/";
-      } else {
-        toast.success("Account created! Please sign in.");
-        setModalMode("login");
-      }
+      toast.success("Registration Successful! Please login to continue.");
+      closeModal();
+      navigate({ to: "/login" });
     } catch (err: unknown) {
       const errorMsg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Registration failed.";
       toast.error(errorMsg);

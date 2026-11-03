@@ -17,6 +17,23 @@ router.get('/:id', orderController.getOrderById);
 // Retailer create order (with idempotency support)
 router.post('/', authorize(ROLES.RETAILER), idempotency, orderController.createOrder);
 
+const { shippingDocumentUpload } = require('../../middleware/upload');
+
+// Upload shipping document / bilty (Super Admin, Admin, Wholesaler)
+router.post(
+  '/upload-shipping-document',
+  authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.WHOLESALER),
+  shippingDocumentUpload.single('bilty'),
+  orderController.uploadShippingDocument
+);
+
+router.post(
+  '/:id/shipping-document',
+  authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.WHOLESALER),
+  shippingDocumentUpload.single('bilty'),
+  orderController.uploadShippingDocument
+);
+
 // Update order status (Super Admin, Admin, Wholesaler)
 router.patch(
   '/:id/status',

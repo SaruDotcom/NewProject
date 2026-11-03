@@ -47,7 +47,6 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'>('ALL');
-  const [globalThreshold, setGlobalThreshold] = useState<number>(10);
 
   // Expanded Row State for Row-level Financial & Movement Inspection
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
@@ -146,8 +145,8 @@ export default function InventoryPage() {
     const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
 
     const isOutOfStock = p.stock === 0;
-    const isLowStock = p.stock > 0 && p.stock <= (p.minOrderQty || globalThreshold);
-    const isInStock = p.stock > (p.minOrderQty || globalThreshold);
+    const isLowStock = p.stock <= 50;
+    const isInStock = p.stock > 50;
 
     if (statusFilter === 'IN_STOCK') return matchesSearch && matchesCategory && isInStock;
     if (statusFilter === 'LOW_STOCK') return matchesSearch && matchesCategory && isLowStock;
@@ -156,8 +155,8 @@ export default function InventoryPage() {
     return matchesSearch && matchesCategory;
   });
 
-  // "Needs Restocking" Alert List (Low stock <= threshold OR out of stock)
-  const needsRestockingList = products.filter((p) => p.stock <= (p.minOrderQty || globalThreshold));
+  // Stock of 50 units or less is considered low; zero stock remains visible here too.
+  const needsRestockingList = products.filter((p) => p.stock <= 50);
 
   const handleApplyStockAdjust = (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,7 +259,7 @@ export default function InventoryPage() {
               <span>Needs Restocking Alert List ({needsRestockingList.length} Items Below Threshold)</span>
             </div>
             <span className="text-[11px] font-bold text-gray-600 bg-white px-2.5 py-0.5 rounded-full border border-amber-200">
-              Configured Threshold: ≤ {globalThreshold} units
+              Low stock threshold: ≤ 50 units
             </span>
           </div>
 
@@ -407,7 +406,7 @@ export default function InventoryPage() {
                 };
 
                 const isOutOfStock = p.stock === 0;
-                const isLowStock = p.stock > 0 && p.stock <= (p.minOrderQty || globalThreshold);
+                const isLowStock = p.stock <= 50;
                 const isExpanded = expandedProductId === p.id;
 
                 return (

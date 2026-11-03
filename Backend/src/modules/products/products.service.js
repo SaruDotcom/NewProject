@@ -742,9 +742,9 @@ class ProductService {
     });
     if (['hsn', 'hsnCode', 'cgst', 'sgst', 'igst', 'priceIncludesTax'].some(supplied)) {
       const hsnCode = String(updateData.hsnCode ?? updateData.hsn ?? product.hsnCode ?? product.hsn ?? '').trim();
-      const cgst = updateData.cgst ?? product.cgst;
-      const sgst = updateData.sgst ?? product.sgst;
-      const igst = updateData.igst ?? product.igst;
+      const cgst = supplied('cgst') ? updateData.cgst : product.cgst;
+      const sgst = supplied('sgst') ? updateData.sgst : product.sgst;
+      const igst = supplied('igst') ? updateData.igst : product.igst;
       set.taxConfigured = Boolean(hsnCode || cgst !== null && cgst !== undefined || sgst !== null && sgst !== undefined || igst !== null && igst !== undefined);
     }
 

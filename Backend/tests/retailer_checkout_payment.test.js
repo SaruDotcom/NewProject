@@ -8,7 +8,7 @@ const { checkoutSchema } = require('../src/modules/retailers/retailer.validation
 describe('Direct retailer checkout payments', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test.each(['UPI', 'COD', 'CREDIT'])('checkout validation accepts %s', (paymentMethod) => {
+  test.each(['UPI', 'CREDIT'])('checkout validation accepts %s', (paymentMethod) => {
     const result = checkoutSchema.validate({
       paymentMethod,
       items: [{ productId: '507f1f77bcf86cd799439011', quantity: 1 }],
@@ -21,6 +21,21 @@ describe('Direct retailer checkout payments', () => {
     });
 
     expect(result.error).toBeUndefined();
+  });
+
+  test('checkout validation rejects COD payment method', () => {
+    const result = checkoutSchema.validate({
+      paymentMethod: 'COD',
+      items: [{ productId: '507f1f77bcf86cd799439011', quantity: 1 }],
+      shippingAddress: {
+        addressLine1: '1 Main Street',
+        city: 'Delhi',
+        state: 'Delhi',
+        postalCode: '110001',
+      },
+    });
+
+    expect(result.error).toBeDefined();
   });
 
   test('checkout validation rejects the removed gateway method', () => {

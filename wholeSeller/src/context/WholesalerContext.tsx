@@ -67,6 +67,7 @@ const mapCategory = (category: any, wholesalerId: string): Category => ({
 export interface WholesalerProfile {
   id: string;
   businessName: string;
+  businessTagline: string;
   businessLogoUrl: string;
   activeStoreTheme: WholesalerStoreTheme;
   businessType: string;
@@ -166,7 +167,7 @@ interface WholesalerContextType {
   deleteCategory: (id: string) => Promise<{ success: boolean; message?: string }>;
 
   updateRetailerLimit: (id: string, newLimit: number, newDiscount: number) => void;
-  updateOrderStatus: (id: string, status: OrderStatus, tracking?: string) => Promise<void>;
+  updateOrderStatus: (id: string, status: OrderStatus, shippingDetailsOrTracking?: any) => Promise<void>;
 
   generateNewApiKey: () => void;
   updateSubscription: (plan: 'MONTHLY' | 'ANNUAL', renewalDate?: string) => void;
@@ -186,6 +187,7 @@ const WholesalerContext = createContext<WholesalerContextType | undefined>(undef
 export const DEFAULT_PROFILE: WholesalerProfile = {
   id: '',
   businessName: '',
+  businessTagline: '',
   businessLogoUrl: '',
   activeStoreTheme: 'DEFAULT',
   businessType: '',
@@ -425,6 +427,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               id: u.id || u._id || prev.id,
               accountStatus: u.status === 'SUSPENDED' || u.status === 'BLOCKED' ? u.status : 'ACTIVE',
               businessName: wp.businessName || u.businessName || prev.businessName,
+              businessTagline: wp.businessTagline ?? prev.businessTagline,
               businessLogoUrl: wp.businessLogoUrl ?? prev.businessLogoUrl,
               activeStoreTheme: wp.activeStoreTheme || 'DEFAULT',
               businessType: wp.businessType || prev.businessType,
@@ -599,11 +602,13 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             taxAmount: Math.round(tot * 0.18),
             discountAmount: Number(o.discountAmount || 0),
             paymentStatus: o.paymentStatus || 'UNPAID',
+            shippingDetails: o.shippingDetails || undefined,
             createdAt: o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : '',
             items: Array.isArray(o.items)
               ? o.items.map((it: any, index: number) => {
                   const unitP = Number(it.pricePerUnit ?? it.price ?? 0);
                   const qty = Number(it.quantity ?? 0);
+                  const img = it.imageUrl || (typeof it.productId === 'object' ? (Array.isArray(it.productId?.images) ? it.productId.images[0] : it.productId?.image) : '') || it.image || '';
                   return {
                     id: `item-${index}`,
                     productId: typeof it.productId === 'object' ? it.productId?._id : it.productId,
@@ -612,6 +617,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     unitPrice: unitP,
                     quantity: qty,
                     subtotal: unitP * qty,
+                    imageUrl: img,
                   };
                 })
               : [],
@@ -1076,9 +1082,14 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addAuditLog(`Updated credit terms for retailer ID: ${id}`);
   };
 
-  const updateOrderStatus = async (id: string, status: OrderStatus, tracking?: string) => {
+  const updateOrderStatus = async (id: string, status: OrderStatus, shippingDetailsOrTracking?: any) => {
     try {
-      await api.updateOrderStatus(id, status);
+      const payload = typeof shippingDetailsOrTracking === 'object' && shippingDetailsOrTracking !== null
+        ? { shippingDetails: shippingDetailsOrTracking }
+        : typeof shippingDetailsOrTracking === 'string' && shippingDetailsOrTracking.trim()
+        ? { shippingDetails: { trackingNumber: shippingDetailsOrTracking.trim() } }
+        : undefined;
+      await api.updateOrderStatus(id, status, payload);
       invalidateResources('orders', 'products', 'inventory', 'analytics');
       await refreshData(true);
     } catch (err: any) {

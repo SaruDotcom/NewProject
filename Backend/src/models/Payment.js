@@ -54,6 +54,10 @@ const paymentSchema = new mongoose.Schema(
     isReport: { type: Boolean, default: false, index: true },
     isCreditRepayment: { type: Boolean, default: false, index: true },
     relatedOrderIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Order' }],
+    orderAllocations: [{
+      orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+      amountPaise: { type: Number, required: true, min: 1 },
+    }],
     screenshotPath: { type: String, default: '' },
     reviewNote: { type: String, default: '' },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

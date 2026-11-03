@@ -128,7 +128,7 @@ export const api = {
 
 export async function apiGet(path) {
   const resource = requestResource(path);
-  const sensitive = /\/(?:payments|payment-reports|auth)(?:\/|$)/i.test(path.split("?")[0]);
+  const sensitive = /\/(?:payments|payment-reports|subscription-activities|auth|dashboard\/(?:recent|stats))(?:\/|$)/i.test(path.split("?")[0]);
   return queryClient.fetchQuery({
     queryKey: adminQueryKeys.request(resource, path),
     queryFn: async () => {

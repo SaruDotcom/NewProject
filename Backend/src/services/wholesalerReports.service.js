@@ -725,9 +725,7 @@ class WholesalerReportsService {
 
     allProductsForInventory.forEach((prod) => {
       const stock = Number(prod.stock) || 0;
-      const threshold = Number(
-        prod.lowStockThreshold || prod.minOrderQty || prod.moq || 1
-      );
+      const threshold = 50;
       const unitsSold = productUnitsMap.get(String(prod._id)) || 0;
 
       if (stock <= threshold) {

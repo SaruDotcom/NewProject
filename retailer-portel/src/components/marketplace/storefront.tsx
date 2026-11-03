@@ -162,7 +162,46 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
   const [sort, setSort] = useState("popular");
   const [list, setList] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40);
-  const { relationships, connectedWholesalers, linkedWholesaler, products, categories } = useStore();
+  const { currentUser, relationships, connectedWholesalers, linkedWholesaler, products, categories } = useStore();
+  const selectedCategoryFilters = selectedCategories.filter((category) => category !== "All");
+
+  const categoryProductsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(
+      currentUser?.id || "",
+      "category-products",
+      linkedWholesaler?.id,
+      selectedCategoryFilters,
+    ),
+    queryFn: async () => {
+      const categoryMap = new Map<string, string>();
+      categories.forEach((category) => {
+        categoryMap.set(category.id, category.name);
+        categoryMap.set(category.id.toLowerCase(), category.name);
+      });
+      const responses = await Promise.all(
+        selectedCategoryFilters.map((category) =>
+          api.getProducts({ category, limit: 200 }),
+        ),
+      );
+      const productsById = new Map<string, ReturnType<typeof mapProduct>>();
+      responses.forEach((response) => {
+        response.data.forEach((item, index) => {
+          const wholesalerId = typeof item.wholesalerId === "object" && item.wholesalerId
+            ? item.wholesalerId._id || item.wholesalerId.id
+            : item.wholesalerId;
+          if (!wholesalerId || String(wholesalerId) !== String(linkedWholesaler?.id)) return;
+          const product = mapProduct(item, index, categoryMap);
+          productsById.set(product.id, product);
+        });
+      });
+      return [...productsById.values()];
+    },
+    enabled: Boolean(
+      currentUser?.id &&
+      linkedWholesaler?.id &&
+      selectedCategoryFilters.length > 0,
+    ),
+  });
 
   useEffect(() => {
     setVisibleCount(40);
@@ -204,18 +243,20 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
     setMinRating(null);
   };
 
-  const connectedProducts = useMemo(() => products.filter((p) => relationships[p.wholesalerId] === "Connected"), [products, relationships]);
+  const connectedProducts = useMemo(() => {
+    if (selectedCategoryFilters.length === 0) {
+      return products.filter((product) => relationships[product.wholesalerId] === "Connected");
+    }
+    return categoryProductsQuery.data ?? [];
+  }, [products, relationships, selectedCategoryFilters.length, categoryProductsQuery.data]);
 
   const categoryOptions = useMemo(() => {
     const set = new Set<string>();
     categories.forEach((c) => {
       if (c.name && !/^[0-9a-fA-F]{24}$/.test(c.name)) set.add(c.name);
     });
-    connectedProducts.forEach((p) => {
-      if (p.category && !/^[0-9a-fA-F]{24}$/.test(p.category)) set.add(p.category);
-    });
     return Array.from(set);
-  }, [categories, connectedProducts]);
+  }, [categories]);
 
   const isAllSelected = selectedCategories.includes("All") || selectedCategories.length === 0;
 
@@ -295,6 +336,11 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
 
   return (
     <main className="shell py-8">
+      {categoryProductsQuery.isError && selectedCategoryFilters.length > 0 && (
+        <p role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          Could not load products for this category. Please try again.
+        </p>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase text-primary">Connected Wholesale Network</p>

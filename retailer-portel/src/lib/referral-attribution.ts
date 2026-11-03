@@ -154,9 +154,10 @@ export function createReferralAttribution(
 
 export function saveReferralAttribution(
   attribution: ReferralAttribution,
+  allowRegisteredRetailer = false,
 ): void {
   if (typeof window === "undefined") return;
-  if (hasCompletedRetailerRegistration()) return;
+  if (hasCompletedRetailerRegistration() && !allowRegisteredRetailer) return;
   const cleanAttribution = {
     ...attribution,
     code: attribution.code.trim().toUpperCase(),

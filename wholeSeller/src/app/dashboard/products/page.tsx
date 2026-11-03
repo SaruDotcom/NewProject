@@ -29,6 +29,158 @@ import BusinessActivationNotice from '@/components/activation/BusinessActivation
 import api from '@/lib/api';
 import type { ApiErrorDetail } from '@/lib/api';
 
+const COLOR_PALETTE = [
+  { name: 'Red', hex: '#EF4444' },
+  { name: 'Orange', hex: '#F97316' },
+  { name: 'Yellow', hex: '#FACC15' },
+  { name: 'Green', hex: '#10B981' },
+  { name: 'Teal', hex: '#14B8A6' },
+  { name: 'Blue', hex: '#3B82F6' },
+  { name: 'Navy', hex: '#1E3A8A' },
+  { name: 'Purple', hex: '#A855F7' },
+  { name: 'Pink', hex: '#EC4899' },
+  { name: 'Magenta', hex: '#D946EF' },
+  { name: 'Brown', hex: '#854D0E' },
+  { name: 'Tan', hex: '#D2B48C' },
+  { name: 'Maroon', hex: '#800000' },
+  { name: 'Olive', hex: '#84CC16' },
+  { name: 'Gold', hex: '#EAB308' },
+  { name: 'Silver', hex: '#E5E7EB' },
+  { name: 'Beige', hex: '#F5F5DC' },
+  { name: 'Peach', hex: '#FFDAB9' },
+  { name: 'Lavender', hex: '#E6E6FA' },
+  { name: 'Cream', hex: '#FFFDD0' },
+  { name: 'Black', hex: '#1F2937' },
+  { name: 'White', hex: '#FFFFFF' },
+  { name: 'Gray', hex: '#6B7280' },
+];
+
+const getColorHex = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  const alias = normalized === 'grey' || normalized === 'space grey'
+    ? 'gray'
+    : normalized === 'navy blue'
+      ? 'navy'
+      : normalized;
+  const paletteColor = COLOR_PALETTE.find((color) => color.name.toLowerCase() === alias);
+  if (paletteColor) return paletteColor.hex;
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : '#94A3B8';
+};
+
+const getColorName = (value: string) => (
+  COLOR_PALETTE.find((color) => color.hex.toLowerCase() === getColorHex(value).toLowerCase())?.name || 'Custom'
+);
+
+const getRgbValue = (value: string) => {
+  const hex = getColorHex(value).slice(1);
+  const parts = hex.match(/.{2}/g) || ['94', 'A3', 'B8'];
+  return `RGB(${parts.map((part) => parseInt(part, 16)).join(', ')})`;
+};
+
+async function detectImageColor(file: File): Promise<string | null> {
+  if (typeof createImageBitmap !== 'function') return null;
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 32;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    bitmap.close();
+    return null;
+  }
+
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const pixels = context.getImageData(8, 8, 16, 16).data;
+  const buckets = new Map<string, { count: number; red: number; green: number; blue: number }>();
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index + 3] < 128) continue;
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const key = [red, green, blue].map((value) => Math.round(value / 32)).join(',');
+    const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
+    bucket.count += 1;
+    bucket.red += red;
+    bucket.green += green;
+    bucket.blue += blue;
+    buckets.set(key, bucket);
+  }
+  const dominant = [...buckets.values()].sort((left, right) => right.count - left.count)[0];
+  if (!dominant) return null;
+
+  const detected = [dominant.red / dominant.count, dominant.green / dominant.count, dominant.blue / dominant.count];
+  return COLOR_PALETTE.reduce((closest, color) => {
+    const hex = color.hex.slice(1);
+    const rgb = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+    const distance = rgb.reduce((total, value, index) => total + (value - detected[index]) ** 2, 0);
+    return distance < closest.distance ? { hex: color.hex, distance } : closest;
+  }, { hex: COLOR_PALETTE[0].hex, distance: Number.POSITIVE_INFINITY }).hex;
+}
+
+function ColorPicker({
+  colors,
+  onChange,
+  multiple = true,
+}: {
+  colors: string[];
+  onChange: (colors: string[]) => void;
+  multiple?: boolean;
+}) {
+  const toggleColor = (color: string) => {
+    if (!multiple) {
+      onChange([color]);
+      return;
+    }
+    onChange(colors.includes(color) ? colors.filter((item) => item !== color) : [...colors, color]);
+  };
+
+  return (
+    <div className="space-y-3 rounded-xl border border-tradeflow-gray-200 bg-white p-3">
+      <div className="flex flex-wrap gap-2">
+        {COLOR_PALETTE.map((color) => (
+          <button
+            key={color.hex}
+            type="button"
+            title={`${color.name} ${color.hex}`}
+            aria-label={`Select ${color.name}, ${color.hex}`}
+            aria-pressed={colors.some((selected) => getColorHex(selected).toLowerCase() === color.hex.toLowerCase())}
+            onClick={() => toggleColor(color.hex)}
+            className={`h-8 w-8 rounded-full border shadow-sm transition ${colors.some((selected) => getColorHex(selected).toLowerCase() === color.hex.toLowerCase()) ? 'ring-2 ring-tradeflow-green ring-offset-2' : 'border-gray-300'}`}
+            style={{ backgroundColor: color.hex }}
+          />
+        ))}
+        <label className="flex h-8 cursor-pointer items-center gap-2 rounded-full border border-tradeflow-gray-200 px-2 text-[11px] font-bold text-gray-700">
+          <input
+            aria-label="Choose custom RGB color"
+            type="color"
+            value={getColorHex(colors[colors.length - 1] || '#800000')}
+            onChange={(event) => toggleColor(event.target.value.toUpperCase())}
+            className="h-6 w-6 cursor-pointer border-0 bg-transparent p-0"
+          />
+          Custom RGB
+        </label>
+      </div>
+      {colors.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {colors.map((color, index) => (
+            <span key={`${color}-${index}`} className="inline-flex items-center gap-2 rounded-lg border border-tradeflow-gray-200 bg-tradeflow-gray-50 px-2 py-1 text-[11px]">
+              <span className="h-4 w-4 rounded-full border border-black/15" style={{ backgroundColor: getColorHex(color) }} />
+              <span className="font-semibold">{getColorName(color)}</span>
+              <span className="font-mono text-gray-500">{getColorHex(color)} · {getRgbValue(color)}</span>
+              {multiple && (
+                <button type="button" aria-label={`Remove ${color}`} onClick={() => onChange(colors.filter((_, colorIndex) => colorIndex !== index))} className="text-gray-500 hover:text-red-600">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProductsPage() {
   const {
     profile,
@@ -44,6 +196,7 @@ export default function ProductsPage() {
     isBusinessActivated,
   } = useWholesaler();
   const canCreateProducts = isBusinessActivated;
+  const hasRegisteredGst = Boolean(profile.isGstRegistered && profile.gstin?.trim());
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -85,13 +238,22 @@ export default function ProductsPage() {
   const [sizeInput, setSizeInput] = useState('');
 
   const [colors, setColors] = useState<string[]>([]);
-  const [colorInput, setColorInput] = useState('');
   const [colorVariants, setColorVariants] = useState<Array<{ color: string; sku: string; images: string[]; files: File[] }>>([]);
   const [hsnCode, setHsnCode] = useState('');
   const [cgst, setCgst] = useState<number | ''>('');
   const [sgst, setSgst] = useState<number | ''>('');
   const [igst, setIgst] = useState<number | ''>('');
   const [priceIncludesTax, setPriceIncludesTax] = useState(false);
+
+  useEffect(() => {
+    if (!hasRegisteredGst) {
+      setHsnCode('');
+      setCgst('');
+      setSgst('');
+      setIgst('');
+      setPriceIncludesTax(false);
+    }
+  }, [hasRegisteredGst]);
 
   // Dynamic Tag Input Helper State
   const [dynamicTagInputs, setDynamicTagInputs] = useState<Record<string, string>>({});
@@ -132,6 +294,31 @@ export default function ProductsPage() {
   const availableLevel3Categories = level2CategoryId
     ? categories.filter((c) => String(c.parentId) === String(level2CategoryId))
     : [];
+  const selectedFormSubcategory = categories.find((category) => String(category.id) === String(subcategoryId));
+  const currentAttributeSchema = getCategoryAttributeSchema(categoryName, selectedFormSubcategory?.name);
+
+  const retainAttributesForSchema = (schema: CategoryAttributeDef[]) => {
+    const validKeys = new Set(schema.map((field) => field.key));
+    const sizeOptions = schema.find((field) => field.key === 'size')?.options;
+    setCategoryAttributes((previous) => {
+      const retained = Object.fromEntries(
+        Object.entries(previous).filter(([key]) => validKeys.has(key))
+      );
+      if (sizeOptions && Array.isArray(retained.size)) {
+        retained.size = retained.size.filter((size: string) => sizeOptions.includes(size));
+      }
+      return retained;
+    });
+    if (!validKeys.has('size')) {
+      setSizes([]);
+    } else if (sizeOptions) {
+      setSizes((previous) => previous.filter((size) => sizeOptions.includes(size)));
+    }
+    if (!validKeys.has('color')) {
+      setColors([]);
+      setColorVariants([]);
+    }
+  };
 
   const handleCategoryChange = (newCategory: string) => {
     setCategoryName(newCategory);
@@ -142,30 +329,21 @@ export default function ProductsPage() {
     setFormFieldErrors([]);
     if (!newCategory) {
       setCategoryAttributes({});
+      setSizes([]);
+      setColors([]);
+      setColorVariants([]);
       return;
     }
 
-    const newSchema = getCategoryAttributeSchema(newCategory);
-    const validKeys = new Set(newSchema.map(s => s.key));
-    if (!validKeys.has('size')) setSizes([]);
-    if (!validKeys.has('color')) {
-      setColors([]);
-      setColorVariants([]);
-    }
-
-    const cleanedAttrs: Record<string, any> = {};
-    Object.entries(categoryAttributes).forEach(([key, val]) => {
-      if (validKeys.has(key)) {
-        cleanedAttrs[key] = val;
-      }
-    });
-    setCategoryAttributes(cleanedAttrs);
+    retainAttributesForSchema(getCategoryAttributeSchema(newCategory));
   };
 
   const handleLevel2Change = (newLevel2Id: string) => {
     setLevel2CategoryId(newLevel2Id);
     setLevel3CategoryId('');
     setSubcategoryId(newLevel2Id);
+    const selected = categories.find((category) => String(category.id) === String(newLevel2Id));
+    retainAttributesForSchema(getCategoryAttributeSchema(categoryName, selected?.name));
     setFormError(null);
     setFormFieldErrors([]);
   };
@@ -173,6 +351,8 @@ export default function ProductsPage() {
   const handleLevel3Change = (newLevel3Id: string) => {
     setLevel3CategoryId(newLevel3Id);
     setSubcategoryId(newLevel3Id || level2CategoryId);
+    const selected = categories.find((category) => String(category.id) === String(newLevel3Id || level2CategoryId));
+    retainAttributesForSchema(getCategoryAttributeSchema(categoryName, selected?.name));
     setFormError(null);
     setFormFieldErrors([]);
   };
@@ -293,24 +473,6 @@ export default function ProductsPage() {
     setCategoryAttributes({ ...categoryAttributes, size: nextSizes });
   };
 
-  // Color Tag Handlers
-  const handleAddColorTag = () => {
-    if (colorInput.trim() && !colors.includes(colorInput.trim())) {
-      const nextColors = [...colors, colorInput.trim()];
-      setColors(nextColors);
-      setColorVariants((prev) => [...prev, { color: colorInput.trim(), sku: '', images: [], files: [] }]);
-      setCategoryAttributes({ ...categoryAttributes, color: nextColors });
-      setColorInput('');
-    }
-  };
-
-  const handleRemoveColorTag = (colorToRemove: string) => {
-    const nextColors = colors.filter(c => c !== colorToRemove);
-    setColors(nextColors);
-    setColorVariants((prev) => prev.filter((variant) => variant.color !== colorToRemove));
-    setCategoryAttributes({ ...categoryAttributes, color: nextColors });
-  };
-
   const syncColorVariants = (nextColors: string[]) => {
     setColorVariants((previous) => nextColors.map((color, index) => {
       const existing = previous.find((variant) => variant.color === color) || previous[index];
@@ -320,6 +482,14 @@ export default function ProductsPage() {
 
   const updateColorVariant = (index: number, update: Partial<{ color: string; sku: string; images: string[]; files: File[] }>) => {
     setColorVariants((previous) => previous.map((variant, variantIndex) => variantIndex === index ? { ...variant, ...update } : variant));
+  };
+
+  const updateVariantColor = (index: number, color: string) => {
+    const nextColors = [...colors];
+    nextColors[index] = color;
+    setColors(nextColors);
+    setCategoryAttributes((previous) => ({ ...previous, color: nextColors }));
+    updateColorVariant(index, { color });
   };
 
   const handleIgstChange = (value: number | '') => {
@@ -405,8 +575,7 @@ export default function ProductsPage() {
       || (!editingProduct.categoryId && editingProduct.category && editingProduct.category !== categoryName);
 
     if (isCategoryActuallyChanged) {
-      const currentSchema = getCategoryAttributeSchema(categoryName);
-      for (const field of currentSchema) {
+      for (const field of currentAttributeSchema) {
         if (field.required) {
           let val = categoryAttributes[field.key];
           if (field.key === 'size' && (!val || val.length === 0)) val = sizes;
@@ -445,8 +614,8 @@ export default function ProductsPage() {
     const validOptions = additionalOptions.filter(opt => opt.name.trim() !== '' && opt.value.trim() !== '');
 
     const finalCategoryAttrs: Record<string, any> = { ...categoryAttributes };
-    if (sizes && sizes.length > 0) finalCategoryAttrs.size = sizes;
-    if (colors && colors.length > 0) finalCategoryAttrs.color = colors;
+    if (currentAttributeSchema.some((field) => field.key === 'size') && sizes.length > 0) finalCategoryAttrs.size = sizes;
+    if (currentAttributeSchema.some((field) => field.key === 'color') && colors.length > 0) finalCategoryAttrs.color = colors;
 
     try {
       let finalImages: string[] = editingProduct?.images?.length ? [...editingProduct.images] : (imageUrl ? [imageUrl] : []);
@@ -478,13 +647,23 @@ export default function ProductsPage() {
           images: [...new Set([...variant.images, ...rawUploaded])],
         };
       }));
-      const taxDetails = {
-        hsnCode: hsnCode.trim(),
-        cgst: cgst === '' ? null : Number(cgst),
-        sgst: sgst === '' ? null : Number(sgst),
-        igst: igst === '' ? null : Number(igst),
-        priceIncludesTax,
-      };
+      const taxDetails = hasRegisteredGst
+        ? {
+            hsnCode: hsnCode.trim(),
+            cgst: cgst === '' ? null : Number(cgst),
+            sgst: sgst === '' ? null : Number(sgst),
+            igst: igst === '' ? null : Number(igst),
+            priceIncludesTax,
+            taxConfigured: Boolean(hsnCode.trim() || cgst !== '' || sgst !== '' || igst !== ''),
+          }
+        : {
+            hsnCode: '',
+            cgst: null,
+            sgst: null,
+            igst: null,
+            priceIncludesTax: false,
+            taxConfigured: false,
+          };
 
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
@@ -515,7 +694,7 @@ export default function ProductsPage() {
       } else {
         await addProduct({
           title,
-          sku: sku || `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
+          sku: sku.trim(),
           category: categoryName,
           categoryId,
           subcategoryId: subcategoryId || null,
@@ -1021,15 +1200,15 @@ export default function ProductsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold text-gray-700 mb-1">SKU Number <span className="text-tradeflow-navy">*</span></label>
+                    <label className="block font-bold text-gray-700 mb-1">SKU Number <span className="font-normal text-gray-500">(Optional)</span></label>
                     <input
                       type="text"
-                      required
                       value={sku}
                       onChange={(e) => setSku(e.target.value.toUpperCase())}
                       placeholder="e.g. SKU-9901"
                       className={`w-full px-3 py-2 border rounded-xl bg-tradeflow-gray-50 font-mono focus:outline-none ${getFieldError('sku') ? 'border-red-500 bg-red-50/20' : 'border-tradeflow-gray-200 focus:border-tradeflow-green'}`}
                     />
+                    <p className="mt-1 text-[11px] text-gray-500">Leave blank to generate an SKU automatically.</p>
                     {getFieldError('sku') && (
                       <p className="text-[11px] text-red-600 font-semibold mt-1 flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -1107,8 +1286,8 @@ export default function ProductsPage() {
                 if (!categoryName) return null; // DO NOT render any category-specific section before a category is selected
                 if (availableLevel2Categories.length > 0 && !level2CategoryId) return null;
 
-                const selectedSubcategory = categories.find((c) => String(c.id) === String(subcategoryId));
-                const currentSchema = getCategoryAttributeSchema(categoryName);
+                const selectedSubcategory = selectedFormSubcategory;
+                const currentSchema = currentAttributeSchema;
                 if (currentSchema.length === 0) return null;
                 const attributeCategoryName = selectedSubcategory?.name || categoryName;
 
@@ -1132,6 +1311,17 @@ export default function ProductsPage() {
                             <label className="block font-bold text-gray-700 mb-1 text-xs">
                               {field.label} {field.required && <span className="text-tradeflow-navy font-bold">*</span>}
                             </label>
+
+                            {field.key === 'color' && (
+                              <ColorPicker
+                                colors={Array.isArray(val) ? val : colors}
+                                onChange={(updatedColors) => {
+                                  setColors(updatedColors);
+                                  setCategoryAttributes({ ...categoryAttributes, color: updatedColors });
+                                  syncColorVariants(updatedColors);
+                                }}
+                              />
+                            )}
 
                             {field.type === 'select' && (
                               <select
@@ -1175,7 +1365,7 @@ export default function ProductsPage() {
                               />
                             )}
 
-                            {field.type === 'multiselect' && (
+                            {field.type === 'multiselect' && field.key !== 'color' && (
                               <div className="p-3 bg-white rounded-xl border border-tradeflow-gray-200 space-y-2">
                                 <div className="flex gap-2">
                                   <input
@@ -1258,44 +1448,95 @@ export default function ProductsPage() {
                 );
               })()}
 
-              {categoryName && getCategoryAttributeSchema(categoryName).some((field) => field.key === 'color') && (
-                <div className="space-y-3 rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-4">
-                  <div>
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Color-wise images & SKU</h3>
-                    <p className="mt-1 text-[10px] text-gray-500">Optional. Each color uses the main gallery when no images are added.</p>
+              {categoryName && currentAttributeSchema.some((field) => field.key === 'color') && (
+                <div className="space-y-2 rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Color-wise images</h3>
+                    <p className="text-[10px] text-gray-500">Optional. Uses the main gallery if no variant images are added.</p>
                   </div>
                   {colorVariants.map((variant, index) => (
-                    <div key={`${variant.color}-${index}`} className="rounded-xl border border-tradeflow-gray-200 bg-white p-3">
-                      <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
-                        <div>
-                          <label className="mb-1 block font-bold text-gray-700">Color</label>
-                          <div className="flex items-center gap-2">
-                            <span className="h-5 w-5 rounded-full border border-gray-300 bg-gray-200" title={variant.color} />
-                            <input value={variant.color} onChange={(event) => {
-                              const next = [...colors]; next[index] = event.target.value; setColors(next); setCategoryAttributes({ ...categoryAttributes, color: next }); updateColorVariant(index, { color: event.target.value });
-                            }} className="w-full rounded-lg border border-tradeflow-gray-200 px-2 py-1.5" />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="mb-1 block font-bold text-gray-700">Color SKU <span className="font-normal text-gray-400">(optional)</span></label>
-                          <input value={variant.sku} onChange={(event) => updateColorVariant(index, { sku: event.target.value.toUpperCase() })} placeholder="e.g. GOWN-BLUE" className="w-full rounded-lg border border-tradeflow-gray-200 px-2 py-1.5 font-mono" />
-                        </div>
+                    <div key={`${variant.color}-${index}`} className="grid grid-cols-1 items-center gap-2 rounded-lg border border-tradeflow-gray-200 bg-white p-2 sm:grid-cols-[minmax(150px,1fr)_auto]">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="size-6 shrink-0 rounded-full border border-gray-300"
+                          style={{ backgroundColor: getColorHex(variant.color) }}
+                          title={`${getColorName(variant.color)} ${getColorHex(variant.color)}`}
+                        />
+                        <select
+                          aria-label={`Color for variant ${index + 1}`}
+                          value={COLOR_PALETTE.some((color) => color.hex.toLowerCase() === getColorHex(variant.color).toLowerCase()) ? getColorHex(variant.color) : ''}
+                          onChange={(event) => event.target.value && updateVariantColor(index, event.target.value)}
+                          className="min-w-0 flex-1 rounded-md border border-tradeflow-gray-200 bg-white px-2 py-1.5 text-xs font-semibold"
+                        >
+                          {!COLOR_PALETTE.some((color) => color.hex.toLowerCase() === getColorHex(variant.color).toLowerCase()) && (
+                            <option value="">{getColorName(variant.color)}</option>
+                          )}
+                          {COLOR_PALETTE.map((color) => (
+                            <option key={color.hex} value={color.hex}>{color.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="color"
+                          aria-label={`Custom color for variant ${index + 1}`}
+                          value={getColorHex(variant.color)}
+                          onChange={(event) => updateVariantColor(index, event.target.value.toUpperCase())}
+                          className="size-7 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+                        />
                       </div>
-                      <label className="mt-3 block cursor-pointer rounded-lg border border-dashed border-tradeflow-green bg-tradeflow-green-50 p-3 text-center text-[11px] font-bold text-green-700">
-                        Add up to 4 images (5 MB each)
-                        <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(event) => {
-                          const files = Array.from(event.target.files || []).filter((file) => file.size <= 5 * 1024 * 1024).slice(0, 4);
-                          if (files.length !== (event.target.files?.length || 0)) setFormError('Color images must be JPG, JPEG, PNG or WEBP and no larger than 5 MB.');
-                          updateColorVariant(index, { files });
-                        }} />
+                      <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-tradeflow-gray-200 px-2.5 py-1.5 text-[11px] font-bold text-gray-700 hover:bg-gray-50">
+                        {variant.files.length || variant.images.length ? 'Replace images' : 'Add images'}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          multiple
+                          className="hidden"
+                          onChange={async (event) => {
+                            const selectedFiles = Array.from(event.target.files || []);
+                            const files = selectedFiles
+                              .filter((file) => ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) && file.size <= 5 * 1024 * 1024)
+                              .slice(0, 4);
+                            if (files.length !== selectedFiles.length) {
+                              setFormError('Color images must be JPG, JPEG, PNG or WEBP, no larger than 5 MB, and limited to 4 images.');
+                            }
+                            updateColorVariant(index, {
+                              files,
+                              ...(selectedFiles.length > 0 ? { images: [] } : {}),
+                            });
+                            if (files[0]) {
+                              try {
+                                const detectedColor = await detectImageColor(files[0]);
+                                if (detectedColor) updateVariantColor(index, detectedColor);
+                              } catch {
+                                setFormError('Could not detect a color from the image. Please select the color manually.');
+                              }
+                            }
+                            event.target.value = '';
+                          }}
+                        />
                       </label>
-                      {(variant.images.length > 0 || variant.files.length > 0) && <div className="mt-2 flex flex-wrap gap-2">
-                        {variant.images.map((image) => <img key={image} src={image} alt={`${variant.color} product`} className="h-12 w-12 rounded-md border object-cover" />)}
-                        {variant.files.map((file) => <img key={file.name} src={URL.createObjectURL(file)} alt={file.name} className="h-12 w-12 rounded-md border object-cover" />)}
-                      </div>}
+                      {(variant.images.length > 0 || variant.files.length > 0) && (
+                        <div className="flex flex-wrap gap-1.5 sm:col-span-2">
+                          {variant.images.map((image) => (
+                            <div key={image} className="relative">
+                              <img src={image} alt={`${variant.color} product`} className="size-10 rounded border object-cover" />
+                              <button type="button" aria-label="Remove image" onClick={() => updateColorVariant(index, { images: variant.images.filter((item) => item !== image) })} className="absolute -right-1 -top-1 rounded-full bg-white text-gray-600 shadow hover:text-red-600">
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          {variant.files.map((file, fileIndex) => (
+                            <div key={`${file.name}-${fileIndex}`} className="relative">
+                              <img src={URL.createObjectURL(file)} alt={file.name} className="size-10 rounded border object-cover" />
+                              <button type="button" aria-label="Remove image" onClick={() => updateColorVariant(index, { files: variant.files.filter((_, currentIndex) => currentIndex !== fileIndex) })} className="absolute -right-1 -top-1 rounded-full bg-white text-gray-600 shadow hover:text-red-600">
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
-                  {colors.length === 0 && <p className="text-[11px] italic text-gray-500">Add a color tag above to create its image and SKU card.</p>}
+                  {colors.length === 0 && <p className="text-[11px] italic text-gray-500">Add a color tag above to create its image card.</p>}
                 </div>
               )}
 
@@ -1424,10 +1665,11 @@ export default function ProductsPage() {
                 </div>
               </div>
 
+              {hasRegisteredGst && (
               <div className="space-y-3 rounded-2xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-4">
                 <div>
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Tax Details (GST)</h3>
-                  <p className="mt-1 text-[10px] text-gray-500">Optional. Select IGST to auto-fill CGST/SGST.</p>
+                  <p className="mt-1 text-[10px] text-gray-500">Optional. GST tax details for your registered business.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <input value={hsnCode} onChange={(event) => setHsnCode(event.target.value)} placeholder="HSN Code" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
@@ -1439,6 +1681,7 @@ export default function ProductsPage() {
                   <label className="flex items-center gap-2 rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2 font-bold text-gray-700"><input type="checkbox" checked={priceIncludesTax} onChange={(event) => setPriceIncludesTax(event.target.checked)} /> Prices include tax</label>
                 </div>
               </div>
+              )}
 
               {/* Description */}
               <div>

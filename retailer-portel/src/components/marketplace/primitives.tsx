@@ -696,7 +696,7 @@ export function OrderCard({ order }: { order: Order }) {
               </Badge>
             ) : (
               <Badge variant="outline" className="font-semibold text-xs">
-                {order.paymentMethod === "ONLINE" ? "Online" : "Cash on Delivery"}
+                {order.paymentMethod === "UPI" ? "Direct UPI" : order.paymentMethod === "ONLINE" ? "Online" : "Direct UPI"}
               </Badge>
             )}
             <StatusBadge status={order.status} />

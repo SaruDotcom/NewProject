@@ -40,6 +40,21 @@ const statusTimelineSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const shippingDetailsSchema = new mongoose.Schema(
+  {
+    courierName: { type: String, default: '' },
+    biltyNumber: { type: String, default: '' },
+    trackingNumber: { type: String, default: '' },
+    shippingDate: { type: Date, default: null },
+    estimatedDeliveryDate: { type: Date, default: null },
+    biltyUrl: { type: String, default: '' },
+    biltyFileName: { type: String, default: '' },
+    shippingNotes: { type: String, default: '' },
+    shippedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -113,6 +128,10 @@ const orderSchema = new mongoose.Schema(
       default: PAYMENT_STATUS.PENDING,
       index: true,
     },
+    inventoryState: {
+      type: String,
+      enum: ['RESERVED', 'SOLD', 'RELEASED', 'RETURNED'],
+    },
     paymentMethod: {
       type: String,
       enum: Object.values(PAYMENT_METHOD),
@@ -171,6 +190,10 @@ const orderSchema = new mongoose.Schema(
       phone: { type: String, default: '' },
     },
     statusTimeline: [statusTimelineSchema],
+    shippingDetails: {
+      type: shippingDetailsSchema,
+      default: null,
+    },
     cancellationReason: {
       type: String,
       default: '',

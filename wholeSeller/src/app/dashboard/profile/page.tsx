@@ -12,6 +12,7 @@ export default function WholesalerProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [copied, setCopied] = useState(false);
   const [businessName, setBusinessName] = useState(profile.businessName || '');
+  const [businessTagline, setBusinessTagline] = useState(profile.businessTagline || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState('');
   const [removeLogo, setRemoveLogo] = useState(false);
@@ -21,6 +22,7 @@ export default function WholesalerProfilePage() {
   const activeTab = searchParams.get('tab') === 'kyc' ? 'kyc' : 'business';
 
   useEffect(() => setBusinessName(profile.businessName || ''), [profile.businessName]);
+  useEffect(() => setBusinessTagline(profile.businessTagline || ''), [profile.businessTagline]);
   useEffect(() => {
     if (!logoFile) {
       setLogoPreview('');
@@ -60,9 +62,16 @@ export default function WholesalerProfilePage() {
     setBrandingError('');
     setBrandingSaved(false);
     try {
-      if (nextName !== profile.businessName) {
-        const response = await api.updateBusinessProfile({ businessName: nextName });
-        updateProfile({ businessName: response.data.profile.businessName || nextName });
+      const nextTagline = businessTagline.trim();
+      if (nextName !== profile.businessName || nextTagline !== profile.businessTagline) {
+        const response = await api.updateBusinessProfile({
+          businessName: nextName,
+          businessTagline: nextTagline,
+        });
+        updateProfile({
+          businessName: response.data.profile.businessName || nextName,
+          businessTagline: response.data.profile.businessTagline ?? nextTagline,
+        });
       }
       if (logoFile) {
         const response = await api.uploadBusinessLogo(logoFile);
@@ -157,7 +166,8 @@ export default function WholesalerProfilePage() {
         </div>
         <form onSubmit={saveBranding} className="grid gap-5 md:grid-cols-[1fr_auto] md:items-end">
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <div>
+            <div className="space-y-3">
+              <div>
               <label htmlFor="business-name" className="mb-1 block text-xs font-bold text-gray-700">Business name</label>
               <input
                 id="business-name"
@@ -170,6 +180,21 @@ export default function WholesalerProfilePage() {
                 required
                 className="w-full rounded-xl border border-tradeflow-gray-200 bg-white px-3.5 py-2.5 text-sm text-tradeflow-navy focus:border-tradeflow-green focus:outline-none focus:ring-1 focus:ring-tradeflow-green"
               />
+              </div>
+              <div>
+                <label htmlFor="business-tagline" className="mb-1 block text-xs font-bold text-gray-700">Business tagline</label>
+                <input
+                  id="business-tagline"
+                  value={businessTagline}
+                  onChange={(event) => {
+                    setBusinessTagline(event.target.value);
+                    setBrandingSaved(false);
+                  }}
+                  maxLength={160}
+                  placeholder="A short line describing your business"
+                  className="w-full rounded-xl border border-tradeflow-gray-200 bg-white px-3.5 py-2.5 text-sm text-tradeflow-navy focus:border-tradeflow-green focus:outline-none focus:ring-1 focus:ring-tradeflow-green"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <BusinessLogo

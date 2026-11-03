@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Package,
@@ -30,26 +31,10 @@ import {
   Tooltip
 } from 'recharts';
 import { useWholesaler } from '@/context/WholesalerContext';
+import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
+import api from '@/lib/api';
 import { ProductImage } from '@/components/products/ProductImage';
 import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
-
-// 14-Day Sales Snapshot Data
-const SALES_SNAPSHOT_DATA = [
-  { date: 'Sep 02', revenue: 14500, orders: 1 },
-  { date: 'Sep 03', revenue: 22000, orders: 2 },
-  { date: 'Sep 04', revenue: 18000, orders: 1 },
-  { date: 'Sep 05', revenue: 35000, orders: 3 },
-  { date: 'Sep 06', revenue: 29000, orders: 2 },
-  { date: 'Sep 07', revenue: 41000, orders: 4 },
-  { date: 'Sep 08', revenue: 32000, orders: 3 },
-  { date: 'Sep 09', revenue: 48000, orders: 4 },
-  { date: 'Sep 10', revenue: 26000, orders: 2 },
-  { date: 'Sep 11', revenue: 54000, orders: 5 },
-  { date: 'Sep 12', revenue: 38000, orders: 3 },
-  { date: 'Sep 13', revenue: 42500, orders: 4 },
-  { date: 'Sep 14', revenue: 61000, orders: 5 },
-  { date: 'Sep 15', revenue: 48600, orders: 4 },
-];
 
 export default function OverviewPage() {
   const {
@@ -63,6 +48,19 @@ export default function OverviewPage() {
     isBusinessActivated,
   } = useWholesaler();
   const location = useLocation();
+  const financialSummaryQuery = useQuery({
+    queryKey: wholesalerQueryKeys.resource(profile.id || getWholesalerId(), 'financial-summary'),
+    queryFn: async () => (await api.getFinancialSummary()).data,
+    enabled: Boolean(profile.id || getWholesalerId() !== 'unknown'),
+    refetchInterval: 15000,
+    staleTime: 0,
+  });
+  const financialSummary = financialSummaryQuery.data;
+  const thisMonthIncome = Number(financialSummary?.thisMonthIncome || 0);
+  const completedSales = Number(financialSummary?.completedSales || 0);
+  const pendingPayments = financialSummary?.pendingPayments || [];
+  const salesSnapshot = financialSummary?.salesByDate || [];
+  const snapshotTotal = salesSnapshot.reduce((sum, item) => sum + Number(item.revenue || 0), 0);
   const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(
     Boolean((location.state as { registrationSuccess?: boolean } | null)?.registrationSuccess),
   );
@@ -71,10 +69,6 @@ export default function OverviewPage() {
   const totalProductsCount = products.length;
   const connectedRetailersCount = retailers.length;
   const pendingOrdersCount = orders.filter(o => o.status === 'PENDING').length;
-  const thisMonthIncome = orders
-    .filter(o => o.status !== 'CANCELLED')
-    .reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-
   // Trending Products (top products sorted by stock / popularity)
   const trendingProducts = products.slice(0, 6);
 
@@ -144,7 +138,7 @@ export default function OverviewPage() {
       />
 
       {/* 1. TOP ROW: 4 Summary Stat Cards (Soft-tint circular badges, big bold number, small label, subtle shadow, hover lift) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
         {/* Stat Card 1: Total Products */}
         <div className="p-5 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between group">
           <div className="flex items-center justify-between">
@@ -195,6 +189,19 @@ export default function OverviewPage() {
           </div>
         </div>
 
+        <div className="p-5 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">Completed Sales</span>
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold shadow-xs">
+              <ShoppingBag className="w-6 h-6" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="text-3xl font-black text-tradeflow-navy tracking-tight">₹{completedSales.toLocaleString('en-IN')}</div>
+            <div className="text-xs text-gray-500 font-medium mt-1">Successfully delivered orders</div>
+          </div>
+        </div>
+
         {/* Stat Card 4: This Month's Income */}
         <div className="p-5 bg-white rounded-2xl border border-tradeflow-gray-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between group">
           <div className="flex items-center justify-between">
@@ -207,11 +214,61 @@ export default function OverviewPage() {
             <div className="text-3xl font-black text-tradeflow-navy tracking-tight">₹{(thisMonthIncome || 0).toLocaleString('en-IN')}</div>
             <div className="flex items-center gap-1 text-xs text-status-success font-semibold mt-1">
               <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>+18.4% growth vs last month</span>
+              <span>Verified payments received this month</span>
             </div>
           </div>
         </div>
       </div>
+
+      {financialSummaryQuery.isError && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {financialSummaryQuery.error instanceof Error
+            ? financialSummaryQuery.error.message
+            : 'Could not load current financial summary.'}
+        </div>
+      )}
+
+      <section className="bg-white rounded-2xl border border-tradeflow-gray-200 p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-tradeflow-gray-200 pb-3">
+          <div>
+            <h2 className="text-base font-bold text-tradeflow-navy">Pending Payments</h2>
+            <p className="text-xs text-gray-500">Outstanding balances, including orders delivered before full payment.</p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{pendingPayments.length} outstanding</span>
+        </div>
+        {financialSummaryQuery.isLoading ? (
+          <p className="py-4 text-center text-sm text-gray-500">Loading payment balances…</p>
+        ) : pendingPayments.length === 0 ? (
+          <p className="py-4 text-center text-sm text-gray-500">No pending payments.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-xs">
+              <thead className="text-[10px] uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-tradeflow-gray-200">
+                  <th className="pb-3 pr-3">Retailer</th>
+                  <th className="pb-3 pr-3">Order ID</th>
+                  <th className="pb-3 pr-3 text-right">Order Total</th>
+                  <th className="pb-3 pr-3 text-right">Amount Paid</th>
+                  <th className="pb-3 pr-3 text-right">Remaining</th>
+                  <th className="pb-3 text-right">Payment Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-tradeflow-gray-200">
+                {pendingPayments.map((payment) => (
+                  <tr key={payment.orderId}>
+                    <td className="py-3 pr-3 font-semibold text-tradeflow-navy">{payment.retailerName}</td>
+                    <td className="py-3 pr-3 font-mono text-gray-600">{payment.orderNumber}</td>
+                    <td className="py-3 pr-3 text-right">₹{payment.totalAmount.toLocaleString('en-IN')}</td>
+                    <td className="py-3 pr-3 text-right">₹{payment.amountPaid.toLocaleString('en-IN')}</td>
+                    <td className="py-3 pr-3 text-right font-extrabold text-amber-800">₹{payment.remainingAmount.toLocaleString('en-IN')}</td>
+                    <td className="py-3 text-right font-bold text-amber-800">{payment.paymentStatus}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* 2 & 3. MIDDLE GRID: Sales Snapshot (Chart) + Your Benefits */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -227,13 +284,13 @@ export default function OverviewPage() {
             </div>
             <div className="flex items-center gap-2 bg-tradeflow-gray-50 px-3 py-1.5 rounded-xl border border-tradeflow-gray-200 text-xs font-bold text-gray-700">
               <span>Total Snapshot:</span>
-              <span className="text-tradeflow-navy">₹5,09,600</span>
+              <span className="text-tradeflow-navy">₹{snapshotTotal.toLocaleString('en-IN')}</span>
             </div>
           </div>
 
           <div className="h-64 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={SALES_SNAPSHOT_DATA} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={salesSnapshot} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRevenueOverview" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--color-tradeflow-green)" stopOpacity={0.8}/>
@@ -418,10 +475,11 @@ export default function OverviewPage() {
                     <td className="py-3.5">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
                         order.status === 'PENDING' ? 'bg-amber-50 text-amber-500' :
-                        order.status === 'PROCESSING' ? 'bg-blue-50 text-blue-600' :
-                        order.status === 'DISPATCHED' ? 'bg-status-info-50 text-status-info-foreground' :
+                        order.status === 'CONFIRMED' ? 'bg-blue-50 text-blue-700' :
+                        order.status === 'PROCESSING' ? 'bg-purple-50 text-purple-700' :
+                        order.status === 'SHIPPED' || order.status === 'DISPATCHED' ? 'bg-indigo-50 text-indigo-700' :
                         order.status === 'DELIVERED' ? 'bg-tradeflow-green-50 text-status-success' :
-                        'bg-amber-50 text-amber-800'
+                        'bg-gray-100 text-gray-700'
                       }`}>
                         {order.status}
                       </span>
@@ -429,29 +487,40 @@ export default function OverviewPage() {
                     <td className="py-3.5 text-right">
                       {order.status === 'PENDING' && (
                         <button
-                          onClick={() => updateOrderStatus(order.id, 'PROCESSING')}
+                          onClick={() => updateOrderStatus(order.id, 'CONFIRMED')}
                           className="px-2.5 py-1 bg-tradeflow-green text-tradeflow-navy text-[11px] font-bold rounded-lg hover:bg-tradeflow-green-hover transition-colors"
                         >
-                          Approve
+                          Confirm
+                        </button>
+                      )}
+                      {order.status === 'CONFIRMED' && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, 'PROCESSING')}
+                          className="px-2.5 py-1 bg-purple-600 text-white text-[11px] font-bold rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          Process
                         </button>
                       )}
                       {order.status === 'PROCESSING' && (
-                        <button
-                          onClick={() => updateOrderStatus(order.id, 'DISPATCHED', 'BLUEDART-88201')}
-                          className="px-2.5 py-1 bg-blue-600 text-white text-[11px] font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                        <a
+                          href="/dashboard/orders"
+                          className="px-2.5 py-1 bg-blue-600 text-white text-[11px] font-bold rounded-lg hover:bg-blue-700 transition-colors inline-block"
                         >
-                          Dispatch
-                        </button>
+                          Ship
+                        </a>
                       )}
-                      {order.status === 'DISPATCHED' && (
-                        <span className="text-[10px] font-mono text-gray-400">
-                          {order.trackingNumber}
-                        </span>
+                      {(order.status === 'SHIPPED' || order.status === 'DISPATCHED') && (
+                        <button
+                          onClick={() => updateOrderStatus(order.id, 'DELIVERED')}
+                          className="px-2.5 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-lg hover:bg-emerald-700 transition-colors"
+                        >
+                          Deliver
+                        </button>
                       )}
                       {order.status === 'DELIVERED' && (
                         <span className="text-[11px] text-status-success font-semibold flex items-center justify-end gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Done</span>
+                          <span>Delivered</span>
                         </span>
                       )}
                     </td>

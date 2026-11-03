@@ -40,6 +40,7 @@ export interface Product {
   sgst?: number | null;
   igst?: number | null;
   priceIncludesTax?: boolean;
+  taxConfigured?: boolean;
   additionalOptions?: CustomAttribute[];
   categoryAttributes?: Record<string, unknown>;
 }
@@ -102,9 +103,22 @@ export interface OrderItem {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  imageUrl?: string;
 }
 
-export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'PROCESSING' | 'DISPATCHED';
+export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'DISPATCHED';
+
+export interface ShippingDetails {
+  courierName: string;
+  biltyNumber?: string;
+  trackingNumber?: string;
+  shippingDate?: string;
+  estimatedDeliveryDate?: string;
+  biltyUrl?: string;
+  biltyFileName?: string;
+  shippingNotes?: string;
+  shippedAt?: string;
+}
 
 export interface Order {
   id: string;
@@ -122,6 +136,7 @@ export interface Order {
   discountAmount: number;
   paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   trackingNumber?: string;
+  shippingDetails?: ShippingDetails;
   createdAt: string;
   items: OrderItem[];
 }

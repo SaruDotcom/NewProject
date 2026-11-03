@@ -17,6 +17,7 @@ const DashboardPage = lazy(() => import("@/components/marketplace/workspace").th
 const NotificationsPage = lazy(() => import("@/components/marketplace/workspace").then(({ NotificationsPage }) => ({ default: NotificationsPage })));
 const OrderDetailsPage = lazy(() => import("@/components/marketplace/workspace").then(({ OrderDetailsPage }) => ({ default: OrderDetailsPage })));
 const OrdersPage = lazy(() => import("@/components/marketplace/workspace").then(({ OrdersPage }) => ({ default: OrdersPage })));
+const TransactionsHistoryPage = lazy(() => import("@/components/marketplace/workspace").then(({ TransactionsHistoryPage }) => ({ default: TransactionsHistoryPage })));
 const ProfilePage = lazy(() => import("@/components/marketplace/workspace").then(({ ProfilePage }) => ({ default: ProfilePage })));
 const SettingsPage = lazy(() => import("@/components/marketplace/workspace").then(({ SettingsPage }) => ({ default: SettingsPage })));
 const WishlistPage = lazy(() => import("@/components/marketplace/workspace").then(({ WishlistPage }) => ({ default: WishlistPage })));
@@ -94,19 +95,34 @@ function RouterView() {
   const href = useSyncExternalStore(subscribe, getRouteSnapshot, () => "/");
   const url = new URL(href);
   const path = url.pathname.replace(/\/+$/, "") || "/";
-  const { isLoggedIn, isLoading, retailerProfile } = useStore();
+  const {
+    isLoggedIn,
+    isLoading,
+    retailerProfile,
+    storefrontReferralCode,
+    storefrontError,
+  } = useStore();
   const token = getAuthToken();
   const authenticated = isLoggedIn && Boolean(token);
 
   // Preserve referral parameter wherever present in URL
-  if (url.searchParams.has("ref")) {
-    const attribution = getReferralAttributionFromUrl(url);
-    if (attribution) {
-      saveReferralAttribution(attribution);
-    }
+  const referralAttribution = getReferralAttributionFromUrl(url);
+  if (referralAttribution) {
+    saveReferralAttribution(referralAttribution, true);
   }
+  const hasReferralAttribution = Boolean(
+    referralAttribution || getStoredReferralAttribution(),
+  );
 
   // Validate token with backend before showing store: prevent flash of store content
+  if (
+    referralAttribution &&
+    !storefrontError &&
+    storefrontReferralCode !== referralAttribution.code
+  ) {
+    return <PageLoadingFallback />;
+  }
+
   if (isLoading && Boolean(token) && (!isLoggedIn || !isBusinessSetupComplete(retailerProfile))) {
     return (
       <div className="min-h-screen bg-[#F4F7F8] flex items-center justify-center">
@@ -135,11 +151,25 @@ function RouterView() {
   */
   // ===== END Disable Retailer Landing Page =====
 
+  // Returning retailers should land on login instead of seeing registration again.
+  if (
+    !authenticated &&
+    hasCompletedRetailerRegistration() &&
+    (path === "/" || path === "/register") &&
+    !url.searchParams.has("ref")
+  ) {
+    return (
+      <AuthPage
+        key={`returning-login-${url.search}`}
+        mode="login"
+        {...(hasReferralAttribution ? { redirect: "/" } : {})}
+      />
+    );
+  }
+
   // Public authentication routes
   if (/^\/r\/[^/]+$/.test(path)) {
-    return authenticated
-      ? <HomePage />
-      : <AuthPage key={`${path}${url.search}`} mode="register" />;
+    return <HomePage />;
   }
   const isRefPath = path === "/register";
   if (path === "/login") {
@@ -148,14 +178,18 @@ function RouterView() {
       const redirect = searchParams.get("redirect");
       return redirect ? <AuthRedirect to={redirect} /> : <HomePage />;
     }
-    return <AuthPage key={`${path}${url.search}`} mode="login" redirect={searchParams.get("redirect") || undefined} />;
+    const redirect = searchParams.get("redirect") || (hasReferralAttribution ? "/" : undefined);
+    return <AuthPage key={`${path}${url.search}`} mode="login" {...(redirect ? { redirect } : {})} />;
   }
   if (isRefPath) {
     const searchParams = new URLSearchParams(url.search);
-    return <AuthPage key={`${path}${url.search}`} mode="register" redirect={searchParams.get("redirect") || undefined} />;
+    if (!authenticated && hasCompletedRetailerRegistration()) {
+      return <AuthPage key={`returning-login-${url.search}`} mode="login" />;
+    }
+    const redirect = searchParams.get("redirect") || (hasReferralAttribution ? "/" : undefined);
+    return <AuthPage key={`${path}${url.search}`} mode="register" {...(redirect ? { redirect } : {})} />;
   }
   if (path === "/forgot-password") return <AuthPage key={`${path}${url.search}`} mode="forgot" />;
-
   // 3. Checkout Authentication Guard: Require authentication before proceeding to checkout
   if (path === "/checkout") {
     if (!authenticated) {
@@ -198,6 +232,7 @@ function RouterView() {
   // Protected workspace views
   if (path === "/dashboard") return <DashboardPage />;
   if (path === "/orders") return <OrdersPage />;
+  if (path === "/transactions") return <TransactionsHistoryPage />;
   if (path.startsWith("/orders/")) return <OrderDetailsPage orderId={decodeURIComponent(path.split("/")[2] ?? "")} />;
   if (path === "/wishlist") return <WishlistPage />;
   if (path === "/notifications") return <NotificationsPage />;

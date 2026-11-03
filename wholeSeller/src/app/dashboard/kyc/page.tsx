@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ArrowUpFromLine, CheckCircle2, Clock3, FileCheck2, FileImage, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowUpFromLine, CheckCircle2, Clock3, FileCheck2, FileImage, FileText, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api from '@/lib/api';
 import { wholesalerQueryKeys } from '@/lib/query-client';
@@ -10,7 +10,7 @@ import { wholesalerQueryKeys } from '@/lib/query-client';
 const emptyForm = {
   businessName: '',
   ownerName: '',
-  businessType: 'Proprietorship',
+  businessType: '',
   pan: '',
   hasGst: false,
   gstin: '',
@@ -42,6 +42,7 @@ export default function KycPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [documentFiles, setDocumentFiles] = useState<DocumentFiles>(emptyDocumentFiles);
+  const [businessProofFile, setBusinessProofFile] = useState<File | null>(null);
   const [existingDocuments, setExistingDocuments] = useState<KycDocument[]>([]);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [status, setStatus] = useState(profile.kycStatus || 'DRAFT');
@@ -73,7 +74,7 @@ export default function KycPage() {
       setForm({
         businessName: application.businessName || profile.businessName || '',
         ownerName: application.ownerName || profile.ownerName || '',
-        businessType: application.businessType || 'Proprietorship',
+        businessType: application.businessType || profile.businessType || '',
         pan: application.pan || '',
         hasGst,
         gstin: application.gstin || profile.gstin || '',
@@ -101,6 +102,11 @@ export default function KycPage() {
       objectUrls.push(url);
       nextPreviews[`local:${key}`] = url;
     });
+    if (businessProofFile) {
+      const url = URL.createObjectURL(businessProofFile);
+      objectUrls.push(url);
+      nextPreviews['local:businessProof'] = url;
+    }
     setPreviewUrls(nextPreviews);
 
     Promise.all(existingDocuments.map(async (document) => {
@@ -124,7 +130,7 @@ export default function KycPage() {
       active = false;
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [documentFiles, existingDocuments]);
+  }, [businessProofFile, documentFiles, existingDocuments]);
 
   const changeField = (field: keyof typeof emptyForm) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
@@ -147,6 +153,23 @@ export default function KycPage() {
     setDocumentFiles((current) => ({ ...current, [key]: file }));
   };
 
+  const changeBusinessProof = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
+      setError('Choose a PDF, JPG, or PNG business proof document.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('The business proof document must be 10 MB or smaller.');
+      event.target.value = '';
+      return;
+    }
+    setError('');
+    setBusinessProofFile(file);
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
@@ -159,13 +182,9 @@ export default function KycPage() {
       return;
     }
 
-    // 2. GST Validation (if hasGst is true)
-    if (form.hasGst) {
-      const cleanGst = form.gstin.trim().toUpperCase();
-      if (!cleanGst) {
-        setError('Please enter your GST number or select No if you do not have one.');
-        return;
-      }
+    // GST is optional; validate its format only when a number is supplied.
+    const cleanGst = form.gstin.trim().toUpperCase();
+    if (cleanGst) {
       const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
       if (!gstRegex.test(cleanGst)) {
         setError('Enter a valid 15-character Indian GSTIN (e.g. 22AAAAA0000A1Z5).');
@@ -175,7 +194,7 @@ export default function KycPage() {
 
     // 3. PIN Code Validation (6 numeric digits)
     const cleanPincode = form.pincode.trim();
-    if (!cleanPincode || !/^\d{6}$/.test(cleanPincode)) {
+    if (cleanPincode && !/^\d{6}$/.test(cleanPincode)) {
       setError('Please enter a valid 6-digit Indian PIN code (e.g. 302018).');
       return;
     }
@@ -213,7 +232,7 @@ export default function KycPage() {
         businessType: form.businessType,
         pan: cleanPan,
         hasGst: String(form.hasGst),
-        gstin: form.hasGst ? form.gstin.trim().toUpperCase() : '',
+        gstin: cleanGst,
         address: form.street.trim(),
         city: form.city.trim(),
         state: form.state.trim(),
@@ -230,6 +249,10 @@ export default function KycPage() {
         const file = documentFiles[slot.key];
         if (file) submission.append(slot.key, file);
       });
+      if (businessProofFile) {
+        submission.append('businessProof_type', 'BUSINESS_REGISTRATION_PROOF');
+        submission.append('businessProof', businessProofFile);
+      }
 
       const response = await api.submitKyc(submission);
       const nextStatus = response?.data?.status || 'SUBMITTED';
@@ -246,6 +269,7 @@ export default function KycPage() {
       const refreshed = await kycQuery.refetch();
       setExistingDocuments(refreshed.data?.data?.documents || []);
       setDocumentFiles(emptyDocumentFiles);
+      setBusinessProofFile(null);
     } catch (submitError: any) {
       setError(submitError?.message || 'Unable to submit KYC details.');
     } finally {
@@ -258,8 +282,12 @@ export default function KycPage() {
     ? { icon: CheckCircle2, tone: 'border-status-success/25 bg-tradeflow-green-50 text-status-success', title: 'KYC approved', detail: 'You can now add products and categories.' }
     : isLocked
       ? { icon: Clock3, tone: 'border-amber-500/30 bg-amber-50 text-status-warning-foreground', title: 'KYC under review', detail: 'Product and category creation will unlock after approval.' }
-      : { icon: AlertCircle, tone: 'border-tradeflow-green/20 bg-tradeflow-green-50 text-green-700', title: status === 'REJECTED' ? 'KYC needs changes' : status === 'RESUBMISSION_REQUIRED' ? 'KYC resubmission requested' : 'Complete your KYC', detail: reviewReason || 'Submit your legal business, address, and bank details for verification.' };
+      : { icon: AlertCircle, tone: 'border-tradeflow-green/20 bg-tradeflow-green-50 text-green-700', title: status === 'REJECTED' ? 'KYC needs changes' : status === 'RESUBMISSION_REQUIRED' ? 'KYC resubmission requested' : 'Complete your KYC', detail: reviewReason || 'Submit your PAN and identity documents. Business, address, GST, and bank details are optional.' };
   const StatusIcon = statusConfig.icon;
+  const existingBusinessProof = [...existingDocuments]
+    .reverse()
+    .find((document) => document.documentType === 'BUSINESS_REGISTRATION_PROOF');
+  const businessProofPreview = previewUrls['local:businessProof'];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -287,9 +315,9 @@ export default function KycPage() {
                   <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Legal details</h2>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
-                  <label className={fieldClass}>Business name *<input required className={inputClass} value={form.businessName} onChange={changeField('businessName')} /></label>
-                  <label className={fieldClass}>Owner name *<input required className={inputClass} value={form.ownerName} onChange={changeField('ownerName')} /></label>
-                  <label className={fieldClass}>Business type *<select className={inputClass} value={form.businessType} onChange={changeField('businessType')}><option>Proprietorship</option><option>Partnership</option><option>LLP</option><option>Private Limited</option><option>Public Limited</option><option>Other</option></select></label>
+                  <label className={fieldClass}>Business name (optional)<input className={inputClass} value={form.businessName} onChange={changeField('businessName')} /></label>
+                  <label className={fieldClass}>Proprietor / owner name (optional)<input className={inputClass} value={form.ownerName} onChange={changeField('ownerName')} /></label>
+                  <label className={fieldClass}>Business type (optional)<select className={inputClass} value={form.businessType} onChange={changeField('businessType')}><option value="">Select business type (optional)</option><option>Proprietorship</option><option>Partnership</option><option>LLP</option><option>Private Limited</option><option>Public Limited</option><option>Other</option></select></label>
                   <label className={fieldClass}>
                     PAN number *
                     <input
@@ -304,7 +332,7 @@ export default function KycPage() {
                   </label>
                   
                   <div className={`${fieldClass} sm:col-span-2 rounded-md border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3.5`}>
-                    <p className="text-xs font-bold text-tradeflow-navy">Do you have a GST number? *</p>
+                    <p className="text-xs font-bold text-tradeflow-navy">Do you have a GST number? (optional)</p>
                     <div className="flex items-center gap-6 pt-2">
                       <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-tradeflow-navy">
                         <input
@@ -331,9 +359,8 @@ export default function KycPage() {
 
                   {form.hasGst && (
                     <label className={`${fieldClass} sm:col-span-2`}>
-                      GSTIN / GST Number *
+                      GSTIN / GST Number (optional)
                       <input
-                        required={form.hasGst}
                         className={`${inputClass} uppercase tracking-wider font-mono`}
                         value={form.gstin}
                         onChange={(e) => setForm((curr) => ({ ...curr, gstin: e.target.value.toUpperCase().slice(0, 15) }))}
@@ -352,13 +379,12 @@ export default function KycPage() {
                   <h2 className="mt-1 text-base font-extrabold text-tradeflow-navy">Where your business is registered</h2>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
-                  <label className={`${fieldClass} sm:col-span-2`}>Street address *<input required className={inputClass} value={form.street} onChange={changeField('street')} /></label>
-                  <label className={fieldClass}>City *<input required className={inputClass} value={form.city} onChange={changeField('city')} /></label>
-                  <label className={fieldClass}>State *<input required className={inputClass} value={form.state} onChange={changeField('state')} /></label>
+                  <label className={`${fieldClass} sm:col-span-2`}>Street address (optional)<input className={inputClass} value={form.street} onChange={changeField('street')} /></label>
+                  <label className={fieldClass}>City (optional)<input className={inputClass} value={form.city} onChange={changeField('city')} /></label>
+                  <label className={fieldClass}>State (optional)<input className={inputClass} value={form.state} onChange={changeField('state')} /></label>
                   <label className={fieldClass}>
-                    PIN code *
+                    PIN code (optional)
                     <input
-                      required
                       maxLength={6}
                       className={`${inputClass} font-mono`}
                       value={form.pincode}
@@ -445,6 +471,47 @@ export default function KycPage() {
                     </div>
                   );
                 })}
+                {!form.gstin.trim() && (
+                  <div className="rounded-md border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-extrabold text-tradeflow-navy">
+                          Upload Any Valid Business Proof / Certificate
+                        </p>
+                        <p className="text-[11px] text-gray-500">Optional · PDF, JPG or PNG · up to 10 MB</p>
+                      </div>
+                      {existingBusinessProof && !businessProofFile && (
+                        <span className="shrink-0 rounded-sm bg-tradeflow-green-50 px-2 py-1 text-[10px] font-bold text-status-success">
+                          On file
+                        </span>
+                      )}
+                    </div>
+                    <label
+                      htmlFor="kyc-business-proof"
+                      className="flex min-h-20 cursor-pointer items-center justify-center gap-3 rounded border border-dashed border-tradeflow-gray-300 bg-white p-3 text-xs text-gray-600 hover:border-tradeflow-green"
+                    >
+                      {businessProofFile?.type.startsWith('image/') && businessProofPreview ? (
+                        <img src={businessProofPreview} alt="Business proof preview" className="h-16 w-16 rounded object-cover" />
+                      ) : (
+                        <FileText className="h-7 w-7 shrink-0 text-gray-400" />
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold">
+                          {businessProofFile?.name || existingBusinessProof?.originalName || 'Choose a business certificate'}
+                        </span>
+                        {!isLocked && <span className="mt-1 block text-[10px] text-gray-500">{businessProofFile || !existingBusinessProof ? 'Upload' : 'Replace'}</span>}
+                      </span>
+                    </label>
+                    <input
+                      id="kyc-business-proof"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                      className="sr-only"
+                      disabled={isLocked || saving}
+                      onChange={changeBusinessProof}
+                    />
+                  </div>
+                )}
               </div>
               <div className="flex items-start gap-2 border-t border-tradeflow-gray-200 bg-tradeflow-gray-50 px-4 py-3 text-[11px] leading-relaxed text-gray-600">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-status-success" />

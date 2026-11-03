@@ -41,9 +41,15 @@ app.use('/api', apiRateLimiter);
 
 // Serve static uploads
 const path = require('path');
+const fs = require('fs');
 const env = require('./config/env');
+const shippingDir = path.join(env.UPLOAD_PATH, 'shipping');
+if (!fs.existsSync(shippingDir)) {
+  fs.mkdirSync(shippingDir, { recursive: true });
+}
 app.use('/uploads/products', express.static(path.join(env.UPLOAD_PATH, 'products')));
 app.use('/uploads/payment-qr', express.static(path.join(env.UPLOAD_PATH, 'payment-qr')));
+app.use('/uploads/shipping', express.static(shippingDir));
 
 // Serve MongoDB GridFS product images
 app.get('/product-images/:id', async (req, res) => {

@@ -33,7 +33,11 @@ class KycService {
   static async submitKyc(wholesalerUser, kycData, uploadedFiles = [], req = null) {
     const wholesalerId = wholesalerUser._id;
 
-    let application = await KycApplication.findOne({ wholesalerId });
+    const [existingApplication, existingProfile] = await Promise.all([
+      KycApplication.findOne({ wholesalerId }),
+      WholesalerProfile.findOne({ userId: wholesalerId }).select('businessName businessType').lean(),
+    ]);
+    let application = existingApplication;
 
     if (application && application.status === KYC_STATUS.APPROVED) {
       throw new ConflictError('KYC application is already approved', 'KYC_ALREADY_APPROVED');
@@ -79,7 +83,7 @@ class KycService {
     }
 
     const pincode = (kycData.pincode || kycData.registeredAddress?.pincode || '').trim();
-    if (!pincode || !/^\d{6}$/.test(pincode)) {
+    if (pincode && !/^\d{6}$/.test(pincode)) {
       throw new BadRequestError('Invalid PIN code. Please enter a valid 6-digit Indian PIN code.', 'INVALID_PINCODE');
     }
 
@@ -94,25 +98,24 @@ class KycService {
       throw new BadRequestError('Invalid IFSC code format. Must be a valid 11-character Indian IFSC code (e.g. SBIN0001234 or PUNB0123400).', 'INVALID_IFSC');
     }
 
-    const hasGst = String(kycData.hasGst) === 'true' || kycData.hasGst === true;
-    const gstin = hasGst ? (kycData.gstin || kycData.gstNumber || '').trim().toUpperCase() : '';
+    const gstSelected = String(kycData.hasGst) === 'true' || kycData.hasGst === true;
+    const gstin = gstSelected ? (kycData.gstin || kycData.gstNumber || '').trim().toUpperCase() : '';
+    const hasGst = gstSelected && Boolean(gstin);
 
-    if (hasGst) {
-      if (!gstin) {
-        throw new BadRequestError('GST number is required when GST option is set to Yes', 'GST_REQUIRED');
-      }
+    if (gstin) {
       const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
       if (!gstRegex.test(gstin)) {
         throw new BadRequestError('Invalid GSTIN format. Standard Indian GSTIN must be 15 alphanumeric characters (e.g. 22AAAAA0000A1Z5)', 'INVALID_GSTIN');
       }
     }
 
+    const businessName = (kycData.businessName || '').trim() || existingProfile?.businessName || '';
     const applicationPayload = {
       wholesalerId,
-      businessName: kycData.businessName,
-      ownerName: kycData.ownerName || wholesalerUser.name,
-      businessType: kycData.businessType || 'Proprietorship',
-      pan: kycData.pan,
+      businessName,
+      ownerName: (kycData.ownerName || '').trim(),
+      businessType: (kycData.businessType || '').trim() || existingProfile?.businessType || 'Proprietorship',
+      pan,
       hasGst,
       gstin: gstin,
       registeredAddress: kycData.registeredAddress || {
@@ -151,7 +154,7 @@ class KycService {
     await WholesalerProfile.findOneAndUpdate(
       { userId: wholesalerId },
       {
-        businessName: kycData.businessName,
+        businessName,
         businessType: applicationPayload.businessType,
         hasGst,
         gstin: gstin,

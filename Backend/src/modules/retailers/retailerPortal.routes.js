@@ -21,6 +21,7 @@ const {
   updateProfileSchema,
   updateBusinessProfileSchema,
   acceptInviteSchema,
+  switchWholesalerSchema,
   cancelOrderSchema,
 } = require('./retailer.validation');
 
@@ -59,6 +60,7 @@ router.delete('/cart/items/:itemId', retailerController.removeCartItem);
 router.delete('/cart', retailerController.clearCart);
 
 // Checkout & Orders
+router.post('/checkout/quote', validate(checkoutSchema), retailerController.quoteCheckout);
 router.post('/checkout', idempotency, validate(checkoutSchema), retailerController.checkout);
 router.get('/orders', retailerController.getOrders);
 router.get('/orders/:id', retailerController.getOrderById);
@@ -115,6 +117,7 @@ router.patch('/notifications/:id/read', notificationController.markAsRead);
 // Invitations
 router.post('/invitations/accept', validate(acceptInviteSchema), retailerController.acceptInvitation);
 router.post('/invite/accept', validate(acceptInviteSchema), retailerController.acceptInvitation);
+router.post('/referral/switch', validate(switchWholesalerSchema), retailerController.switchWholesaler);
 
 // Coupons & Offers
 const couponController = require('../coupons/coupons.controller');

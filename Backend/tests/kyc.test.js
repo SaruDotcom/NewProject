@@ -114,6 +114,52 @@ describe('KYC Workflow Test Suite', () => {
     expect(profile.kycStatus).toBe(KYC_STATUS.SUBMITTED);
   });
 
+  test('KYC accepts missing GST and optional business fields while saving alternative proof for review', async () => {
+    const res = await submitKyc({
+      pan: 'AAACP1234F',
+      hasGst: true,
+      gstin: '',
+    }, wholesalerToken)
+      .field('businessProof_type', 'BUSINESS_REGISTRATION_PROOF')
+      .attach('businessProof', Buffer.from('%PDF-1.4 business certificate'), {
+        filename: 'business-certificate.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe(KYC_STATUS.SUBMITTED);
+    expect(res.body.data.gstin).toBe('');
+    expect(res.body.data.hasGst).toBe(false);
+    expect(res.body.data.businessName).toBe('Pooja Textiles India');
+    expect(res.body.data.registeredAddress.pincode).toBe('');
+
+    const proof = await KycDocument.findOne({
+      wholesalerId: wholesalerUser._id,
+      documentType: 'BUSINESS_REGISTRATION_PROOF',
+    });
+    expect(proof).toBeTruthy();
+    expect(proof.mimeType).toBe('application/pdf');
+
+    const adminResponse = await request(app)
+      .get(`/api/v1/admin/kyc/${res.body.data._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminResponse.status).toBe(200);
+    expect(adminResponse.body.data.documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          documentType: 'BUSINESS_REGISTRATION_PROOF',
+          originalName: 'business-certificate.pdf',
+        }),
+      ]),
+    );
+
+    const documentResponse = await request(app)
+      .get(`/api/v1/admin/kyc/documents/${proof._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(documentResponse.status).toBe(200);
+    expect(documentResponse.headers['content-type']).toBe('application/pdf');
+  });
+
   test('KYC submission requires PAN and both Aadhaar images', async () => {
     const res = await request(app)
       .post('/api/v1/wholesaler/kyc')

@@ -6,6 +6,7 @@ const { assertWholesalerBusinessActivated } = require('../../services/wholesaler
 
 const INVALID_REFERRAL_MESSAGE = 'This link is not valid. Please ask your wholesaler for a new link.';
 const REFERRAL_CODE_CHARACTERS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const generateReferralCode = () => Array.from(
   { length: 6 },
@@ -56,8 +57,12 @@ class ReferralService {
     if (!activeUser) {
       throw new ForbiddenError('Wholesaler must have an active account to manage retailer referrals.', 'WHOLESALER_UNAVAILABLE');
     }
-    const { profile } = await assertWholesalerBusinessActivated(wholesalerUser._id);
-    if (profile.isDeleted) {
+    const { profile: activatedProfile } = await assertWholesalerBusinessActivated(wholesalerUser._id);
+    if (activatedProfile.isDeleted) {
+      throw new ForbiddenError('Wholesaler must have approved KYC to manage retailer referrals.', 'KYC_APPROVAL_REQUIRED');
+    }
+    const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id, isDeleted: false });
+    if (!profile) {
       throw new ForbiddenError('Wholesaler must have approved KYC to manage retailer referrals.', 'KYC_APPROVAL_REQUIRED');
     }
     return profile;
@@ -120,24 +125,17 @@ class ReferralService {
 
   static async getPublicReferral(code) {
     const { profile } = await this.resolveActiveCode(code);
-    const { Category, Product } = require('../../models');
+    const { Category } = require('../../models');
 
-    const productCategoryIds = (await Product.distinct('categoryId', {
+    const categoryDetails = await Category.find({
       wholesalerId: profile.userId,
-      status: { $ne: 'INACTIVE' },
+      isActive: true,
       isDeleted: false,
-    })).filter(Boolean);
-    const categoryDetails = productCategoryIds.length > 0
-      ? await Category.find({
-        _id: { $in: productCategoryIds },
-        isDeleted: false,
-        $or: [{ wholesalerId: profile.userId }, { wholesalerId: null }],
-      })
-        .sort({ sortOrder: 1, name: 1 })
-        .limit(3)
-        .select('_id name slug description imageUrl parentId')
-        .lean()
-      : [];
+      isDemo: { $ne: true },
+    })
+      .sort({ sortOrder: 1, name: 1 })
+      .select('_id name slug description imageUrl parentId level')
+      .lean();
     const categories = categoryDetails.map((category) => category.name);
 
     const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
@@ -169,7 +167,8 @@ class ReferralService {
       _id: String(profile.userId),
       id: String(profile.userId),
       wholesalerId: String(profile.userId),
-      businessName: profile.businessName,
+      businessName: profile.businessName || '',
+      businessTagline: profile.businessTagline || '',
       logo: profile.businessLogoUrl || '',
       city: profile.address?.city || '',
       categories,
@@ -182,16 +181,41 @@ class ReferralService {
 
   static async getReferralProducts(code, query = {}) {
     const { profile } = await this.resolveActiveCode(code);
-    const { Product } = require('../../models');
+    const { Product, Category } = require('../../models');
     const { PRODUCT_STATUS } = require('../../config/constants');
     const { parsePagination } = require('../../utils/pagination');
     const { page, limit, skip, sort } = parsePagination(query);
+    const activeCategories = await Category.find({
+      wholesalerId: profile.userId,
+      isActive: true,
+      isDeleted: false,
+      isDemo: { $ne: true },
+    }).select('_id').lean();
+    const activeCategoryIds = activeCategories.map(({ _id }) => _id);
 
     const filter = {
       wholesalerId: profile.userId,
       status: PRODUCT_STATUS.ACTIVE,
       isDeleted: false,
+      isDemo: { $ne: true },
+      categoryId: { $in: activeCategoryIds },
+      subcategoryId: { $in: [null, ...activeCategoryIds] },
     };
+    if (query.category && query.category !== 'All') {
+      const selectedCategory = await Category.findOne({
+        wholesalerId: profile.userId,
+        isActive: true,
+        isDeleted: false,
+        isDemo: { $ne: true },
+        ...( /^[0-9a-fA-F]{24}$/.test(String(query.category))
+          ? { _id: query.category }
+          : { $or: [{ name: new RegExp(escapeRegex(query.category), 'i') }, { slug: query.category }] }),
+      }).select('_id').lean();
+      if (!selectedCategory) {
+        return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
+      }
+      filter.categoryId = selectedCategory._id;
+    }
 
     const [products, total] = await Promise.all([
       Product.find(filter)

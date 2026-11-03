@@ -466,6 +466,7 @@ class PaymentsService {
     if (!claimed) throw new ConflictError('This payment report is currently being reviewed.', 'PAYMENT_REPORT_PROCESSING');
 
     let orderPaymentAllocation = null;
+    const orderAllocations = [];
     if (action === 'VERIFY' && !report.isCreditRepayment) {
       const order = await Order.findOne({ _id: report.orderId, wholesalerId, retailerId: report.retailerId });
       if (!order || order.isCreditOrder) {
@@ -583,13 +584,14 @@ class PaymentsService {
               $inc: { creditPaidAmount: amountInRupees(appliedPaise) },
               $set: {
                 creditPaymentStatus: fullyPaid ? 'PAID' : 'PENDING',
-                paymentStatus: fullyPaid ? 'PAID' : 'PENDING',
+                paymentStatus: fullyPaid ? 'PAID' : 'PARTIAL',
                 ...(fullyPaid ? { creditSettledAt: new Date() } : {}),
               },
             },
             { new: true }
           );
           if (!updatedOrder) continue;
+          orderAllocations.push({ orderId: creditOrder._id, amountPaise: appliedPaise });
           remainingPaise -= appliedPaise;
           if (fullyPaid) {
             await Payment.updateMany(
@@ -612,19 +614,31 @@ class PaymentsService {
 
     const verified = await Payment.findOneAndUpdate(
       { _id: report._id, wholesalerId, status: 'PROCESSING' },
-      { $set: { status: 'PAID', reviewNote: String(note || '').trim(), reviewedBy: actor._id, reviewedAt: new Date(), paidAt: new Date() } },
+      {
+        $set: {
+          status: 'PAID',
+          orderAllocations,
+          reviewNote: String(note || '').trim(),
+          reviewedBy: actor._id,
+          reviewedAt: new Date(),
+          paidAt: new Date(),
+        },
+      },
       { new: true }
     );
 
-    if (orderPaymentAllocation && orderPaymentAllocation.order.directPaidPaise >= orderPaymentAllocation.orderTotalPaise) {
+    if (orderPaymentAllocation) {
+      const fullyPaid = orderPaymentAllocation.order.directPaidPaise >= orderPaymentAllocation.orderTotalPaise;
       await Order.updateOne(
         { _id: orderPaymentAllocation.order._id, wholesalerId, retailerId: report.retailerId },
-        { $set: { paymentStatus: 'PAID' } }
+        { $set: { paymentStatus: fullyPaid ? 'PAID' : 'PARTIAL' } }
       );
-      await Payment.updateMany(
-        { orderId: orderPaymentAllocation.order._id, isReport: { $ne: true }, status: 'PENDING' },
-        { $set: { status: 'PAID', paidAt: new Date() } }
-      );
+      if (fullyPaid) {
+        await Payment.updateMany(
+          { orderId: orderPaymentAllocation.order._id, isReport: { $ne: true }, status: 'PENDING' },
+          { $set: { status: 'PAID', paidAt: new Date() } }
+        );
+      }
     }
 
     await AuditService.log({

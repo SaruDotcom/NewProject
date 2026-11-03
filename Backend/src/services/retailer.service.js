@@ -10,7 +10,10 @@ const {
   Notification,
   WalletTransaction,
   Return,
+  Cart,
+  WholesalerRetailerRelationship,
 } = require('../models');
+const mongoose = require('mongoose');
 const RetailerRepository = require('../repositories/retailer.repository');
 const ProductRepository = require('../repositories/product.repository');
 const OrderRepository = require('../repositories/order.repository');
@@ -27,6 +30,8 @@ const {
 const { parsePagination } = require('../utils/pagination');
 const { generateReference } = require('../utils/crypto');
 const { assertWholesalerAvailable, WHOLESALER_UNAVAILABLE_MESSAGE } = require('./wholesaler-access.service');
+const { ROLES, RELATIONSHIP_STATUS } = require('../config/constants');
+const ReferralService = require('../modules/referrals/referrals.service');
 
 const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 
@@ -131,6 +136,7 @@ class RetailerService {
         id: wholesalerUser._id,
         name: wholesalerUser.name,
         businessName: wholesalerProfile?.businessName || wholesalerUser.name,
+        businessTagline: wholesalerProfile?.businessTagline || '',
         logo: wholesalerProfile?.businessLogoUrl || '',
         city: wholesalerProfile?.address?.city || '',
         state: wholesalerProfile?.address?.state || '',
@@ -353,7 +359,8 @@ class RetailerService {
       name: wholesalerUser.name,
       email: wholesalerUser.email,
       phone: wholesalerUser.phone,
-      businessName: profile?.businessName || wholesalerUser.name,
+      businessName: profile?.businessName || '',
+      businessTagline: profile?.businessTagline || '',
       businessLogoUrl: profile?.businessLogoUrl || '',
       description: profile?.description || '',
       businessCategory,
@@ -413,7 +420,8 @@ class RetailerService {
       wholesaler: {
         id: wholesalerUser._id,
         name: wholesalerUser.name,
-        businessName: profile?.businessName || wholesalerUser.name,
+        businessName: profile?.businessName || '',
+        businessTagline: profile?.businessTagline || '',
         businessLogoUrl: profile?.businessLogoUrl || '',
         description: profile?.description || '',
         businessCategory,
@@ -432,22 +440,12 @@ class RetailerService {
    */
   static async getCategories(retailerId, query = {}) {
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
-    const categoryIds = (await Product.distinct('categoryId', {
-      wholesalerId: wholesalerUser._id,
-      ...(query.status ? { status: query.status } : { status: 'ACTIVE' }),
-      isDeleted: false,
-      isDemo: { $ne: true },
-    })).filter(Boolean);
-
     const filter = {
-      _id: { $in: categoryIds },
+      wholesalerId: wholesalerUser._id,
+      isActive: true,
       isDeleted: false,
       isDemo: { $ne: true },
     };
-
-    if (query.status) {
-      filter.isActive = String(query.status).toUpperCase() === 'ACTIVE' || query.status === 'true';
-    }
 
     if (query.search) {
       const search = new RegExp(escapeRegex(query.search), 'i');
@@ -466,28 +464,51 @@ class RetailerService {
   static async getProducts(retailerId, query = {}) {
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
     const { page, limit, skip, sort } = parsePagination(query);
+    const activeCategories = await Category.find({
+      wholesalerId: wholesalerUser._id,
+      isActive: true,
+      isDeleted: false,
+      isDemo: { $ne: true },
+    }).select('_id').lean();
 
     const filter = {
       wholesalerId: wholesalerUser._id,
       status: 'ACTIVE',
       isDeleted: false,
       isDemo: { $ne: true },
+      categoryId: { $in: activeCategories.map(({ _id }) => _id) },
+      subcategoryId: { $in: [null, ...activeCategories.map(({ _id }) => _id)] },
     };
 
     if (query.category && query.category !== 'All') {
-      if (objectIdPattern.test(query.category)) {
-        filter.categoryId = query.category;
-      } else {
-        const cat = await Category.findOne({
-          $or: [{ name: new RegExp(escapeRegex(query.category), 'i') }, { slug: query.category }],
-          isDemo: { $ne: true },
-        });
-        if (cat) filter.categoryId = cat._id;
+      const categoryFilter = objectIdPattern.test(String(query.category))
+        ? { _id: query.category }
+        : { $or: [{ name: new RegExp(escapeRegex(query.category), 'i') }, { slug: query.category }] };
+      const category = await Category.findOne({
+        ...categoryFilter,
+        wholesalerId: wholesalerUser._id,
+        isActive: true,
+        isDeleted: false,
+        isDemo: { $ne: true },
+      }).select('_id').lean();
+      if (!category) {
+        return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
       }
+      filter.categoryId = category._id;
     }
 
     if (query.subcategory) {
-      filter.subcategoryId = query.subcategory;
+      const subcategory = await Category.findOne({
+        _id: query.subcategory,
+        wholesalerId: wholesalerUser._id,
+        isActive: true,
+        isDeleted: false,
+        isDemo: { $ne: true },
+      }).select('_id').lean();
+      if (!subcategory) {
+        return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
+      }
+      filter.subcategoryId = subcategory._id;
     }
 
     if (query.brand) {
@@ -752,7 +773,7 @@ class RetailerService {
   /**
    * Authoritative Checkout
    */
-  static async checkout(retailerUser, checkoutPayload, req = null) {
+  static async checkout(retailerUser, checkoutPayload, req = null, quoteOnly = false) {
     const retailerId = retailerUser._id;
     let items = checkoutPayload.items;
 
@@ -788,6 +809,7 @@ class RetailerService {
       shippingAddress: checkoutPayload.shippingAddress,
       billingAddress: checkoutPayload.billingAddress,
       couponCode: checkoutPayload.couponCode,
+      expectedQuoteHash: checkoutPayload.expectedQuoteHash,
     };
     // Call unified OrderService for authoritative pricing, stock reservation, order & payment creation
     const result = await OrderService.createOrder(
@@ -797,11 +819,12 @@ class RetailerService {
         paymentMethod: checkoutPayload.paymentMethod,
         idempotencyKey: checkoutPayload.idempotencyKey,
       },
-      req
+      req,
+      quoteOnly
     );
 
     // Clear cart after checkout
-    await RetailerRepository.clearCart(retailerId);
+    if (!quoteOnly) await RetailerRepository.clearCart(retailerId);
 
     return result;
   }
@@ -1088,7 +1111,175 @@ class RetailerService {
   }
 
   static async getTransactions(retailerId, query = {}) {
-    return this.getWalletTransactions(retailerId, query);
+    const { page, limit, skip } = parsePagination(query);
+    const filter = { retailerId, isReport: true };
+    if (query.status && query.status !== 'all') {
+      const status = String(query.status).toUpperCase();
+      const paymentStatuses = {
+        PENDING: ['PENDING', 'PROCESSING'],
+        VERIFIED: ['PAID'],
+        FAILED: ['REJECTED', 'FAILED'],
+      }[status];
+      if (!paymentStatuses) throw new BadRequestError('Choose Pending, Verified, or Failed transaction status.', 'INVALID_TRANSACTION_STATUS');
+      filter.status = { $in: paymentStatuses };
+    }
+    if (query.startDate) {
+      const startDate = new Date(query.startDate);
+      if (Number.isNaN(startDate.getTime())) throw new BadRequestError('Enter a valid transaction start date.', 'INVALID_START_DATE');
+      startDate.setHours(0, 0, 0, 0);
+      filter.createdAt = { ...filter.createdAt, $gte: startDate };
+    }
+    if (query.endDate) {
+      const endDate = new Date(query.endDate);
+      if (Number.isNaN(endDate.getTime())) throw new BadRequestError('Enter a valid transaction end date.', 'INVALID_END_DATE');
+      endDate.setHours(23, 59, 59, 999);
+      filter.createdAt = { ...filter.createdAt, $lte: endDate };
+    }
+
+    const [reports, total, paidReports, outstandingOrders] = await Promise.all([
+      Payment.find(filter)
+        .populate('orderId', 'orderNumber grandTotal discount isCreditOrder paymentMethod directPaidPaise creditPaidAmount')
+        .populate('orderAllocations.orderId', 'orderNumber grandTotal discount isCreditOrder paymentMethod directPaidPaise creditPaidAmount')
+        .populate('wholesalerId', 'name businessName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Payment.countDocuments(filter),
+      Payment.aggregate([
+        { $match: { retailerId, isReport: true, status: 'PAID' } },
+        {
+          $group: {
+            _id: null,
+            totalPaise: {
+              $sum: {
+                $ifNull: ['$amountPaise', { $round: [{ $multiply: ['$amount', 100] }, 0] }],
+              },
+            },
+          },
+        },
+      ]),
+      Order.find({
+        retailerId,
+        orderStatus: { $nin: ['CANCELLED', 'RETURNED', 'REFUNDED'] },
+      }).select('grandTotal isCreditOrder directPaidPaise creditPaidAmount').lean(),
+    ]);
+
+    const orderIds = reports.flatMap((report) => [
+      report.orderId?._id || report.orderId,
+      ...(report.orderAllocations || []).map((allocation) => allocation.orderId?._id || allocation.orderId),
+    ]).filter(Boolean);
+    const paidByOrder = orderIds.length
+      ? await Payment.aggregate([
+          {
+            $match: {
+              retailerId,
+              orderId: { $in: orderIds },
+              isReport: true,
+              isCreditRepayment: { $ne: true },
+              status: 'PAID',
+            },
+          },
+          {
+            $group: {
+              _id: '$orderId',
+              paidPaise: {
+                $sum: {
+                  $ifNull: ['$amountPaise', { $round: [{ $multiply: ['$amount', 100] }, 0] }],
+                },
+              },
+            },
+          },
+        ])
+      : [];
+    const paidByOrderId = new Map(paidByOrder.map((item) => [String(item._id), item.paidPaise]));
+    const wholesalerIds = [...new Set(reports.map((report) => String(report.wholesalerId?._id || report.wholesalerId)).filter(Boolean))];
+    const wholesalerProfiles = wholesalerIds.length
+      ? await WholesalerProfile.find({ userId: { $in: wholesalerIds } }).select('userId businessName').lean()
+      : [];
+    const businessNames = new Map(wholesalerProfiles.map((profile) => [String(profile.userId), profile.businessName]));
+
+    const transactions = reports.flatMap((report) => {
+      const allocations = report.orderAllocations?.length
+        ? report.orderAllocations
+        : [{ orderId: report.orderId, amountPaise: report.amountPaise || Math.round(Number(report.amount || 0) * 100) }];
+      return allocations.map((allocation) => {
+        const order = allocation.orderId && typeof allocation.orderId === 'object'
+          ? allocation.orderId
+          : report.orderId;
+        const totalPaise = Math.round(Number(order?.grandTotal || 0) * 100);
+        const paidPaise = order?.isCreditOrder
+          ? Math.round(Number(order.creditPaidAmount || 0) * 100)
+          : Number.isSafeInteger(order?.directPaidPaise)
+            ? order.directPaidPaise
+            : paidByOrderId.get(String(order?._id || order)) || 0;
+        const status = report.status === 'PAID'
+          ? 'VERIFIED'
+          : ['REJECTED', 'FAILED'].includes(report.status) ? 'FAILED' : 'PENDING';
+        const wholesalerId = String(report.wholesalerId?._id || report.wholesalerId || '');
+
+        return {
+          transactionId: String(report._id),
+          orderId: order?.orderNumber || String(order?._id || order || ''),
+          wholesalerName: businessNames.get(wholesalerId) || report.wholesalerId?.businessName || report.wholesalerId?.name || 'Wholesaler',
+          transactionDate: report.paidAt || report.createdAt,
+          paymentMethod: report.isCreditRepayment || order?.isCreditOrder ? 'Credit' : 'Direct UPI',
+          totalOrderAmount: totalPaise / 100,
+          couponDiscount: Number(order?.discount || 0),
+          amountPaid: Number.isSafeInteger(allocation.amountPaise)
+            ? allocation.amountPaise / 100
+            : Number(report.amount || 0),
+          remainingDueAmount: Math.max(0, totalPaise - paidPaise) / 100,
+          status,
+        };
+      });
+    });
+
+    const allOrderIds = outstandingOrders
+      .filter((order) => !order.isCreditOrder && !Number.isSafeInteger(order.directPaidPaise))
+      .map((order) => order._id);
+    const allDirectPayments = allOrderIds.length
+      ? await Payment.aggregate([
+          {
+            $match: {
+              retailerId,
+              orderId: { $in: allOrderIds },
+              isReport: true,
+              isCreditRepayment: { $ne: true },
+              status: 'PAID',
+            },
+          },
+          {
+            $group: {
+              _id: '$orderId',
+              paidPaise: {
+                $sum: {
+                  $ifNull: ['$amountPaise', { $round: [{ $multiply: ['$amount', 100] }, 0] }],
+                },
+              },
+            },
+          },
+        ])
+      : [];
+    const allDirectPaidByOrder = new Map(allDirectPayments.map((item) => [String(item._id), item.paidPaise]));
+    const totalOutstandingPaise = outstandingOrders.reduce((sum, order) => {
+      const totalPaise = Math.round(Number(order.grandTotal || 0) * 100);
+      const paidPaise = order.isCreditOrder
+        ? Math.round(Number(order.creditPaidAmount || 0) * 100)
+        : Number.isSafeInteger(order.directPaidPaise)
+          ? order.directPaidPaise
+          : allDirectPaidByOrder.get(String(order._id)) || 0;
+      return sum + Math.max(0, totalPaise - paidPaise);
+    }, 0);
+
+    return {
+      transactions,
+      summary: {
+        totalPaidAmount: (paidReports[0]?.totalPaise || 0) / 100,
+        totalOutstandingAmount: totalOutstandingPaise / 100,
+      },
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+    };
   }
 
   static async getAnalyticsSummary(retailerId) {
@@ -1172,6 +1363,170 @@ class RetailerService {
 
   static async acceptInvitation(retailerUser, token, req = null) {
     return InvitationService.acceptInvitation(token, retailerUser, req);
+  }
+
+  static async switchWholesalerByReferral(retailerUser, referralCode) {
+    if (retailerUser.role !== ROLES.RETAILER) {
+      throw new ForbiddenError('Only retailers can switch wholesaler connections.', 'FORBIDDEN_ROLE');
+    }
+
+    const { profile: wholesalerProfile, wholesaler } = await ReferralService.resolveActiveCode(referralCode);
+    const retailerProfile = await RetailerProfile.findOne({ userId: retailerUser._id });
+    if (!retailerProfile) {
+      throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
+    }
+
+    const targetWholesalerId = wholesaler._id;
+    const currentRelationship = await WholesalerRetailerRelationship.findOne({
+      retailerId: retailerUser._id,
+      status: RELATIONSHIP_STATUS.ACTIVE,
+    });
+
+    if (currentRelationship && String(currentRelationship.wholesalerId) === String(targetWholesalerId)) {
+      return {
+        message: 'You are already connected to this wholesaler.',
+        relationship: currentRelationship,
+      };
+    }
+
+    const wholesalerUser = await User.findById(targetWholesalerId).select('name email phone').lean();
+    const now = new Date();
+    const relationshipData = {
+      wholesalerId: targetWholesalerId,
+      retailerId: retailerUser._id,
+      referralCode: wholesalerProfile.retailerReferralCode,
+      status: RELATIONSHIP_STATUS.ACTIVE,
+      joinedAt: now,
+      approvedAt: now,
+    };
+    const retailerWholesalerUpdate = {
+      assignedWholesalerId: targetWholesalerId,
+      wholesalerId: targetWholesalerId,
+      createdByWholesalerId: targetWholesalerId,
+      referralCodeUsed: wholesalerProfile.retailerReferralCode,
+      wholesalerInfo: {
+        businessName: wholesalerProfile.businessName || wholesalerUser?.name || '',
+        ownerName: wholesalerUser?.name || '',
+        email: wholesalerUser?.email || '',
+        phone: wholesalerUser?.phone || '',
+      },
+    };
+    let session = null;
+    const topologyType = mongoose.connection?.client?.topology?.description?.type;
+    if (topologyType && topologyType.includes('ReplicaSet')) {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    }
+
+    let relationship;
+    let previousCart = null;
+    if (!session) {
+      previousCart = await Cart.findOne({ retailerId: retailerUser._id }).lean();
+    }
+    try {
+      const options = session ? { session } : {};
+      if (currentRelationship) {
+        const ended = await WholesalerRetailerRelationship.updateOne(
+          { _id: currentRelationship._id, status: RELATIONSHIP_STATUS.ACTIVE },
+          { $set: { status: RELATIONSHIP_STATUS.TERMINATED, terminatedAt: now } },
+          options,
+        );
+        if (ended.modifiedCount !== 1) {
+          throw new ConflictError('The retailer connection changed. Please retry the invitation.', 'RELATIONSHIP_CHANGED');
+        }
+      }
+
+      relationship = await WholesalerRetailerRelationship.create(
+        [{ ...relationshipData }],
+        options,
+      ).then(([created]) => created);
+
+      const updatedProfile = await RetailerProfile.updateOne(
+        { userId: retailerUser._id },
+        { $set: { ...retailerWholesalerUpdate, activeRelationshipId: relationship._id } },
+        options,
+      );
+      if (updatedProfile.matchedCount !== 1) {
+        throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
+      }
+
+      await Cart.updateOne(
+        { retailerId: retailerUser._id },
+        {
+          $set: {
+            wholesalerId: targetWholesalerId,
+            items: [],
+            subtotal: 0,
+            tax: 0,
+            grandTotal: 0,
+          },
+        },
+        options,
+      );
+
+      if (session) await session.commitTransaction();
+    } catch (error) {
+      if (session?.inTransaction()) await session.abortTransaction();
+      if (!session) {
+        if (relationship) {
+          await WholesalerRetailerRelationship.deleteOne({ _id: relationship._id });
+        }
+        if (currentRelationship) {
+          await WholesalerRetailerRelationship.updateOne(
+            { _id: currentRelationship._id },
+            { $set: { status: RELATIONSHIP_STATUS.ACTIVE }, $unset: { terminatedAt: 1 } },
+          );
+        }
+        const associationFields = {
+          assignedWholesalerId: retailerProfile.assignedWholesalerId,
+          wholesalerId: retailerProfile.wholesalerId,
+          createdByWholesalerId: retailerProfile.createdByWholesalerId,
+          referralCodeUsed: retailerProfile.referralCodeUsed,
+          wholesalerInfo: retailerProfile.wholesalerInfo,
+          activeRelationshipId: retailerProfile.activeRelationshipId,
+        };
+        const restoreProfile = Object.fromEntries(
+          Object.entries(associationFields).filter(([, value]) => value !== undefined),
+        );
+        const unsetProfile = Object.fromEntries(
+          Object.entries(associationFields)
+            .filter(([, value]) => value === undefined)
+            .map(([key]) => [key, 1]),
+        );
+        await RetailerProfile.updateOne(
+          { _id: retailerProfile._id },
+          {
+            ...(Object.keys(restoreProfile).length ? { $set: restoreProfile } : {}),
+            ...(Object.keys(unsetProfile).length ? { $unset: unsetProfile } : {}),
+          },
+        );
+        if (previousCart) {
+          await Cart.updateOne(
+            { _id: previousCart._id },
+            {
+              $set: {
+                wholesalerId: previousCart.wholesalerId,
+                items: previousCart.items,
+                subtotal: previousCart.subtotal,
+                tax: previousCart.tax,
+                grandTotal: previousCart.grandTotal,
+              },
+            },
+          );
+        }
+      }
+      if (error.code === 11000) {
+        throw new ConflictError('The retailer connection changed. Please retry the invitation.', 'RELATIONSHIP_CHANGED');
+      }
+      throw error;
+    } finally {
+      if (session) await session.endSession();
+    }
+
+    return {
+      message: 'Successfully switched to the invited wholesaler.',
+      relationship,
+    };
   }
 }
 

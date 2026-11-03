@@ -116,11 +116,17 @@ const validateCategoryAttributes = async (req, requireCategory = false) => {
   const { categoryId, categoryName: inputCategoryName, categoryAttributes = {} } = req.body;
 
   let categoryName = inputCategoryName || '';
+  let subcategoryName = '';
   if (categoryId) {
     const catDoc = await Category.findById(categoryId);
     if (catDoc) {
       categoryName = catDoc.name;
     }
+  }
+  const subcategoryId = req.body.subcategoryId || req.body.subCategory || req.body.subSubcategoryId;
+  if (subcategoryId && /^[0-9a-fA-F]{24}$/.test(String(subcategoryId))) {
+    const subcategoryDoc = await Category.findById(subcategoryId);
+    if (subcategoryDoc) subcategoryName = subcategoryDoc.name;
   }
 
   if (!categoryName && !categoryId) {
@@ -128,7 +134,7 @@ const validateCategoryAttributes = async (req, requireCategory = false) => {
     return;
   }
 
-  const schemaDefs = getCategoryAttributeSchema(categoryName);
+  const schemaDefs = getCategoryAttributeSchema(categoryName, subcategoryName);
   if (!schemaDefs || schemaDefs.length === 0) return;
 
   // Merge root fields like sizes and colors into attrs map for unified checking
@@ -200,25 +206,28 @@ const validateProductUpdateMiddleware = async (req, res, next) => {
   validateUpdateProductBody(req, res, async (validationError) => {
     if (validationError) return next(validationError);
 
-    // Only validate category attributes if categoryId is sent AND it actually changes
+    // Validate category attributes when either the category or its selected subcategory changes.
     const incomingCatId = req.body.categoryId || (String(req.body.category).match(/^[0-9a-fA-F]{24}$/) ? req.body.category : null);
-    if (!incomingCatId) return next();
+    const incomingSubcategoryId = req.body.subcategoryId || req.body.subCategory || req.body.subSubcategoryId;
+    const hasIncomingSubcategory = ['subcategoryId', 'subCategory', 'subSubcategoryId'].some((field) => Object.prototype.hasOwnProperty.call(req.body, field));
+    if (!incomingCatId && !hasIncomingSubcategory) return next();
 
     try {
       const currentProduct = await Product.findOne({
         _id: req.params.id,
         isDeleted: false,
-      }).select('categoryId category');
+      }).select('categoryId category subcategoryId subCategory subSubcategoryId');
 
       if (!currentProduct) return next();
 
       const currentCatId = currentProduct.categoryId || currentProduct.category;
-      if (String(currentCatId) === String(incomingCatId)) {
-        // Category is not changing; do not re-validate category attributes on legacy products
+      const currentSubcategoryId = currentProduct.subcategoryId || currentProduct.subCategory || currentProduct.subSubcategoryId;
+      const categoryChanged = incomingCatId && String(currentCatId) !== String(incomingCatId);
+      const subcategoryChanged = hasIncomingSubcategory && String(currentSubcategoryId || '') !== String(incomingSubcategoryId || '');
+      if (!categoryChanged && !subcategoryChanged) {
         return next();
       }
 
-      // Category is changing to a new category -> validate against new category schema
       await validateCategoryAttributes(req, false);
       return next();
     } catch (err) {

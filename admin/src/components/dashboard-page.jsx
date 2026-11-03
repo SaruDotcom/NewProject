@@ -5,9 +5,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -36,7 +33,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DataTable,
   EmptyState,
   StatCard,
   SectionCard,
@@ -80,11 +76,9 @@ export function DashboardPage() {
     error: recentError,
   } = useAdminDashboardRecent(refreshKey);
 
-  const recentOrders = recent.recentOrders || [];
   const recentRegistrations = recent.recentRegistrations || [];
   const pendingApprovals = recent.pendingApprovals || [];
-  const topWholesalers = charts.topWholesalers || [];
-  const topRetailers = charts.topRetailers || [];
+  const recentSubscriptionActivities = recent.recentSubscriptionActivities || [];
   const adminName = getAdminUser()?.name?.trim().split(/\s+/)[0] || "Admin";
   const pendingKycCount =
     stats?.pendingKyc ??
@@ -101,17 +95,18 @@ export function DashboardPage() {
     orders: (charts.ordersOverTime || [])[index]?.orders || 0,
   }));
 
-  const statusColors = [
-    "var(--color-primary)",
-    "var(--color-success)",
-    "var(--color-warning)",
-    "var(--color-destructive)",
-    "var(--color-muted-foreground)",
-  ];
-
   const formatNumber = (value) => Number(value || 0).toLocaleString("en-IN");
   const formatCurrency = (value) =>
     `₹${Number(value || 0).toLocaleString("en-IN")}`;
+  const formatActivityDate = (value) => (
+    value ? new Date(value).toLocaleDateString("en-IN") : "—"
+  );
+  const subscriptionPlans = [
+    { key: "WHOLESALER_MONTHLY", name: "Basic Monthly", price: "₹299", duration: "1 Month" },
+    { key: "WHOLESALER_ANNUAL", name: "Basic Yearly", price: "₹2,499", duration: "1 Year" },
+    { key: "WHOLESALER_499", name: "Pro Monthly", price: "₹499", duration: "1 Month" },
+    { key: "WHOLESALER_PRO_YEARLY", name: "Pro Yearly", price: "₹4,999", duration: "1 Year" },
+  ];
 
   const chartError = chartsError
     ? `Unable to load dashboard charts: ${chartsError}`
@@ -120,32 +115,6 @@ export function DashboardPage() {
   const recentErrorMessage = recentError
     ? `Unable to load recent records: ${recentError}`
     : null;
-
-  const orderColumns = [
-    {
-      key: "id",
-      label: "Order ID",
-      render: (r) => <span className="font-semibold text-primary">{r.id}</span>,
-    },
-    {
-      key: "retailer",
-      label: "Retailer",
-    },
-    {
-      key: "wholesaler",
-      label: "Wholesaler",
-    },
-    {
-      key: "amountLabel",
-      label: "Amount",
-      className: "text-right font-medium",
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: (r) => <StatusBadge status={r.status} />,
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -256,9 +225,9 @@ export function DashboardPage() {
       </section>
 
       {/* Top Metrics Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-3.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 xl:grid-cols-3">
         {statsLoading ? (
-          Array.from({ length: 10 }, (_, index) => (
+          Array.from({ length: 3 }, (_, index) => (
             <div
               key={`stats-loading-${index}`}
               className="admin-card skeleton-shimmer h-28"
@@ -279,13 +248,11 @@ export function DashboardPage() {
               onClick={() => navigate({ to: "/wholesalers" })}
             />
             <StatCard
-              label="Active Wholesalers"
-              value={formatNumber(stats.activeWholesalers)}
+              label="Subscription Users"
+              value={formatNumber(stats.subscriptionUsers)}
               icon={Users}
               tone="success"
-              onClick={() =>
-                navigate({ to: "/wholesalers", search: { status: "Active" } })
-              }
+              onClick={() => navigate({ to: "/subscriptions" })}
             />
             {/* <StatCard
               label="Pending Orders"
@@ -322,15 +289,6 @@ export function DashboardPage() {
               onClick={() => navigate({ to: "/products" })}
             /> */}
             <StatCard
-              label="Total Orders"
-              value={formatNumber(stats.totalOrders)}
-              icon={ClipboardList}
-              tone="primary"
-              sparkline={salesTrend.map((row) => row.orders)}
-              change={percentChange(salesTrend.map((row) => row.orders))}
-              onClick={() => navigate({ to: "/orders" })}
-            />
-            <StatCard
               label="Transaction Amount"
               value={formatCurrency(stats.totalTransactionAmount)}
               icon={TrendingUp}
@@ -356,6 +314,131 @@ export function DashboardPage() {
           </>
         )}
       </div>
+
+      <section className="admin-card overflow-hidden rounded-xl border border-primary/15 bg-card p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-bold tracking-tight text-foreground">
+            Subscription Plans
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Active wholesalers currently subscribed to each plan.
+          </p>
+        </div>
+        {statsLoading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {subscriptionPlans.map((plan) => (
+              <div
+                key={plan.key}
+                className="admin-card skeleton-shimmer h-28"
+                aria-label={`Loading ${plan.name} subscriber count`}
+              />
+            ))}
+          </div>
+        ) : statsError ? (
+          <p className="text-sm text-destructive">
+            Unable to load subscription plan counts: {statsError}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {subscriptionPlans.map((plan) => (
+              <article
+                key={plan.key}
+                className="admin-card relative min-w-0 overflow-hidden rounded-lg border border-primary/15 bg-background p-4 shadow-xs"
+              >
+                <div className="absolute inset-x-0 top-0 h-0.5 bg-primary" />
+                <h3 className="truncate text-xs font-semibold text-muted-foreground">
+                  {plan.name}
+                </h3>
+                <p className="mt-2 text-lg font-bold tracking-tight text-foreground">
+                  {plan.price}
+                  <span className="ml-1 text-xs font-medium text-muted-foreground">
+                    / {plan.duration}
+                  </span>
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  <span className="font-bold tabular-nums text-primary">
+                    {formatNumber(stats.subscriptionPlanCounts?.[plan.key] ?? 0)}
+                  </span>{" "}
+                  wholesalers
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <SectionCard
+        title="Recent Subscription Activities"
+        description="Latest purchases, renewals, upgrades, and pending payment attempts."
+        action={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 text-xs"
+            onClick={() => navigate({ to: "/subscription-plan" })}
+          >
+            View All
+            <ArrowUpRight className="ml-1.5 size-3.5" />
+          </Button>
+        }
+      >
+        {recentLoading ? (
+          <div
+            className="skeleton-shimmer h-36 rounded-lg"
+            aria-label="Loading subscription activities"
+          />
+        ) : recentErrorMessage ? (
+          <p className="text-sm text-destructive">
+            Unable to load subscription activities: {recentErrorMessage}
+          </p>
+        ) : recentSubscriptionActivities.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No subscription activities available.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-xs">
+              <thead>
+                <tr className="border-b text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2.5 font-semibold">Wholesaler / Business</th>
+                  <th className="px-3 py-2.5 font-semibold">Owner</th>
+                  <th className="px-3 py-2.5 font-semibold">Plan</th>
+                  <th className="px-3 py-2.5 font-semibold">Amount</th>
+                  <th className="px-3 py-2.5 font-semibold">Purchase / Activation</th>
+                  <th className="px-3 py-2.5 font-semibold">Expiry</th>
+                  <th className="px-3 py-2.5 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentSubscriptionActivities.slice(0, 8).map((activity) => (
+                  <tr key={activity.id} className="border-b border-border/60 last:border-0">
+                    <td className="px-3 py-3 font-semibold text-foreground">
+                      {activity.businessName}
+                    </td>
+                    <td className="px-3 py-3 text-muted-foreground">
+                      {activity.ownerName}
+                    </td>
+                    <td className="px-3 py-3">{activity.planName}</td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {formatCurrency(activity.amount)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {formatActivityDate(activity.purchaseDate)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {formatActivityDate(activity.expiryDate)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <StatusBadge status={activity.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
 
       <SectionCard
         title="Needs attention"
@@ -527,25 +610,8 @@ export function DashboardPage() {
         </SectionCard>
       </div>
 
-      {/* Recent Orders & Approvals Section */}
-      <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
-        <div className="space-y-3">
-          <h2 className="text-sm font-bold tracking-tight text-foreground">
-            Recent Orders
-          </h2>
-          <DataTable
-            data={recentOrders}
-            columns={orderColumns}
-            searchKeys={["id", "retailer", "wholesaler"]}
-            filters={["Pending", "Processing", "Shipped", "Delivered"]}
-            detailPath={(r) => `/orders/${r.id}`}
-            pageSize={5}
-            bulk={false}
-            emptyTitle="No recent orders yet"
-            emptyDescription="Orders will appear here once retailers place them."
-          />
-        </div>
-
+      {/* Pending approvals */}
+      <div className="grid gap-5">
         <SectionCard
           title="Pending Approvals"
           description="Wholesaler accounts awaiting verification"
@@ -594,7 +660,7 @@ export function DashboardPage() {
       </div>
 
       {/* Bottom Lists & Rankings */}
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-5">
         <SectionCard
           title="Recent Registrations"
           description="Latest platform user accounts"
@@ -674,78 +740,6 @@ export function DashboardPage() {
             ))
           )}
         </SectionCard> */}
-
-        <SectionCard
-          title="Orders Distribution"
-          description={`${range} · by status`}
-        >
-          {chartLoading ? (
-            <div className="skeleton-shimmer h-40 rounded" />
-          ) : chartError ? (
-            <p className="text-xs text-destructive">{chartError}</p>
-          ) : (
-            <div>
-              <div className="relative h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={charts.ordersByStatus}
-                      dataKey="orders"
-                      nameKey="status"
-                      innerRadius={48}
-                      outerRadius={70}
-                      paddingAngle={3}
-                      cornerRadius={5}
-                    >
-                      {(charts.ordersByStatus || []).map((entry, index) => (
-                        <Cell
-                          key={`cell-${entry.status}`}
-                          fill={statusColors[index % statusColors.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      content={<RoundedTooltip formatValue={formatNumber} />}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold tracking-tight text-foreground">
-                    {formatNumber(
-                      (charts.ordersByStatus || []).reduce(
-                        (total, item) => total + Number(item.orders || 0),
-                        0,
-                      ),
-                    )}
-                  </span>
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    Orders
-                  </span>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
-                {(charts.ordersByStatus || []).map((entry, index) => (
-                  <div
-                    key={entry.status}
-                    className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"
-                  >
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          statusColors[index % statusColors.length],
-                      }}
-                    />
-                    <span className="truncate">{entry.status}</span>
-                    <span className="ml-auto font-semibold text-foreground">
-                      {formatNumber(entry.orders)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </SectionCard>
       </div>
     </div>
   );
@@ -813,20 +807,6 @@ function RoundedTooltip({
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function Rank({ rank, name, value }) {
-  return (
-    <div className="flex items-center gap-3 border-b border-border/50 py-2.5 last:border-0">
-      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
-        {rank}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
-        {name}
-      </span>
-      <span className="text-xs font-bold text-foreground">{value}</span>
     </div>
   );
 }

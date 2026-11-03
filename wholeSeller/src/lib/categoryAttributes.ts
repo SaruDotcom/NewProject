@@ -318,6 +318,107 @@ export const CATEGORY_ATTRIBUTES: Record<string, CategoryAttributeDef[]> = {
   ],
 };
 
+export const PRODUCT_TYPE_ATTRIBUTES: Record<string, CategoryAttributeDef[]> = {
+  clothing: [
+    { key: 'size', label: 'Size', type: 'multiselect', required: false, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'] },
+    { key: 'fitType', label: 'Fit Type', type: 'select', required: false, options: ['Slim Fit', 'Regular Fit', 'Relaxed Fit', 'Oversized', 'Straight Fit'] },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+  ],
+  saree: [
+    { key: 'fabric', label: 'Fabric', type: 'text', required: false },
+    { key: 'sareeLength', label: 'Saree Length', type: 'text', required: false },
+    { key: 'blousePiece', label: 'Blouse Piece', type: 'select', required: false, options: ['Included', 'Not Included'] },
+    { key: 'pattern', label: 'Pattern', type: 'text', required: false },
+    { key: 'workType', label: 'Work Type', type: 'text', required: false },
+    { key: 'occasion', label: 'Occasion', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+  ],
+  kurti: [
+    { key: 'size', label: 'Size', type: 'multiselect', required: false, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'] },
+    { key: 'fitType', label: 'Fit Type', type: 'select', required: false, options: ['Slim Fit', 'Regular Fit', 'Relaxed Fit', 'Oversized', 'Straight Fit'] },
+    { key: 'sleeveLength', label: 'Sleeve Length', type: 'text', required: false },
+    { key: 'neckType', label: 'Neck Type', type: 'text', required: false },
+    { key: 'fabric', label: 'Fabric', type: 'text', required: false },
+    { key: 'pattern', label: 'Pattern', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+  ],
+  lehenga: [
+    { key: 'size', label: 'Size', type: 'multiselect', required: false, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'] },
+    { key: 'blouseDesign', label: 'Blouse Design', type: 'text', required: false },
+    { key: 'dupatta', label: 'Dupatta', type: 'select', required: false, options: ['Included', 'Not Included'] },
+    { key: 'fabric', label: 'Fabric', type: 'text', required: false },
+    { key: 'workType', label: 'Work Type', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+  ],
+  western_wear: [
+    { key: 'size', label: 'Size', type: 'multiselect', required: false, options: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'] },
+    { key: 'fitType', label: 'Fit Type', type: 'select', required: false, options: ['Slim Fit', 'Regular Fit', 'Relaxed Fit', 'Oversized', 'Straight Fit'] },
+    { key: 'sleeveType', label: 'Sleeve Type', type: 'text', required: false },
+    { key: 'neckType', label: 'Neck Type', type: 'text', required: false },
+    { key: 'length', label: 'Length', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+  ],
+  footwear: [
+    { key: 'size', label: 'Shoe Size', type: 'multiselect', required: false, options: ['UK 3', 'UK 4', 'UK 5', 'UK 6', 'UK 7', 'UK 8', 'UK 9', 'UK 10', 'UK 11', 'UK 12'] },
+    { key: 'material', label: 'Material', type: 'text', required: false },
+    { key: 'style', label: 'Style', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+  ],
+  electronics: [
+    { key: 'brand', label: 'Brand', type: 'text', required: false },
+    { key: 'model', label: 'Model', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+    { key: 'storageCapacity', label: 'Storage Capacity', type: 'text', required: false },
+    { key: 'ram', label: 'RAM', type: 'text', required: false },
+    { key: 'screenSize', label: 'Screen Size', type: 'text', required: false },
+    { key: 'warranty', label: 'Warranty', type: 'text', required: false },
+    { key: 'compatibility', label: 'Compatibility', type: 'text', required: false },
+  ],
+  beauty_personal_care: [
+    { key: 'skinType', label: 'Skin Type', type: 'select', required: false, options: ['All Skin Types', 'Oily', 'Dry', 'Sensitive', 'Combination', 'Normal'] },
+    { key: 'productType', label: 'Product Type', type: 'text', required: false },
+    { key: 'ingredients', label: 'Ingredients', type: 'text', required: false },
+    { key: 'netQuantity', label: 'Net Quantity', type: 'text', required: false },
+    { key: 'spf', label: 'SPF', type: 'number', required: false },
+    { key: 'fragrance', label: 'Fragrance', type: 'text', required: false },
+    { key: 'expiryDate', label: 'Expiry Date', type: 'date', required: false },
+    { key: 'suitableFor', label: 'Suitable For', type: 'text', required: false },
+  ],
+  grocery: [
+    { key: 'netQuantity', label: 'Weight / Quantity', type: 'text', required: false },
+    { key: 'unit', label: 'Unit', type: 'select', required: false, options: ['kg', 'g', 'litre', 'ml', 'pieces'] },
+    { key: 'brand', label: 'Brand', type: 'text', required: false },
+    { key: 'packagingType', label: 'Packaging Type', type: 'text', required: false },
+    { key: 'expiryDate', label: 'Expiry Date', type: 'date', required: false },
+  ],
+  home_kitchen: [
+    { key: 'material', label: 'Material', type: 'text', required: false },
+    { key: 'dimensions', label: 'Dimensions', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+    { key: 'weight', label: 'Weight', type: 'text', required: false },
+    { key: 'capacity', label: 'Capacity', type: 'text', required: false },
+    { key: 'usageType', label: 'Usage Type', type: 'text', required: false },
+  ],
+  jewelry: [
+    { key: 'material', label: 'Material', type: 'text', required: false },
+    { key: 'color', label: 'Color', type: 'multiselect', required: false },
+    { key: 'size', label: 'Size', type: 'text', required: false },
+    { key: 'type', label: 'Type', type: 'text', required: false },
+    { key: 'design', label: 'Design', type: 'text', required: false },
+    { key: 'occasion', label: 'Occasion', type: 'text', required: false },
+  ],
+};
+
+function normalizeProductType(nameOrSlug: string | undefined): string | null {
+  const str = String(nameOrSlug || '').toLowerCase().trim().replace(/[-_]+/g, ' ');
+  if (str.includes('saree') || str.includes('sari')) return 'saree';
+  if (str.includes('kurti')) return 'kurti';
+  if (str.includes('lehenga')) return 'lehenga';
+  if (str.includes('western')) return 'western_wear';
+  if (str.includes('footwear') || str.includes('shoe') || str.includes('sandal') || str.includes('slipper')) return 'footwear';
+  return null;
+}
+
 export function normalizeCategoryKey(nameOrSlug: string): string | null {
   if (!nameOrSlug) return null;
   const str = String(nameOrSlug).toLowerCase().trim();
@@ -344,10 +445,14 @@ export function normalizeCategoryKey(nameOrSlug: string): string | null {
     return 'jewelry';
   }
 
-  return null;
+  const configuredKey = str.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return PRODUCT_TYPE_ATTRIBUTES[configuredKey] ? configuredKey : null;
 }
 
-export function getCategoryAttributeSchema(categoryNameOrSlug: string): CategoryAttributeDef[] {
+export function getCategoryAttributeSchema(categoryNameOrSlug: string, subcategoryNameOrSlug?: string): CategoryAttributeDef[] {
+  const productType = normalizeProductType(subcategoryNameOrSlug);
+  if (productType) return PRODUCT_TYPE_ATTRIBUTES[productType] || [];
+
   const normalizedKey = normalizeCategoryKey(categoryNameOrSlug);
-  return normalizedKey ? CATEGORY_ATTRIBUTES[normalizedKey] || [] : [];
+  return normalizedKey ? PRODUCT_TYPE_ATTRIBUTES[normalizedKey] || CATEGORY_ATTRIBUTES[normalizedKey] || [] : [];
 }

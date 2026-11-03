@@ -18,6 +18,7 @@ function periodLabel(period) {
 export function SubscriptionPlanPage() {
   const [plans, setPlans] = useState([]);
   const [subscribers, setSubscribers] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [planCounts, setPlanCounts] = useState({});
   const [featureDrafts, setFeatureDrafts] = useState({});
   const [newFeature, setNewFeature] = useState({});
@@ -38,9 +39,13 @@ export function SubscriptionPlanPage() {
     setLoading(true);
     setError("");
     try {
-      const result = await apiGet(PLAN_ENDPOINT);
+      const [result, activityRows] = await Promise.all([
+        apiGet(PLAN_ENDPOINT),
+        apiGet("/admin/dashboard/subscription-activities"),
+      ]);
       setPlans(result.plans || []);
       setSubscribers(result.subscribers || []);
+      setActivities(Array.isArray(activityRows) ? activityRows : []);
       setPlanCounts(result.planCounts || {});
       setFeatureDrafts(Object.fromEntries((result.plans || []).flatMap((plan) => (
         plan.features.map((feature) => [feature.id, feature.title])
@@ -320,6 +325,38 @@ export function SubscriptionPlanPage() {
                 </tr>
               ))}
               {!subscribers.length && <tr><td colSpan="7" className="p-6 text-center text-muted-foreground">No subscriptions recorded yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Subscription activity history" description={`${activities.length} purchase and activation records`}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead>
+              <tr className="border-b text-xs uppercase text-muted-foreground">
+                <th className="p-3">Wholesaler / Business</th>
+                <th className="p-3">Owner</th>
+                <th className="p-3">Subscription plan</th>
+                <th className="p-3">Amount</th>
+                <th className="p-3">Purchase / activation</th>
+                <th className="p-3">Expiry</th>
+                <th className="p-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activities.map((activity) => (
+                <tr key={activity.id} className="border-b last:border-0">
+                  <td className="p-3 font-semibold">{activity.businessName}</td>
+                  <td className="p-3">{activity.ownerName}</td>
+                  <td className="p-3">{activity.planName}</td>
+                  <td className="p-3 tabular-nums">₹{Number(activity.amount).toLocaleString("en-IN")}</td>
+                  <td className="p-3">{activity.purchaseDate ? new Date(activity.purchaseDate).toLocaleDateString("en-IN") : "—"}</td>
+                  <td className="p-3">{activity.expiryDate ? new Date(activity.expiryDate).toLocaleDateString("en-IN") : "—"}</td>
+                  <td className="p-3">{activity.status}</td>
+                </tr>
+              ))}
+              {!activities.length && <tr><td colSpan="7" className="p-6 text-center text-muted-foreground">No subscription activity recorded yet.</td></tr>}
             </tbody>
           </table>
         </div>

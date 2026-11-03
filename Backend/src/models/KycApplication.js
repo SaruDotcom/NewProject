@@ -12,17 +12,16 @@ const kycApplicationSchema = new mongoose.Schema(
     },
     businessName: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
     ownerName: {
       type: String,
-      required: true,
       trim: true,
+      default: '',
     },
     businessType: {
       type: String,
-      required: true,
       default: 'Proprietorship',
     },
     pan: {
@@ -43,10 +42,10 @@ const kycApplicationSchema = new mongoose.Schema(
       default: '',
     },
     registeredAddress: {
-      street: { type: String, required: true },
-      city: { type: String, required: true },
-      state: { type: String, required: true },
-      pincode: { type: String, required: true },
+      street: { type: String, default: '' },
+      city: { type: String, default: '' },
+      state: { type: String, default: '' },
+      pincode: { type: String, default: '' },
       country: { type: String, default: 'India' },
     },
     bankDetails: {

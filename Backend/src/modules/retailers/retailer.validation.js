@@ -82,9 +82,10 @@ const checkoutSchema = Joi.object({
     phone: Joi.string().trim().optional(),
   }).optional(),
   paymentMethod: Joi.string()
-    .valid('COD', 'CREDIT', 'UPI')
-    .default('COD'),
+    .valid('CREDIT', 'UPI')
+    .default('UPI'),
   couponCode: Joi.string().trim().allow('', null).optional(),
+  expectedQuoteHash: Joi.string().hex().length(64).optional(),
   idempotencyKey: Joi.string().trim().optional(),
   notes: Joi.string().trim().allow('', null).optional(),
 });
@@ -244,6 +245,13 @@ const acceptInviteSchema = Joi.object({
   }),
 });
 
+const switchWholesalerSchema = Joi.object({
+  referralCode: Joi.string().trim().uppercase().pattern(/^[A-Z0-9]{6}$/).required().messages({
+    'string.pattern.base': 'Referral code must be six letters or numbers',
+    'any.required': 'Referral code is required',
+  }),
+});
+
 const cancelOrderSchema = Joi.object({
   reason: Joi.string().trim().valid('Ordered by mistake', 'Found better price', 'Delivery too slow', 'Other').required().messages({
     'any.only': 'Select a valid cancellation reason',
@@ -265,5 +273,6 @@ module.exports = {
   updateProfileSchema,
   updateBusinessProfileSchema,
   acceptInviteSchema,
+  switchWholesalerSchema,
   cancelOrderSchema,
 };

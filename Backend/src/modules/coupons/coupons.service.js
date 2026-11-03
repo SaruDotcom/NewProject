@@ -256,6 +256,7 @@ class CouponService {
       code: cleanCode,
       isActive: true,
       isDeleted: false,
+      applicableFor: { $in: ['RETAILER_ORDER', 'ALL'] },
     });
 
     if (!coupon) {
@@ -341,29 +342,54 @@ class CouponService {
   static async incrementCouponUsage(couponId, retailerId) {
     if (!couponId) return;
 
-    const coupon = await Coupon.findById(couponId);
-    if (!coupon) return;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const coupon = await Coupon.findOne({ _id: couponId, isActive: true, isDeleted: false });
+      if (!coupon) throw new BadRequestError('This coupon is no longer available.', 'INVALID_COUPON');
 
-    coupon.usageCount = (coupon.usageCount || 0) + 1;
+      const retailerUsage = coupon.perRetailerUsage?.find(
+        (usage) => String(usage.retailerId) === String(retailerId)
+      );
+      if (coupon.usageLimit > 0 && coupon.usageCount >= coupon.usageLimit) {
+        throw new BadRequestError('Coupon usage limit has been reached', 'USAGE_LIMIT_EXCEEDED');
+      }
+      if (coupon.perRetailerLimit > 0 && (retailerUsage?.count || 0) >= coupon.perRetailerLimit) {
+        throw new BadRequestError('You have already reached the usage limit for this coupon', 'PER_USER_LIMIT_EXCEEDED');
+      }
 
-    if (!Array.isArray(coupon.perRetailerUsage)) {
-      coupon.perRetailerUsage = [];
+      const now = new Date();
+      const filter = {
+        _id: couponId,
+        isActive: true,
+        isDeleted: false,
+        ...(coupon.usageLimit > 0 ? { usageCount: { $lt: coupon.usageLimit } } : {}),
+        ...(coupon.perRetailerLimit > 0
+          ? {
+              perRetailerUsage: {
+                $not: { $elemMatch: { retailerId, count: { $gte: coupon.perRetailerLimit } } },
+              },
+            }
+          : {}),
+        $and: [
+          { $or: [{ validFrom: { $exists: false } }, { validFrom: { $lte: now } }] },
+          { $or: [{ validUntil: null }, { validUntil: { $exists: false } }, { validUntil: { $gte: now } }] },
+        ],
+      };
+      const usageUpdate = retailerUsage
+        ? {
+            $inc: { usageCount: 1, 'perRetailerUsage.$.count': 1 },
+          }
+        : {
+            $inc: { usageCount: 1 },
+            $push: { perRetailerUsage: { retailerId, count: 1 } },
+          };
+      const usageFilter = retailerUsage
+        ? { ...filter, 'perRetailerUsage.retailerId': retailerId }
+        : { ...filter, perRetailerUsage: { $not: { $elemMatch: { retailerId } } } };
+      const updatedCoupon = await Coupon.findOneAndUpdate(usageFilter, usageUpdate, { new: true });
+      if (updatedCoupon) return;
     }
 
-    const index = coupon.perRetailerUsage.findIndex(
-      (u) => String(u.retailerId) === String(retailerId)
-    );
-
-    if (index >= 0) {
-      coupon.perRetailerUsage[index].count += 1;
-    } else {
-      coupon.perRetailerUsage.push({
-        retailerId,
-        count: 1,
-      });
-    }
-
-    await coupon.save();
+    throw new BadRequestError('Coupon usage limit has been reached', 'USAGE_LIMIT_EXCEEDED');
   }
 }
 

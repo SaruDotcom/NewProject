@@ -33,6 +33,12 @@ const wholesalerProfileSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    businessTagline: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: [160, 'Business tagline cannot exceed 160 characters'],
+    },
     businessLogoUrl: {
       type: String,
       default: '',

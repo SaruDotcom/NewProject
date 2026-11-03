@@ -11,6 +11,7 @@ router.use(authenticate, authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
 // Dashboard
 router.get('/dashboard/stats', adminController.getDashboardStats);
 router.get('/dashboard/charts/:chartType', adminController.getDashboardChart);
+router.get('/dashboard/subscription-activities', adminController.getDashboardSubscriptionActivities);
 router.get('/dashboard/recent', adminController.getDashboardRecent);
 router.get('/dashboard', adminController.getDashboard);
 router.get('/analytics', adminController.getAnalytics);

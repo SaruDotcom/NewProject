@@ -163,6 +163,10 @@ class RetailerController {
     const order = await RetailerService.checkout(req.user, req.body, req);
     return ApiResponse.created(res, order, 'Order placed successfully');
   });
+  quoteCheckout = asyncHandler(async (req, res) => {
+    const quote = await RetailerService.checkout(req.user, req.body, req, true);
+    return ApiResponse.success(res, quote, 'Checkout pricing retrieved');
+  });
 
   // Orders
   getOrders = asyncHandler(async (req, res) => {
@@ -282,8 +286,8 @@ class RetailerController {
   });
 
   getTransactions = asyncHandler(async (req, res) => {
-    const { transactions, meta } = await RetailerService.getTransactions(req.user._id, req.query);
-    return ApiResponse.paginated(res, transactions, meta, 'Transactions retrieved successfully');
+    const { transactions, summary, meta } = await RetailerService.getTransactions(req.user._id, req.query);
+    return ApiResponse.success(res, { transactions, summary, meta }, 'Transactions retrieved successfully');
   });
 
   getAnalytics = asyncHandler(async (req, res) => {
@@ -314,6 +318,11 @@ class RetailerController {
   acceptInvitation = asyncHandler(async (req, res) => {
     const result = await RetailerService.acceptInvitation(req.user, req.body.token, req);
     return ApiResponse.success(res, result, 'Wholesaler invitation accepted successfully');
+  });
+
+  switchWholesaler = asyncHandler(async (req, res) => {
+    const result = await RetailerService.switchWholesalerByReferral(req.user, req.body.referralCode);
+    return ApiResponse.success(res, result, result.message);
   });
 }
 

@@ -41,6 +41,25 @@ class OrderController {
     return ApiResponse.success(res, order, 'Order status updated successfully');
   });
 
+  uploadShippingDocument = asyncHandler(async (req, res) => {
+    const { BadRequestError } = require('../../utils/errors');
+    if (!req.file) {
+      throw new BadRequestError('Shipping document or bilty file is required', 'FILE_REQUIRED');
+    }
+    const host = `${req.protocol}://${req.get('host')}`;
+    const url = `${host}/uploads/shipping/${req.file.filename}`;
+    return ApiResponse.success(
+      res,
+      {
+        url,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+      },
+      'Shipping document uploaded successfully'
+    );
+  });
+
   listReturns = asyncHandler(async (req, res) => {
     const { returns, meta } = await OrderService.listReturns(req.user, req.query);
     return ApiResponse.paginated(res, returns, meta, 'Returns retrieved successfully');

@@ -4,6 +4,10 @@ const { setupTestDB, clearDatabase } = require('./setup');
 const { User, Category, Product, WholesalerProfile, WholesalerSubscription } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
+const {
+  getCategoryAttributeSchema,
+  PRODUCT_TYPE_ATTRIBUTES,
+} = require('../src/config/categoryAttributes');
 
 setupTestDB();
 
@@ -74,7 +78,7 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
     groceryCategory = await Category.create({ name: 'Grocery & FMCG', slug: 'grocery-fmcg' });
   });
 
-  test('1. Submitting an Electronics product without warrantyPeriod fails with 400', async () => {
+  test('1. Electronics specifications are optional and configured attributes are accepted', async () => {
     const res = await request(app)
       .post('/api/v1/wholesaler/products')
       .set('Authorization', `Bearer ${wholesalerToken}`)
@@ -87,17 +91,15 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         moq: 5,
         stock: 50,
         categoryAttributes: {
-          modelNumber: 'BH-500',
-          // warrantyPeriod is intentionally omitted
+          model: 'BH-500',
         },
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/warrantyPeriod/i);
+    expect(res.status).toBe(201);
+    expect(res.body.data.product.categoryAttributes.model).toBe('BH-500');
   });
 
-  test('2. Submitting a Clothing product without size/color fails with 400', async () => {
+  test('2. Clothing product can be submitted without optional size and color attributes', async () => {
     const res = await request(app)
       .post('/api/v1/wholesaler/products')
       .set('Authorization', `Bearer ${wholesalerToken}`)
@@ -109,18 +111,13 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         costPrice: 250,
         moq: 10,
         stock: 100,
-        categoryAttributes: {
-          fabric: '100% Cotton',
-          // size and color are intentionally omitted
-        },
+        categoryAttributes: {},
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/required for category/i);
+    expect(res.status).toBe(201);
   });
 
-  test('3. Submitting a Grocery product without expiryDate or fssaiLicense fails with 400', async () => {
+  test('3. Grocery attributes are optional and use the updated attribute configuration', async () => {
     const res = await request(app)
       .post('/api/v1/wholesaler/products')
       .set('Authorization', `Bearer ${wholesalerToken}`)
@@ -134,14 +131,13 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         stock: 200,
         categoryAttributes: {
           netQuantity: '5 kg',
-          vegNonVeg: 'Vegetarian',
-          // expiryDate and fssaiLicense intentionally omitted
+          unit: 'kg',
+          packagingType: 'Bag',
         },
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/required for category/i);
+    expect(res.status).toBe(201);
+    expect(res.body.data.product.categoryAttributes.packagingType).toBe('Bag');
   });
 
   test('4. Submitting a valid Electronics product passes validation and saves categoryAttributes', async () => {
@@ -157,14 +153,14 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         moq: 5,
         stock: 30,
         categoryAttributes: {
-          modelNumber: 'EP-100',
-          warrantyPeriod: '1 Year Manufacturer Warranty',
+          model: 'EP-100',
+          warranty: '1 Year Manufacturer Warranty',
         },
       });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.product.categoryAttributes.warrantyPeriod).toBe('1 Year Manufacturer Warranty');
+    expect(res.body.data.product.categoryAttributes.warranty).toBe('1 Year Manufacturer Warranty');
   });
 
   test('Wholesaler cannot create categories before KYC approval', async () => {
@@ -325,8 +321,8 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         moq: 2,
         stock: 20,
         categoryAttributes: {
-          modelNumber: 'ALPHA-01',
-          warrantyPeriod: '6 Months Manufacturer Warranty',
+          model: 'ALPHA-01',
+          warranty: '6 Months Manufacturer Warranty',
         },
       });
 
@@ -407,7 +403,7 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         costPrice: 250,
         moq: 10,
         stock: 100,
-        categoryAttributes: { fabric: 'Cotton', size: ['M'], color: ['Blue'] },
+        categoryAttributes: { size: ['M'], fitType: 'Regular Fit', color: ['#3B82F6'] },
       });
 
     expect(validResponse.status).toBe(201);
@@ -425,10 +421,93 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
         costPrice: 250,
         moq: 10,
         stock: 100,
-        categoryAttributes: { modelNumber: 'WRONG-CAT-01', warrantyPeriod: '1 Year' },
+        categoryAttributes: { model: 'WRONG-CAT-01', warranty: '1 Year' },
       });
 
     expect(invalidResponse.status).toBe(400);
     expect(invalidResponse.body.message).toMatch(/must belong to the selected main category/i);
+  });
+
+  test('Product attributes follow the selected specific item type', async () => {
+    const sareeCategory = await Category.create({
+      name: 'Sarees',
+      slug: 'sarees',
+      parentId: clothingCategory._id,
+      wholesalerId: wholesalerUser._id,
+    });
+
+    const response = await request(app)
+      .post('/api/v1/wholesaler/products')
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({
+        name: 'Printed Cotton Saree',
+        sku: 'SAREE-PRINT-01',
+        categoryId: clothingCategory._id,
+        subcategoryId: sareeCategory._id,
+        wholesalePrice: 900,
+        costPrice: 500,
+        moq: 1,
+        stock: 10,
+        categoryAttributes: {
+          fabric: 'Cotton',
+          sareeLength: '5.5 m',
+          blousePiece: 'Included',
+          pattern: 'Printed',
+          workType: 'Block Print',
+          occasion: 'Casual',
+          color: ['#EF4444'],
+        },
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.product.categoryAttributes.sareeLength).toBe('5.5 m');
+  });
+
+  test('New category schemas can be added centrally without changing the product form', () => {
+    PRODUCT_TYPE_ATTRIBUTES.office_supplies = [
+      { key: 'material', label: 'Material', type: 'text', required: false },
+    ];
+
+    try {
+      expect(getCategoryAttributeSchema('Office Supplies')).toEqual(PRODUCT_TYPE_ATTRIBUTES.office_supplies);
+    } finally {
+      delete PRODUCT_TYPE_ATTRIBUTES.office_supplies;
+    }
+  });
+
+  test('Clearing GST details also clears the product tax configuration', async () => {
+    const createResponse = await request(app)
+      .post('/api/v1/wholesaler/products')
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({
+        name: 'Smartphone With Tax',
+        sku: 'PHONE-TAX-01',
+        categoryId: electronicsCategory._id,
+        wholesalePrice: 1200,
+        costPrice: 900,
+        moq: 1,
+        stock: 5,
+        hsnCode: '8517',
+        cgst: 9,
+        sgst: 9,
+        igst: 18,
+        categoryAttributes: { model: 'Phone-01' },
+      });
+
+    expect(createResponse.status).toBe(201);
+    const productId = createResponse.body.data.product._id;
+
+    const updateResponse = await request(app)
+      .put(`/api/v1/wholesaler/products/${productId}`)
+      .set('Authorization', 'Bearer ' + wholesalerToken)
+      .send({ hsnCode: '', cgst: null, sgst: null, igst: null, priceIncludesTax: false });
+
+    expect(updateResponse.status).toBe(200);
+    const product = await Product.findById(productId);
+    expect(product.hsnCode).toBe('');
+    expect(product.cgst).toBeNull();
+    expect(product.sgst).toBeNull();
+    expect(product.igst).toBeNull();
+    expect(product.taxConfigured).toBe(false);
   });
 });

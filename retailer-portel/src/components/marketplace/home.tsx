@@ -6,14 +6,11 @@ import {
   LocalShipping,
   Refresh,
   Verified,
-  AutoAwesome,
-  ChevronRight,
 } from "@mui/icons-material";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/state/store";
-import { ProductGrid, SectionHeading, WholesalerCard, WholesalerLogo } from "./primitives";
+import { ProductGrid, SectionHeading, WholesalerLogo } from "./primitives";
 import { categoryImages } from "./storefront";
-import { CategoryCard } from "./CategoryCard";
 import { WholesalerBannerCarousel } from "./WholesalerBannerCarousel";
 
 const trustSignals: Array<[typeof VerifiedUser, string, string]> = [
@@ -24,13 +21,11 @@ const trustSignals: Array<[typeof VerifiedUser, string, string]> = [
 ];
 
 export function HomePage() {
-  const { connectedWholesalers, relationships, recentlyViewed, linkedWholesaler, products, categories, retailerProfile } = useStore();
+  const { relationships, recentlyViewed, linkedWholesaler, products, categories, storefrontError } = useStore();
   const activeStoreTheme = linkedWholesaler?.activeStoreTheme || "DEFAULT";
 
-  const retailerName = retailerProfile?.businessName?.trim();
-  const heroHeading = retailerName
-    ? `Welcome to ${retailerName}'s Wholesale Store`
-    : "Welcome to Your Wholesale Store";
+  const wholesalerBusinessName = linkedWholesaler?.businessName?.trim() || "";
+  const wholesalerTagline = linkedWholesaler?.businessTagline?.trim();
 
   const connectedProducts = useMemo(
     () => products.filter((p) => relationships[p.wholesalerId] === "Connected"),
@@ -42,10 +37,19 @@ export function HomePage() {
     [products, recentlyViewed, relationships]
   );
 
-  // Categories from connected wholesalers
-  const connectedCategories = categories;
+  const wholesalerCategories = categories.filter((category) => !category.parentId);
+  const primaryWholesalerName = wholesalerBusinessName;
 
-  const primaryWholesalerName = connectedWholesalers[0]?.name || "Verified Wholesalers";
+  if (storefrontError) {
+    return (
+      <main className="shell py-16">
+        <section className="mx-auto max-w-xl rounded-2xl border border-destructive/30 bg-card p-8 text-center shadow-sm">
+          <h1 className="text-xl font-black text-ink">Store unavailable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{storefrontError}</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="storefront-theme" data-store-theme={activeStoreTheme}>
@@ -55,26 +59,31 @@ export function HomePage() {
         <div className="shell relative z-10 flex min-h-[420px] sm:min-h-[430px] lg:min-h-[610px] items-center py-10 sm:py-12">
           <div className="max-w-2xl text-primary-foreground text-center sm:text-left mx-auto sm:mx-0">
             <span className="inline-flex items-center gap-2 border border-primary-foreground/25 bg-ink/50 px-3 py-1.5 text-[11px] sm:text-xs font-bold uppercase backdrop-blur rounded-full">
-              Direct Wholesaler Network • {connectedWholesalers.length} Connected Partner{connectedWholesalers.length === 1 ? "" : "s"}
+              WHOLESALER STOREFRONT
             </span>
             {linkedWholesaler && (
               <div className="mt-4 inline-flex max-w-full items-center gap-2.5 rounded-xl border border-primary-foreground/20 bg-ink/50 p-2.5 text-left backdrop-blur">
                 <WholesalerLogo
-                  src={linkedWholesaler.logo}
+                  src={linkedWholesaler.logo || ""}
                   name={linkedWholesaler.businessName || linkedWholesaler.name}
                   className="size-10 rounded-lg bg-white text-sm"
                 />
                 <div className="min-w-0">
-                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Your wholesaler</span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-primary-foreground/70">Business</span>
                   <span className="block truncate text-xs font-extrabold text-primary-foreground sm:text-sm">
-                    {linkedWholesaler.businessName || linkedWholesaler.name}
+                    {linkedWholesaler ? `Welcome to ${wholesalerBusinessName}` : "Your wholesaler"}
                   </span>
                 </div>
               </div>
             )}
             <h1 className="mt-4 sm:mt-6 text-3xl font-black leading-tight sm:text-5xl lg:text-6xl tracking-tight">
-              {heroHeading}
+              {wholesalerBusinessName}
             </h1>
+            {wholesalerTagline && (
+              <p className="mt-2 max-w-xl text-base font-semibold leading-relaxed text-primary-foreground/90 sm:text-xl mx-auto sm:mx-0">
+                {wholesalerTagline}
+              </p>
+            )}
             <p className="mt-4 sm:mt-5 max-w-xl text-sm leading-relaxed text-primary-foreground/80 sm:text-lg mx-auto sm:mx-0">
               Shop trade-only pricing, place bulk orders, and receive direct delivery from your approved wholesale suppliers.
             </p>
@@ -129,82 +138,60 @@ export function HomePage() {
               <span className="inline-flex rounded-full bg-primary/10 px-3.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-primary">
                 POPULAR CATEGORIES
               </span>
-              <h2 className="mt-2 text-2xl font-black text-ink sm:text-3xl">Categories from Your Network</h2>
+              <h2 className="mt-2 text-2xl font-black text-ink sm:text-3xl">Shop by category</h2>
               <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                Browse trade categories available from your connected wholesalers.
+                Browse categories from {wholesalerBusinessName}.
               </p>
             </div>
             <Button asChild variant="ghost" size="sm" className="font-bold text-primary hover:bg-primary/10 hover:text-primary min-h-[44px]">
               <Link to="/categories" className="flex items-center gap-1">
-                View all categories <ChevronRight className="size-4" />
+                View all categories
               </Link>
             </Button>
           </div>
 
-          <div className="storefront-category-grid grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:gap-8">
-            {connectedCategories.slice(0, 6).map((c, i) => {
-              const catProductsCount = connectedProducts.filter((p) => p.category === c.name).length;
-              return (
-                <CategoryCard
-                  key={c.id}
-                  name={c.name}
-                  imageUrl={c.imageUrl || categoryImages[c.name] || categoryImages["Grocery & Staples"]}
-                  description={c.description}
-                  subcategories={categories.filter((child) => child.parentId === c.id).map((child) => child.name)}
-                  itemCount={catProductsCount}
-                  badge={i === 0 ? "Popular" : undefined}
-                  actionLabel={`Browse ${catProductsCount} trade products`}
-                  animationDelay={i * 70}
-                />
-              );
-            })}
-            {connectedCategories.length === 0 && (
-              <div className="col-span-full rounded-2xl border border-dashed bg-card p-10 text-center">
+          <div className="-mx-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0" role="list" aria-label="Wholesaler product categories">
+            {wholesalerCategories.length > 0 ? (
+              <div className="flex min-w-0 snap-x snap-mandatory gap-3">
+                {wholesalerCategories.map((category) => (
+                  <Link
+                    key={category.id}
+                    to="/products"
+                    search={{ category: category.name }}
+                    role="listitem"
+                    aria-label={`Browse ${category.name} products`}
+                    className="group w-32 shrink-0 snap-start overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:w-40"
+                  >
+                    <div className="aspect-[4/3] overflow-hidden bg-muted">
+                      <img
+                        src={category.imageUrl || categoryImages[category.name] || categoryImages["Grocery & Staples"] || ""}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          event.currentTarget.src = categoryImages[category.name] || categoryImages["Grocery & Staples"] || "";
+                        }}
+                      />
+                    </div>
+                    <div className="p-2.5">
+                      <h3 className="truncate text-xs font-extrabold text-ink sm:text-sm">{category.name}</h3>
+                      <p className="mt-1 line-clamp-2 min-h-7 text-[11px] text-muted-foreground">
+                        {category.description || "Browse available products"}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed bg-card p-10 text-center">
                 <h3 className="font-black text-ink">No categories yet</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Your connected wholesaler has not added products or categories yet.</p>
+                <p className="mt-2 text-sm text-muted-foreground">{wholesalerBusinessName} has not published any active categories yet.</p>
               </div>
             )}
           </div>
         </div>
       </section>
-
-      {/* Featured from your connections */}
-      {/* {connectedWholesalers.length > 0 && (
-        <section className="border-t border-border/60 bg-card py-12 sm:py-16 lg:py-20">
-          <div className="shell">
-            <div className="mb-8 sm:mb-10 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <span className="inline-flex rounded-full bg-primary/10 px-3.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-primary">
-                  YOUR NETWORK
-                </span>
-                <h2 className="mt-2 text-2xl font-black text-ink sm:text-3xl">
-                  Featured from your connections
-                </h2>
-                <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-                  Wholesalers you have connected with via invite links.
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm" className="font-bold text-primary hover:bg-primary/10 hover:text-primary min-h-[44px]">
-                <Link to="/wholesalers" className="flex items-center gap-1">
-                  View all <ChevronRight className="size-4" />
-                </Link>
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:gap-8">
-              {connectedWholesalers.map((w, index) => (
-                <div
-                  key={w.id}
-                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
-                  style={{ animationDelay: `${index * 70}ms` }}
-                >
-                  <WholesalerCard wholesaler={w} premium />
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-       )} */}
 
       {/* Promo Banner ("Save up to 18%") */}
       <section className="shell py-12 sm:py-16 lg:py-20">
@@ -236,7 +223,7 @@ export function HomePage() {
       {recentlyViewedProducts.length > 0 && (
         <section className="bg-canvas py-12 sm:py-16 lg:py-20">
           <div className="shell">
-            <SectionHeading title="Recently viewed from your network" subtitle="Items you recently looked at from approved partners" />
+            <SectionHeading title="Recently viewed" subtitle={`Products from ${wholesalerBusinessName}`} />
             <ProductGrid products={recentlyViewedProducts.slice(0, 4)} className="storefront-featured-products" />
           </div>
         </section>

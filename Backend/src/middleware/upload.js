@@ -32,17 +32,21 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
+  const isBusinessProof = file.fieldname === 'businessProof';
   const allowedMimeTypes = [
     'image/jpeg',
     'image/png',
     'image/webp',
     'application/pdf',
   ];
-
   const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+  const businessProofMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+  const businessProofExts = ['.jpg', '.jpeg', '.png', '.pdf'];
   const ext = path.extname(file.originalname).toLowerCase();
+  const acceptedMimeTypes = isBusinessProof ? businessProofMimeTypes : allowedMimeTypes;
+  const acceptedExts = isBusinessProof ? businessProofExts : allowedExts;
 
-  if (allowedMimeTypes.includes(file.mimetype) && allowedExts.includes(ext)) {
+  if (acceptedMimeTypes.includes(file.mimetype) && acceptedExts.includes(ext)) {
     cb(null, true);
   } else {
     cb(
@@ -96,6 +100,38 @@ const businessLogoUpload = multer({
   },
 });
 
+const shippingDir = path.join(uploadBaseDir, 'shipping');
+if (!fs.existsSync(shippingDir)) {
+  fs.mkdirSync(shippingDir, { recursive: true });
+}
+
+const shippingDocumentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, shippingDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const uniqueName = `bilty-${Date.now()}-${uuidv4().slice(0, 8)}${ext}`;
+    cb(null, uniqueName);
+  },
+});
+
+const shippingDocumentUpload = multer({
+  storage: shippingDocumentStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedMimeTypes.includes(file.mimetype) && allowedExts.includes(ext)) return cb(null, true);
+    return cb(new BadRequestError('Only PDF, JPG, JPEG, and PNG shipping documents or bilty files are allowed.', 'INVALID_FILE_TYPE'), false);
+  },
+});
+
 module.exports = upload;
 module.exports.productImageUpload = productImageUpload;
 module.exports.businessLogoUpload = businessLogoUpload;
+module.exports.shippingDocumentUpload = shippingDocumentUpload;

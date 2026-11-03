@@ -526,7 +526,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ activeStoreTheme }),
     }),
-  updateBusinessProfile: (data: { businessName: string }) =>
+  updateBusinessProfile: (data: { businessName?: string; businessTagline?: string }) =>
     request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile', {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -838,11 +838,21 @@ export const api = {
   getOrders: () =>
     request<{ success: boolean; data: any }>('/orders', { method: 'GET' }),
 
-  updateOrderStatus: (id: string, status: string) =>
+  updateOrderStatus: (id: string, status: string, payload?: { note?: string; cancellationReason?: string; cancellationNote?: string; shippingDetails?: any }) =>
     request<{ success: boolean; data: any }>(`/orders/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(payload || {}) }),
     }),
+
+  uploadShippingDocument: (file: File, orderId?: string) => {
+    const formData = new FormData();
+    formData.append('bilty', file);
+    const endpoint = orderId ? `/orders/${orderId}/shipping-document` : '/orders/upload-shipping-document';
+    return request<{ success: boolean; data: { url: string; fileName: string; mimeType: string; size: number } }>(endpoint, {
+      method: 'POST',
+      body: formData,
+    });
+  },
 
   // Inventory
   adjustInventory: (productId: string, data: { quantity: number; notes?: string }) =>
@@ -1001,6 +1011,26 @@ export const api = {
     }),
   getPaymentReports: () =>
     request<{ success: boolean; data: any[] }>('/wholesaler/payment-reports', { method: 'GET' }),
+  getFinancialSummary: () =>
+    request<{
+      success: boolean;
+      data: {
+        thisMonthIncome: number;
+        completedSales: number;
+        salesByDate: { date: string; revenue: number }[];
+        pendingPayments: {
+          orderId: string;
+          orderNumber: string;
+          retailerName: string;
+          totalAmount: number;
+          amountPaid: number;
+          remainingAmount: number;
+          paymentStatus: string;
+          paymentMethod: string;
+          createdAt: string;
+        }[];
+      };
+    }>('/wholesaler/financial-summary', { method: 'GET' }),
   reviewPaymentReport: (reportId: string, action: 'VERIFY' | 'REJECT', note = '') =>
     request<{ success: boolean; data: any }>(`/wholesaler/payment-reports/${reportId}`, {
       method: 'PATCH',

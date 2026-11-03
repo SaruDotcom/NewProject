@@ -56,6 +56,11 @@ class AdminController {
     return ApiResponse.success(res, data, 'Dashboard recent records retrieved');
   });
 
+  getDashboardSubscriptionActivities = asyncHandler(async (req, res) => {
+    const data = await AdminService.getSubscriptionActivities();
+    return ApiResponse.success(res, data, 'Subscription activities retrieved');
+  });
+
   getReports = asyncHandler(async (req, res) => {
     const data = await AdminService.getReports(req.query);
     return ApiResponse.success(res, data, 'Reports retrieved successfully');

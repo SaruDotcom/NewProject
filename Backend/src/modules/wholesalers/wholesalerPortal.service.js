@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const {
   User, WholesalerProfile, WholesalerRetailerRelationship, RetailerProfile,
   Inventory, InventoryTransaction, Product, Order, Earning, Payout,
+  Payment,
 } = require('../../models');
 const { INVENTORY_TRANSACTION_TYPE, RELATIONSHIP_STATUS, ORDER_STATUS } = require('../../config/constants');
 const { BadRequestError, NotFoundError, ConflictError } = require('../../utils/errors');
@@ -72,7 +73,7 @@ class WholesalerPortalService {
 
   static async updateProfile(userId, payload, actor, req) {
     const allowedUser = ['name', 'phone'];
-    const allowedProfile = ['businessName', 'description', 'businessType', 'businessCategory', 'address', 'bankDetails', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
+    const allowedProfile = ['businessName', 'businessTagline', 'description', 'businessType', 'businessCategory', 'address', 'bankDetails', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
     const userUpdate = Object.fromEntries(allowedUser.filter((key) => payload[key] !== undefined).map((key) => [key, payload[key]]));
     
     if (userUpdate.phone) {
@@ -303,6 +304,136 @@ class WholesalerPortalService {
 
   static async analytics(userId, query) {
     return WholesalerReportsService.getAnalytics(userId, query);
+  }
+
+  static async getFinancialSummary(userId) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const recentStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 13);
+
+    const [verifiedPayments, deliveredSales, salesByDate, outstandingOrders] = await Promise.all([
+      Payment.find({
+        wholesalerId: userId,
+        isReport: true,
+        status: 'PAID',
+        paidAt: { $gte: monthStart, $lt: nextMonthStart },
+      }).select('amount amountPaise').lean(),
+      Order.aggregate([
+        { $match: { wholesalerId: new mongoose.Types.ObjectId(String(userId)), orderStatus: ORDER_STATUS.DELIVERED } },
+        { $group: { _id: null, total: { $sum: '$grandTotal' } } },
+      ]),
+      Order.aggregate([
+        {
+          $match: {
+            wholesalerId: new mongoose.Types.ObjectId(String(userId)),
+            orderStatus: ORDER_STATUS.DELIVERED,
+          },
+        },
+        { $unwind: '$statusTimeline' },
+        {
+          $match: {
+            'statusTimeline.status': ORDER_STATUS.DELIVERED,
+            'statusTimeline.timestamp': { $gte: recentStart },
+          },
+        },
+        { $sort: { 'statusTimeline.timestamp': -1 } },
+        {
+          $group: {
+            _id: '$_id',
+            deliveredAt: { $first: '$statusTimeline.timestamp' },
+            amount: { $first: '$grandTotal' },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$deliveredAt' } },
+            revenue: { $sum: '$amount' },
+          },
+        },
+      ]),
+      Order.find({
+        wholesalerId: userId,
+        orderStatus: { $nin: [ORDER_STATUS.CANCELLED, ORDER_STATUS.RETURNED, ORDER_STATUS.REFUNDED] },
+      })
+        .populate('retailerId', 'name businessName')
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    const outstandingIds = outstandingOrders
+      .filter((order) => !order.isCreditOrder && !Number.isSafeInteger(order.directPaidPaise))
+      .map((order) => order._id);
+    const directPayments = outstandingIds.length
+      ? await Payment.aggregate([
+          {
+            $match: {
+              orderId: { $in: outstandingIds },
+              isReport: true,
+              isCreditRepayment: { $ne: true },
+              status: 'PAID',
+            },
+          },
+          {
+            $group: {
+              _id: '$orderId',
+              paidPaise: {
+                $sum: {
+                  $ifNull: ['$amountPaise', { $round: [{ $multiply: ['$amount', 100] }, 0] }],
+                },
+              },
+            },
+          },
+        ])
+      : [];
+    const directPaidByOrder = new Map(directPayments.map((payment) => [String(payment._id), payment.paidPaise]));
+    const pendingPayments = outstandingOrders.flatMap((order) => {
+      const totalPaise = Math.max(0, Math.round(Number(order.grandTotal || 0) * 100));
+      const paidPaise = order.isCreditOrder
+        ? Math.round(Number(order.creditPaidAmount || 0) * 100)
+        : Number.isSafeInteger(order.directPaidPaise)
+          ? order.directPaidPaise
+          : directPaidByOrder.get(String(order._id)) || 0;
+      const remainingPaise = Math.max(0, totalPaise - paidPaise);
+      if (!remainingPaise) return [];
+
+      return [{
+        orderId: String(order._id),
+        orderNumber: order.orderNumber,
+        retailerName: order.retailerId?.businessName || order.retailerId?.name || 'Retailer',
+        totalAmount: totalPaise / 100,
+        amountPaid: Math.min(totalPaise, paidPaise) / 100,
+        remainingAmount: remainingPaise / 100,
+        paymentStatus: order.isCreditOrder && order.creditPaymentStatus === 'OVERDUE'
+          ? 'OVERDUE'
+          : paidPaise > 0 ? 'PARTIAL' : 'PENDING',
+        paymentMethod: order.isCreditOrder ? 'CREDIT' : order.paymentMethod,
+        createdAt: order.createdAt,
+      }];
+    });
+
+    const dailySales = new Map(salesByDate.map((item) => [item._id, item.revenue]));
+    const last14Days = Array.from({ length: 14 }, (_, index) => {
+      const date = new Date(recentStart);
+      date.setDate(recentStart.getDate() + index);
+      const isoDate = date.toISOString().slice(0, 10);
+      return {
+        date: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+        revenue: dailySales.get(isoDate) || 0,
+      };
+    });
+
+    return {
+      thisMonthIncome: verifiedPayments.reduce(
+        (sum, payment) => sum + (Number.isSafeInteger(payment.amountPaise)
+          ? payment.amountPaise
+          : Math.round(Number(payment.amount || 0) * 100)),
+        0
+      ) / 100,
+      completedSales: deliveredSales[0]?.total || 0,
+      salesByDate: last14Days,
+      pendingPayments,
+    };
   }
 
   static async exportAnalyticsCsv(userId, query) {

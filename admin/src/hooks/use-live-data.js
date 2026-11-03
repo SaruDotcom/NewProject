@@ -16,6 +16,8 @@ export function useAdminDashboardStats(refreshKey = 0) {
   const query = useQuery({
     queryKey: adminQueryKeys.dashboard("stats"),
     queryFn: () => apiGet('/admin/dashboard/stats'),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   useEffect(() => {
     if (refreshKey) void query.refetch();
@@ -63,10 +65,13 @@ export function useAdminDashboardRecent(refreshKey = 0) {
     recentRegistrations: [],
     pendingApprovals: [],
     lowStock: [],
+    recentSubscriptionActivities: [],
   };
   const query = useQuery({
     queryKey: adminQueryKeys.dashboard("recent"),
     queryFn: () => apiGet('/admin/dashboard/recent'),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   useEffect(() => {
     if (refreshKey) void query.refetch();

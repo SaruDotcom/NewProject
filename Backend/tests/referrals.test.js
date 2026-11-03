@@ -4,10 +4,12 @@ const { setupTestDB, clearDatabase } = require('./setup');
 const {
   User,
   WholesalerProfile,
+  WholesalerSubscription,
   RetailerProfile,
   WholesalerRetailerRelationship,
   Category,
   Product,
+  Cart,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
@@ -34,10 +36,20 @@ describe('Wholesaler referral-only retailer registration', () => {
     wholesalerProfile = await WholesalerProfile.create({
       userId: wholesaler._id,
       businessName: 'Safe Business Name',
+      businessTagline: 'Quality wholesale, delivered',
       businessLogoUrl: 'https://example.test/logo.png',
       address: { city: 'Pune', state: 'Maharashtra' },
       kycStatus: KYC_STATUS.APPROVED,
       retailerReferralCode: referralCode,
+    });
+    await WholesalerSubscription.create({
+      userId: wholesaler._id,
+      wholesalerProfileId: wholesalerProfile._id,
+      planName: 'Basic Monthly',
+      billingPeriod: 'MONTHLY',
+      amount: 299,
+      status: 'ACTIVE',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
     wholesalerToken = AuthService.generateTokens(wholesaler).accessToken;
     const admin = await User.create({
@@ -59,6 +71,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       id: String(wholesaler._id),
       wholesalerId: String(wholesaler._id),
       businessName: 'Safe Business Name',
+      businessTagline: 'Quality wholesale, delivered',
       logo: 'https://example.test/logo.png',
       city: 'Pune',
       categories: [],
@@ -73,6 +86,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       'banners',
       'businessCategory',
       'businessName',
+      'businessTagline',
       'categories',
       'categoryDetails',
       'city',
@@ -83,7 +97,7 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(JSON.stringify(response.body)).not.toMatch(/Private Owner Name|private-owner@example\.test|9876543210|gstin|kyc/i);
   });
 
-  test('each public referral code returns only its wholesaler products', async () => {
+  test('each public referral code returns only active products and categories from its wholesaler', async () => {
     const secondWholesaler = await User.create({
       name: 'Second Wholesaler',
       email: 'second-wholesaler@example.test',
@@ -91,20 +105,44 @@ describe('Wholesaler referral-only retailer registration', () => {
       role: ROLES.WHOLESALER,
       status: USER_STATUS.ACTIVE,
     });
+
     await WholesalerProfile.create({
       userId: secondWholesaler._id,
       businessName: 'Second Wholesale Business',
       kycStatus: KYC_STATUS.APPROVED,
       retailerReferralCode: 'ZX90YU',
     });
-    const category = await Category.create({ name: 'Staples', slug: 'staples' });
+    await WholesalerSubscription.create({
+      userId: secondWholesaler._id,
+      planName: 'Basic Monthly',
+      amount: 299,
+      status: 'ACTIVE',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+    const firstCategory = await Category.create({
+      name: 'Staples',
+      slug: 'staples',
+      wholesalerId: wholesaler._id,
+    });
+    const secondCategory = await Category.create({
+      name: 'Beverages',
+      slug: 'beverages',
+      wholesalerId: secondWholesaler._id,
+    });
+    const globalCategory = await Category.create({ name: 'Global category', slug: 'global-category' });
+    const inactiveCategory = await Category.create({
+      name: 'Inactive category',
+      slug: 'inactive-category',
+      wholesalerId: wholesaler._id,
+      isActive: false,
+    });
     await Product.create([
       {
         wholesalerId: wholesaler._id,
         name: 'First wholesaler product',
         slug: 'first-wholesaler-product',
         sku: 'FIRST-REF-PRODUCT',
-        categoryId: category._id,
+        categoryId: firstCategory._id,
         wholesalePrice: 100,
       },
       {
@@ -112,18 +150,117 @@ describe('Wholesaler referral-only retailer registration', () => {
         name: 'Second wholesaler product',
         slug: 'second-wholesaler-product',
         sku: 'SECOND-REF-PRODUCT',
-        categoryId: category._id,
+        categoryId: secondCategory._id,
         wholesalePrice: 200,
+      },
+      {
+        wholesalerId: wholesaler._id,
+        name: 'Product from other category',
+        slug: 'other-category-product',
+        sku: 'OTHER-CATEGORY-PRODUCT',
+        categoryId: secondCategory._id,
+        wholesalePrice: 300,
+      },
+      {
+        wholesalerId: wholesaler._id,
+        name: 'Product in a global category',
+        slug: 'global-category-product',
+        sku: 'GLOBAL-CATEGORY-PRODUCT',
+        categoryId: globalCategory._id,
+        wholesalePrice: 400,
+      },
+      {
+        wholesalerId: wholesaler._id,
+        name: 'Product in an inactive category',
+        slug: 'inactive-category-product',
+        sku: 'INACTIVE-CATEGORY-PRODUCT',
+        categoryId: inactiveCategory._id,
+        wholesalePrice: 500,
       },
     ]);
 
     const firstCatalog = await request(app).get(`/api/v1/referral/${referralCode}/products?limit=200`);
     const secondCatalog = await request(app).get('/api/v1/referral/ZX90YU/products?limit=200');
+    const firstCategoryProducts = await request(app)
+      .get(`/api/v1/referral/${referralCode}/products?category=${firstCategory._id}`);
+    const secondCategoryProducts = await request(app)
+      .get('/api/v1/referral/ZX90YU/products?category=beverages');
+    const wrongWholesalerCategory = await request(app)
+      .get(`/api/v1/referral/${referralCode}/products?category=${secondCategory._id}`);
+    const firstReferral = await request(app).get(`/api/v1/referral/${referralCode}`);
 
     expect(firstCatalog.status).toBe(200);
     expect(firstCatalog.body.data.map((product) => product.name)).toEqual(['First wholesaler product']);
     expect(secondCatalog.status).toBe(200);
     expect(secondCatalog.body.data.map((product) => product.name)).toEqual(['Second wholesaler product']);
+    expect(firstCategoryProducts.body.data.map((product) => product.name)).toEqual(['First wholesaler product']);
+    expect(secondCategoryProducts.body.data.map((product) => product.name)).toEqual(['Second wholesaler product']);
+    expect(wrongWholesalerCategory.body.data).toEqual([]);
+    expect(firstReferral.body.data.wholesaler.categoryDetails.map((category) => category.name))
+      .toEqual(['Staples']);
+  });
+
+  test('authenticated retailer invite switches wholesaler and preserves the previous relationship', async () => {
+    const previousWholesaler = await User.create({
+      name: 'Previous Wholesaler',
+      email: 'previous-wholesaler@example.test',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    const retailer = await User.create({
+      name: 'Invited Retailer',
+      email: 'invited-retailer@example.test',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.RETAILER,
+      status: USER_STATUS.ACTIVE,
+    });
+    const previousRelationship = await WholesalerRetailerRelationship.create({
+      wholesalerId: previousWholesaler._id,
+      retailerId: retailer._id,
+      status: 'ACTIVE',
+    });
+    const retailerProfile = await RetailerProfile.create({
+      userId: retailer._id,
+      businessName: 'Invited Retailer Shop',
+      assignedWholesalerId: previousWholesaler._id,
+      wholesalerId: previousWholesaler._id,
+      createdByWholesalerId: previousWholesaler._id,
+      activeRelationshipId: previousRelationship._id,
+    });
+    await Cart.create({
+      retailerId: retailer._id,
+      wholesalerId: previousWholesaler._id,
+      items: [],
+      subtotal: 100,
+      tax: 18,
+      grandTotal: 118,
+    });
+    const retailerToken = AuthService.generateTokens(retailer).accessToken;
+
+    const response = await request(app)
+      .post('/api/v1/retailer/referral/switch')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ referralCode });
+
+    expect(response.status).toBe(200);
+    expect(String(response.body.data.relationship.wholesalerId)).toBe(String(wholesaler._id));
+    const previous = await WholesalerRetailerRelationship.findById(previousRelationship._id);
+    const active = await WholesalerRetailerRelationship.find({
+      retailerId: retailer._id,
+      status: 'ACTIVE',
+    });
+    const updatedProfile = await RetailerProfile.findById(retailerProfile._id);
+    const cart = await Cart.findOne({ retailerId: retailer._id });
+
+    expect(previous.status).toBe('TERMINATED');
+    expect(previous.terminatedAt).toBeInstanceOf(Date);
+    expect(active).toHaveLength(1);
+    expect(String(active[0].wholesalerId)).toBe(String(wholesaler._id));
+    expect(String(updatedProfile.activeRelationshipId)).toBe(String(active[0]._id));
+    expect(String(updatedProfile.assignedWholesalerId)).toBe(String(wholesaler._id));
+    expect(cart.wholesalerId.toString()).toBe(String(wholesaler._id));
+    expect(cart.grandTotal).toBe(0);
   });
 
   test('public referral categories retain wholesaler-specific images and return replacements', async () => {
@@ -134,11 +271,19 @@ describe('Wholesaler referral-only retailer registration', () => {
       role: ROLES.WHOLESALER,
       status: USER_STATUS.ACTIVE,
     });
-    await WholesalerProfile.create({
+    const secondProfile = await WholesalerProfile.create({
       userId: secondWholesaler._id,
       businessName: 'Second Image Business',
       kycStatus: KYC_STATUS.APPROVED,
       retailerReferralCode: 'ZX90YU',
+    });
+    await WholesalerSubscription.create({
+      userId: secondWholesaler._id,
+      wholesalerProfileId: secondProfile._id,
+      planName: 'Basic Monthly',
+      amount: 299,
+      status: 'ACTIVE',
+      renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
     const firstCategory = await Category.create({
@@ -152,7 +297,30 @@ describe('Wholesaler referral-only retailer registration', () => {
       slug: 'second-image-category',
       imageUrl: 'https://images.example.test/second-image.jpg',
       wholesalerId: secondWholesaler._id,
+      isActive: true,
     });
+    await Category.create([
+      {
+        name: 'Inactive Category',
+        slug: 'inactive-category',
+        wholesalerId: wholesaler._id,
+        isActive: false,
+      },
+      {
+        name: 'Demo Category',
+        slug: 'demo-category',
+        wholesalerId: wholesaler._id,
+        isActive: true,
+        isDemo: true,
+      },
+      {
+        name: 'Deleted Category',
+        slug: 'deleted-category',
+        wholesalerId: wholesaler._id,
+        isActive: true,
+        isDeleted: true,
+      },
+    ]);
     await Product.create([
       {
         wholesalerId: wholesaler._id,
@@ -298,7 +466,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       .toBe(403);
   });
 
-  test('valid referral registration links retailer from server-resolved code and enforces unique mobile', async () => {
+  test('referral registration validates uniqueness and preserves wholesaler branding through login', async () => {
     const payload = {
       name: 'Retailer Owner',
       loginId: 'RETAILER01',
@@ -345,6 +513,39 @@ describe('Wholesaler referral-only retailer registration', () => {
       email: 'retailer-duplicate@example.test',
       phone: '+919123456789',
     });
+
+    const brandingPayload = {
+        name: 'Retailer Owner',
+        businessName: 'Retailer Shop',
+        city: 'Jaipur',
+        state: 'Rajasthan',
+        address: '123 Main Road',
+        pincode: '302001',
+        email: 'branding-retailer@example.test',
+        phone: '9567890123',
+        password: 'Password@123',
+        role: ROLES.RETAILER,
+        referralCode,
+      };
+
+      const registration = await request(app).post('/api/v1/auth/register').send(brandingPayload);
+      expect(registration.status).toBe(201);
+
+      const login = await request(app).post('/api/v1/auth/login').send({
+        email: brandingPayload.email,
+        password: brandingPayload.password,
+        role: ROLES.RETAILER,
+      });
+      expect(login.status).toBe(200);
+      expect(login.body.data.token).toBeTruthy();
+
+      const linkedWholesaler = await request(app)
+        .get('/api/v1/retailer/wholesaler')
+        .set('Authorization', `Bearer ${login.body.data.token}`);
+      expect(linkedWholesaler.status).toBe(200);
+      expect(linkedWholesaler.body.data.businessName).toBe('Safe Business Name');
+      expect(linkedWholesaler.body.data.businessTagline).toBe('Quality wholesale, delivered');
+      expect(linkedWholesaler.body.data.name).toBe('Private Owner Name');
     expect(duplicateMobile.status).toBe(409);
     expect(duplicateMobile.body.code).toBe('PHONE_ALREADY_EXISTS');
 

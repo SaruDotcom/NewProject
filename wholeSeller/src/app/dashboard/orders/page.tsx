@@ -16,10 +16,15 @@ import {
   Sliders,
   RefreshCw,
   XCircle,
-  ArrowRight
+  ArrowRight,
+  Upload,
+  ExternalLink,
+  Download,
+  Package
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Order, OrderStatus } from '@/lib/types';
+import { api, resolveProductImageUrl } from '@/lib/api';
 
 export default function OrdersPage() {
   const { profile, orders, returns, updateOrderStatus, updateReturnStatus } = useWholesaler();
@@ -34,11 +39,56 @@ export default function OrdersPage() {
     setVisibleCount(50);
   }, [activeStatusTab, dateFilter, searchQuery]);
 
+  const filteredOrders = orders.filter((order) => {
+    const matchesStatus = activeStatusTab === 'ALL' || order.status === activeStatusTab;
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = !query
+      || order.orderNumber.toLowerCase().includes(query)
+      || order.retailerName.toLowerCase().includes(query)
+      || Boolean(order.retailerBusinessName?.toLowerCase().includes(query))
+      || order.items.some((item) => item.productTitle.toLowerCase().includes(query));
+
+    let matchesDate = true;
+    if (dateFilter !== 'ALL' && order.createdAt) {
+      const orderDate = new Date(order.createdAt);
+      const now = new Date();
+      if (!Number.isNaN(orderDate.getTime())) {
+        if (dateFilter === 'TODAY') {
+          matchesDate = orderDate.toDateString() === now.toDateString();
+        } else if (dateFilter === 'WEEK') {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          matchesDate = orderDate >= weekAgo;
+        } else if (dateFilter === 'MONTH') {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          matchesDate = orderDate >= monthAgo;
+        }
+      }
+    }
+
+    return matchesStatus && matchesSearch && matchesDate;
+  });
+
   // Order Details Modal State
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusUpdateMessage, setStatusUpdateMessage] = useState<string | null>(null);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Shipping Details Modal State
+  const [shippingModalOpen, setShippingModalOpen] = useState(false);
+  const [shippingForm, setShippingForm] = useState({
+    courierName: '',
+    biltyNumber: '',
+    trackingNumber: '',
+    shippingDate: new Date().toISOString().split('T')[0],
+    estimatedDeliveryDate: '',
+    biltyUrl: '',
+    biltyFileName: '',
+    shippingNotes: '',
+  });
+  const [isUploadingBilty, setIsUploadingBilty] = useState(false);
+  const [biltyUploadError, setBiltyUploadError] = useState<string | null>(null);
+  const [shippingFormError, setShippingFormError] = useState<string | null>(null);
 
   // Status Badge Renderer matching explicit prompt specs
   const renderStatusBadge = (status: OrderStatus) => {
@@ -50,16 +100,21 @@ export default function OrdersPage() {
           </span>
         );
       case 'CONFIRMED':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+            Confirmed
+          </span>
+        );
       case 'PROCESSING':
         return (
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-slate-100 text-slate-700 border border-slate-300">
-            Confirmed
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-purple-50 text-purple-700 border border-purple-200">
+            Processing
           </span>
         );
       case 'SHIPPED':
       case 'DISPATCHED':
         return (
-          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-slate-100 text-slate-700 border border-slate-300">
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
             Shipped
           </span>
         );
@@ -78,36 +133,97 @@ export default function OrdersPage() {
     }
   };
 
-  // Filter Orders
-  const filteredOrders = orders.filter(o => {
-    const matchesStatus = activeStatusTab === 'ALL' || o.status === activeStatusTab;
-    const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          o.retailerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (o.retailerBusinessName && o.retailerBusinessName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          o.items.some(i => i.productTitle.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    let matchesDate = true;
-    if (dateFilter !== 'ALL' && o.createdAt) {
-      const orderDate = new Date(o.createdAt);
-      const now = new Date();
-      if (!isNaN(orderDate.getTime())) {
-        if (dateFilter === 'TODAY') {
-          matchesDate = orderDate.toDateString() === now.toDateString();
-        } else if (dateFilter === 'WEEK') {
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          matchesDate = orderDate >= weekAgo;
-        } else if (dateFilter === 'MONTH') {
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          matchesDate = orderDate >= monthAgo;
-        }
-      }
+  const openShippingModalForOrder = (order: Order) => {
+    const sd = order.shippingDetails;
+    setShippingForm({
+      courierName: sd?.courierName || '',
+      biltyNumber: sd?.biltyNumber || '',
+      trackingNumber: sd?.trackingNumber || order.trackingNumber || '',
+      shippingDate: sd?.shippingDate ? new Date(sd.shippingDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      estimatedDeliveryDate: sd?.estimatedDeliveryDate ? new Date(sd.estimatedDeliveryDate).toISOString().split('T')[0] : '',
+      biltyUrl: sd?.biltyUrl || '',
+      biltyFileName: sd?.biltyFileName || '',
+      shippingNotes: sd?.shippingNotes || '',
+    });
+    setShippingFormError(null);
+    setBiltyUploadError(null);
+    setShippingModalOpen(true);
+  };
+
+  const handleBiltyFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setBiltyUploadError('Invalid file type. Please upload a PDF, JPG, or PNG document.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setBiltyUploadError('File size exceeds 10MB limit.');
+      return;
     }
 
-    return matchesStatus && matchesSearch && matchesDate;
-  });
+    setIsUploadingBilty(true);
+    setBiltyUploadError(null);
+    try {
+      const res = await api.uploadShippingDocument(file, selectedOrder?.id);
+      if (res?.data?.url) {
+        setShippingForm((prev) => ({
+          ...prev,
+          biltyUrl: res.data.url,
+          biltyFileName: res.data.fileName || file.name,
+        }));
+      }
+    } catch (err: any) {
+      setBiltyUploadError(err?.message || 'Failed to upload document. Please try again.');
+    } finally {
+      setIsUploadingBilty(false);
+    }
+  };
+
+  const handleSaveShippingDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrder) return;
+
+    if (!shippingForm.courierName.trim()) {
+      setShippingFormError('Transport / Courier Company Name is required.');
+      return;
+    }
+    if (!shippingForm.biltyNumber.trim() && !shippingForm.trackingNumber.trim()) {
+      setShippingFormError('Bilty / LR Number or Tracking Number is required.');
+      return;
+    }
+
+    setIsUpdatingStatus(true);
+    setShippingFormError(null);
+    try {
+      await updateOrderStatus(selectedOrder.id, 'SHIPPED', shippingForm);
+      setSelectedOrder((current) => current ? {
+        ...current,
+        status: 'SHIPPED',
+        trackingNumber: shippingForm.trackingNumber || shippingForm.biltyNumber,
+        shippingDetails: shippingForm,
+      } : current);
+      setStatusUpdateMessage('Order marked as Shipped and shipping details saved.');
+      setShippingModalOpen(false);
+      setTimeout(() => setStatusUpdateMessage(null), 3500);
+    } catch (err: any) {
+      setShippingFormError(err?.message || 'Failed to save shipping details. Please try again.');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   const handleStatusChangeInModal = async (newStatus: OrderStatus) => {
-    if (!selectedOrder || isUpdatingStatus || selectedOrder.status === newStatus) return;
+    if (!selectedOrder || isUpdatingStatus) return;
+
+    if (newStatus === 'SHIPPED') {
+      openShippingModalForOrder(selectedOrder);
+      return;
+    }
+
+    if (selectedOrder.status === newStatus) return;
 
     setIsUpdatingStatus(true);
     setStatusUpdateMessage(null);
@@ -138,7 +254,7 @@ export default function OrdersPage() {
       <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-xs">
         {/* Status Pill Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full lg:w-auto">
-          {['ALL', 'PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNS'].map((status) => (
+          {['ALL', 'PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNS'].map((status) => (
             <button
               key={status}
               onClick={() => setActiveStatusTab(status)}
@@ -327,7 +443,7 @@ export default function OrdersPage() {
             <div className="p-4 bg-tradeflow-gray-50 rounded-xl border border-tradeflow-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="text-[10px] font-bold uppercase text-gray-400 block mb-0.5">Order Status</span>
-                <span className="text-xs text-gray-600 font-medium">Confirmed status deducts inventory stock.</span>
+                <span className="text-xs text-gray-600 font-medium">Select Shipped to enter transport & bilty details.</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -340,12 +456,83 @@ export default function OrdersPage() {
                 >
                   <option value="PENDING">Pending</option>
                   <option value="CONFIRMED">Confirmed</option>
+                  <option value="PROCESSING">Processing</option>
                   <option value="SHIPPED">Shipped</option>
                   <option value="DELIVERED">Delivered</option>
                   <option value="CANCELLED">Cancelled</option>
                 </select>
               </div>
             </div>
+
+            {/* SHIPPING DETAILS CARD (when Shipped / Delivered / details exist) */}
+            {(selectedOrder.shippingDetails || selectedOrder.status === 'SHIPPED' || selectedOrder.status === 'DELIVERED') && (
+              <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200 space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Truck className="w-4 h-4 text-blue-600" />
+                    <span className="font-extrabold text-tradeflow-navy">Shipping & Transport Details</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openShippingModalForOrder(selectedOrder)}
+                    className="text-[11px] font-bold text-blue-700 hover:underline"
+                  >
+                    Edit Shipping Details
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3 rounded-lg border border-blue-100">
+                  <div>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Courier / Transport</span>
+                    <span className="font-bold text-tradeflow-navy">{selectedOrder.shippingDetails?.courierName || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Bilty / LR No</span>
+                    <span className="font-mono font-bold text-tradeflow-navy">{selectedOrder.shippingDetails?.biltyNumber || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Tracking No</span>
+                    <span className="font-mono font-bold text-tradeflow-navy">{selectedOrder.shippingDetails?.trackingNumber || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Shipped Date</span>
+                    <span className="font-bold text-tradeflow-navy">{selectedOrder.shippingDetails?.shippingDate || '—'}</span>
+                  </div>
+                </div>
+                {selectedOrder.shippingDetails?.biltyUrl && (
+                  <div className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-blue-100">
+                    <div className="flex items-center gap-2 truncate">
+                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span className="truncate font-semibold">{selectedOrder.shippingDetails.biltyFileName || 'Bilty Document'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={selectedOrder.shippingDetails.biltyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 font-bold hover:underline flex items-center gap-1 text-[11px]"
+                      >
+                        <ExternalLink className="w-3 h-3" /> View
+                      </a>
+                      <a
+                        href={selectedOrder.shippingDetails.biltyUrl}
+                        download={selectedOrder.shippingDetails.biltyFileName || 'bilty'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 font-bold hover:underline flex items-center gap-1 text-[11px]"
+                      >
+                        <Download className="w-3 h-3" /> Download
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {selectedOrder.shippingDetails?.shippingNotes && (
+                  <div className="text-[11px] text-gray-600 bg-white p-2.5 rounded-lg border border-blue-100">
+                    <span className="font-bold text-gray-700">Notes: </span>
+                    {selectedOrder.shippingDetails.shippingNotes}
+                  </div>
+                )}
+              </div>
+            )}
 
             {selectedOrder.cancellationReason && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs">
@@ -369,9 +556,9 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* Line Items Table */}
+            {/* Line Items Table with actual product images */}
             <div className="space-y-2">
-              <div className="text-xs font-bold text-gray-700">Items</div>
+              <div className="text-xs font-bold text-gray-700">Items in Order</div>
               <div className="border border-tradeflow-gray-200 rounded-xl overflow-x-auto">
                 <table className="w-full text-left text-xs min-w-[440px]">
                   <thead className="bg-tradeflow-gray-50 text-gray-500 font-bold border-b border-tradeflow-gray-200">
@@ -383,17 +570,31 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-tradeflow-gray-200">
-                    {selectedOrder.items.map(item => (
-                      <tr key={item.id}>
-                        <td className="p-2.5 font-medium">
-                          <div>{item.productTitle}</div>
-                          <div className="text-[10px] font-mono text-gray-400">SKU: {item.sku}</div>
-                        </td>
-                        <td className="p-2.5">₹{item.unitPrice}</td>
-                        <td className="p-2.5 font-bold">{item.quantity} pcs</td>
-                        <td className="p-2.5 text-right font-bold">₹{(item.subtotal || 0).toLocaleString('en-IN')}</td>
-                      </tr>
-                    ))}
+                    {selectedOrder.items.map(item => {
+                      const img = item.imageUrl ? (resolveProductImageUrl(item.imageUrl) || item.imageUrl) : null;
+                      return (
+                        <tr key={item.id}>
+                          <td className="p-2.5 font-medium">
+                            <div className="flex items-center gap-2.5">
+                              <div className="size-10 rounded-lg border bg-tradeflow-gray-50 shrink-0 overflow-hidden flex items-center justify-center">
+                                {img ? (
+                                  <img src={img} alt={item.productTitle} className="size-full object-cover" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+                                ) : (
+                                  <Package className="w-4 h-4 text-gray-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="truncate font-bold text-tradeflow-navy">{item.productTitle}</div>
+                                <div className="text-[10px] font-mono text-gray-400">SKU: {item.sku}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-2.5 font-semibold">₹{item.unitPrice}</td>
+                          <td className="p-2.5 font-bold">{item.quantity} pcs</td>
+                          <td className="p-2.5 text-right font-bold">₹{(item.subtotal || 0).toLocaleString('en-IN')}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -436,6 +637,219 @@ export default function OrdersPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* DISPATCH ORDER & SHIPPING DETAILS MODAL */}
+      {shippingModalOpen && selectedOrder && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-60 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 my-8 border border-tradeflow-gray-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-tradeflow-gray-200">
+              <div className="flex items-center gap-2.5">
+                <span className="grid size-9 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <Truck className="w-5 h-5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-extrabold text-tradeflow-navy">Dispatch Order & Shipping Details</h2>
+                  <p className="text-[11px] text-gray-500 font-mono">Order {selectedOrder.orderNumber} • {selectedOrder.retailerName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShippingModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {shippingFormError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{shippingFormError}</span>
+              </div>
+            )}
+
+            {/* Product Image & Details Preview */}
+            <div className="p-3 rounded-xl bg-tradeflow-gray-50 border border-tradeflow-gray-200">
+              <span className="text-[10px] font-bold uppercase text-gray-400 block mb-2">Ordered Products in this Shipment</span>
+              <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                {selectedOrder.items.map((item, idx) => {
+                  const img = item.imageUrl ? (resolveProductImageUrl(item.imageUrl) || item.imageUrl) : null;
+                  return (
+                    <div key={idx} className="flex items-center gap-3 bg-white p-2 rounded-lg border border-tradeflow-gray-200">
+                      <div className="size-10 rounded-lg border bg-tradeflow-gray-50 shrink-0 overflow-hidden flex items-center justify-center">
+                        {img ? (
+                          <img src={img} alt={item.productTitle} className="size-full object-cover" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+                        ) : (
+                          <Package className="w-4 h-4 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-tradeflow-navy truncate">{item.productTitle}</p>
+                        <p className="text-[10px] text-gray-400">SKU: {item.sku} • Qty: <strong className="text-tradeflow-navy">{item.quantity} pcs</strong></p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveShippingDetails} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-bold text-tradeflow-navy block mb-1">
+                    Transport / Courier Company Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. VRL Logistics, Safechem, Delhivery, BlueDart"
+                    value={shippingForm.courierName}
+                    onChange={(e) => setShippingForm({ ...shippingForm, courierName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-tradeflow-navy block mb-1">
+                    Bilty / LR Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BLT-98234 / LR-4401"
+                    value={shippingForm.biltyNumber}
+                    onChange={(e) => setShippingForm({ ...shippingForm, biltyNumber: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-mono"
+                  />
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Mandatory for transport shipments</span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-tradeflow-navy block mb-1">
+                    Transport / Tracking Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TRK-77881920"
+                    value={shippingForm.trackingNumber}
+                    onChange={(e) => setShippingForm({ ...shippingForm, trackingNumber: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-tradeflow-navy block mb-1">
+                    Shipping Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={shippingForm.shippingDate}
+                    onChange={(e) => setShippingForm({ ...shippingForm, shippingDate: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-tradeflow-navy block mb-1">
+                    Estimated Delivery Date
+                  </label>
+                  <input
+                    type="date"
+                    value={shippingForm.estimatedDeliveryDate}
+                    onChange={(e) => setShippingForm({ ...shippingForm, estimatedDeliveryDate: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Bilty Document Upload */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-tradeflow-navy block">
+                  Shipping Document / Bilty Upload (PDF, JPG, PNG)
+                </label>
+                <div className="border-2 border-dashed border-tradeflow-gray-200 hover:border-tradeflow-green rounded-xl p-3 bg-tradeflow-gray-50 transition-colors">
+                  {shippingForm.biltyUrl ? (
+                    <div className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-tradeflow-gray-200">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-tradeflow-green shrink-0" />
+                        <span className="text-xs font-bold text-tradeflow-navy truncate">{shippingForm.biltyFileName || 'Attached Bilty Document'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <a
+                          href={shippingForm.biltyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> View
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setShippingForm({ ...shippingForm, biltyUrl: '', biltyFileName: '' })}
+                          className="text-xs font-bold text-red-500 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center cursor-pointer py-2">
+                      <Upload className={`w-6 h-6 text-gray-400 mb-1 ${isUploadingBilty ? 'animate-bounce text-tradeflow-green' : ''}`} />
+                      <span className="text-xs font-bold text-gray-700">
+                        {isUploadingBilty ? 'Uploading document...' : 'Click to upload Bilty / LR Document'}
+                      </span>
+                      <span className="text-[10px] text-gray-400 mt-0.5">PDF, PNG, JPG up to 10MB</span>
+                      <input
+                        type="file"
+                        accept=".pdf,image/png,image/jpeg,image/jpg,image/webp"
+                        disabled={isUploadingBilty}
+                        onChange={handleBiltyFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+                {biltyUploadError && (
+                  <p className="text-[11px] text-red-600 font-semibold">{biltyUploadError}</p>
+                )}
+              </div>
+
+              {/* Additional Shipping Notes */}
+              <div>
+                <label className="text-xs font-bold text-tradeflow-navy block mb-1">
+                  Additional Shipping Notes (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Driver contact: 9876543210, 4 cartons packed with tamper-evident tape."
+                  value={shippingForm.shippingNotes}
+                  onChange={(e) => setShippingForm({ ...shippingForm, shippingNotes: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-medium"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-tradeflow-gray-200 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={isUpdatingStatus || isUploadingBilty}
+                  onClick={() => setShippingModalOpen(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingStatus || isUploadingBilty}
+                  className="px-5 py-2 bg-tradeflow-green text-tradeflow-navy font-bold text-xs rounded-xl hover:bg-tradeflow-green-hover disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>{isUpdatingStatus ? 'Saving...' : 'Confirm & Mark as Shipped'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

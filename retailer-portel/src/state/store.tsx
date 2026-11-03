@@ -17,6 +17,8 @@ import { retailerQueryKeys } from "@/lib/query-client";
 import {
   getReferralAttributionFromUrl,
   getStoredReferralAttribution,
+  hasCompletedRetailerRegistration,
+  markRetailerRegistrationComplete,
   saveReferralAttribution,
 } from "@/lib/referral-attribution";
 
@@ -121,6 +123,7 @@ export type Wholesaler = {
   ownerName?: string;
   description?: string;
   businessName?: string;
+  businessTagline?: string;
   businessCategory?: string;
   available?: boolean;
   unavailableMessage?: string;
@@ -147,6 +150,19 @@ export type OrderItem = {
 };
 
 export type OrderStatus = "Pending" | "Confirmed" | "Processing" | "Shipped" | "Delivered" | "Cancelled";
+
+export type ShippingDetails = {
+  courierName?: string;
+  biltyNumber?: string;
+  trackingNumber?: string;
+  shippingDate?: string;
+  estimatedDeliveryDate?: string;
+  biltyUrl?: string;
+  biltyFileName?: string;
+  shippingNotes?: string;
+  shippedAt?: string;
+};
+
 export type Order = {
   id: string;
   orderNumber?: string;
@@ -163,6 +179,7 @@ export type Order = {
   creditPeriodDays?: number | undefined;
   creditPaymentStatus?: "PENDING" | "PAID" | "OVERDUE" | undefined;
   creditSettledAt?: string | undefined;
+  shippingDetails?: ShippingDetails | undefined;
 };
 
 export type RetailerProfile = {
@@ -206,6 +223,8 @@ export type Store = {
   isLoading: boolean;
   linkedWholesalerId: string;
   linkedWholesaler: Wholesaler | null;
+  storefrontReferralCode: string;
+  storefrontError: string | null;
   connectedWholesalers: Wholesaler[];
   products: Product[];
   categories: Category[];
@@ -231,7 +250,7 @@ export type Store = {
   removeCart: (id: string) => void;
   toggleWishlist: (id: string) => void;
   saveProfile: (profile: RetailerProfile) => Promise<void>;
-  placeOrder: (paymentMethod?: string, couponCode?: string) => Promise<boolean>;
+  placeOrder: (paymentMethod?: string, couponCode?: string, expectedQuoteHash?: string) => Promise<boolean>;
   markRead: () => void;
   addRecentlyViewed: (id: string) => void;
   refreshOrders: () => Promise<void>;
@@ -396,7 +415,7 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
   if (!item) return null;
 
   const rawId = String(item._id || item.id || "");
-  const businessName = item.businessName || item.name || "Connected wholesaler";
+  const businessName = item.businessName?.trim() || "";
 
   const rawBanners = Array.isArray(item.banners) ? item.banners : [];
   const banners: BannerSlide[] = rawBanners.map((b, idx) => ({
@@ -416,8 +435,8 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
   const result: Wholesaler = {
     id: rawId,
     name: businessName,
-    initials: toInitials(businessName),
-    logo: item.businessLogoUrl || (item as any).logo || "",
+    initials: toInitials(businessName || "WH"),
+    logo: item.businessLogoUrl || item.logo || "",
     verified: true,
     rating: Number(item.rating || 4.8),
     location: item.address?.["city"] || item.address?.["state"] || (item as any).city || "India",
@@ -428,6 +447,7 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
     about: item.description || "Verified wholesaler connected to your retail account.",
     description: item.description || "",
     businessName,
+    businessTagline: item.businessTagline || "",
     businessCategory: item.businessCategory || "",
     available: item.available !== false,
     unavailableMessage: item.unavailableMessage || "",
@@ -576,12 +596,23 @@ export function mapOrder(item: ApiOrder): Order {
     wholesalerId,
     total: Number(item.grandTotal ?? item.total ?? (item as any).totalAmount ?? 0),
     items: mappedItems,
-    paymentMethod: item.paymentMethod || item.paymentMode || (isCreditOrder ? "CREDIT" : "COD"),
+    paymentMethod: item.paymentMethod || item.paymentMode || (isCreditOrder ? "CREDIT" : "UPI"),
     isCreditOrder,
     creditDueDate: item.creditDueDate ? new Date(item.creditDueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
     creditPeriodDays: item.creditPeriodDays ? Number(item.creditPeriodDays) : undefined,
     creditPaymentStatus,
     creditSettledAt: item.creditSettledAt ? new Date(item.creditSettledAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
+    shippingDetails: item.shippingDetails ? {
+      courierName: item.shippingDetails.courierName,
+      biltyNumber: item.shippingDetails.biltyNumber,
+      trackingNumber: item.shippingDetails.trackingNumber,
+      shippingDate: item.shippingDetails.shippingDate ? new Date(item.shippingDetails.shippingDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
+      estimatedDeliveryDate: item.shippingDetails.estimatedDeliveryDate ? new Date(item.shippingDetails.estimatedDeliveryDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
+      biltyUrl: item.shippingDetails.biltyUrl,
+      biltyFileName: item.shippingDetails.biltyFileName,
+      shippingNotes: item.shippingDetails.shippingNotes,
+      shippedAt: item.shippingDetails.shippedAt ? new Date(item.shippingDetails.shippedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : undefined,
+    } : undefined,
   };
 }
 
@@ -618,7 +649,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   currentUserRef.current = currentUser;
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    return Boolean(getAuthToken());
+    return Boolean(
+      getAuthToken() ||
+      getReferralAttributionFromUrl(new URL(window.location.href)),
+    );
   });
   const [profile, setProfile] = useState<RetailerProfile>(() => {
     if (typeof window === "undefined") return emptyProfile;
@@ -644,10 +678,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
   const [dashboard, setDashboard] = useState<Record<string, unknown> | null>(null);
   const [linkedWholesaler, setLinkedWholesaler] = useState<Wholesaler | null>(null);
+  const [storefrontReferralCode, setStorefrontReferralCode] = useState("");
   const [relationships, setRelationships] = useState<Record<string, "Connected">>({});
+  const [storefrontError, setStorefrontError] = useState<string | null>(null);
 
   const syncSession = useCallback(async (silent = false) => {
     const token = getAuthToken();
+    const urlAttribution =
+      typeof window !== "undefined"
+        ? getReferralAttributionFromUrl(new URL(window.location.href))
+        : null;
+    const storedAttribution = getStoredReferralAttribution();
+    const activeReferral = urlAttribution || storedAttribution;
+    const shouldShowLoading = !silent || Boolean(urlAttribution);
+    if (urlAttribution) {
+      setStorefrontError(null);
+      setIsLoading(true);
+    }
+    let requestedReferralWholesaler: ApiWholesaler | null = null;
+    if (token && activeReferral) {
+      try {
+        const response = await api.getReferral(activeReferral.code);
+        requestedReferralWholesaler = response?.data?.wholesaler ?? null;
+        if (!requestedReferralWholesaler?.businessName?.trim()) {
+          throw new Error("This invitation link is invalid or has no business name. Please ask your wholesaler for an updated link.");
+        }
+      } catch (error) {
+        setProducts([]);
+        setCategories([]);
+        setLinkedWholesaler(null);
+        setStorefrontReferralCode("");
+        setRelationships({});
+        setStorefrontError(
+          error instanceof Error
+            ? error.message
+            : "This invitation link is invalid or inactive. Please ask your wholesaler for a new link.",
+        );
+        if (shouldShowLoading) setIsLoading(false);
+        return;
+      }
+    }
+
     if (!token) {
       setCurrentUser(null);
       setProfile(emptyProfile);
@@ -659,34 +730,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       cartRef.current = localCart;
 
       // Check if user came with a referral attribution
-      const urlAttribution =
-        typeof window !== "undefined"
-          ? getReferralAttributionFromUrl(new URL(window.location.href))
-          : null;
       if (urlAttribution) saveReferralAttribution(urlAttribution);
-      const storedRef = urlAttribution || getStoredReferralAttribution();
+      const storedRef = urlAttribution || storedAttribution;
       if (storedRef?.code) {
         setProducts([]);
         setCategories([]);
         setLinkedWholesaler(null);
         setRelationships({});
+        setStorefrontError(null);
         try {
-          if (!silent) setIsLoading(true);
-          const [refRes, prodRes] = await Promise.all([
-            api.getReferral(storedRef.code).catch(() => null),
-            api.getReferralProducts(storedRef.code, { limit: 200 }).catch(() => null),
-          ]);
-
-          let mappedWs: Wholesaler | null = null;
-          let referralCategories: Category[] = [];
-          if (refRes?.data?.wholesaler) {
-            mappedWs = mapWholesaler(refRes.data.wholesaler);
-            referralCategories = Array.isArray(refRes.data.wholesaler.categoryDetails)
-              ? refRes.data.wholesaler.categoryDetails.map(mapCategory)
-              : [];
-            setLinkedWholesaler(mappedWs);
+          if (shouldShowLoading) setIsLoading(true);
+          const refRes = await api.getReferral(storedRef.code);
+          if (!refRes?.data?.wholesaler?.businessName?.trim()) {
+            throw new Error("This invitation link is invalid or has no business name. Please ask your wholesaler for an updated link.");
           }
-
+          const mappedWs = mapWholesaler(refRes.data.wholesaler);
+          const referralCategories = Array.isArray(refRes.data.wholesaler.categoryDetails)
+            ? refRes.data.wholesaler.categoryDetails.map(mapCategory)
+            : [];
+          const prodRes = await api.getReferralProducts(storedRef.code, { limit: 200 });
           const rawProducts = Array.isArray(prodRes?.data)
             ? prodRes.data
             : Array.isArray((prodRes as any)?.data?.products)
@@ -696,6 +758,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (mappedWs) {
             const wsId = String(mappedWs.id);
             mappedWs.id = wsId;
+            if (!mappedWs.businessName) {
+              throw new Error("This invitation link does not include the wholesaler's business name.");
+            }
+            setLinkedWholesaler(mappedWs);
+            setStorefrontReferralCode(storedRef.code);
             setRelationships({ [wsId]: "Connected" });
 
             const publicProducts = rawProducts
@@ -705,7 +772,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   typeof rawWholesalerId === "object" && rawWholesalerId !== null
                     ? rawWholesalerId._id || rawWholesalerId.id
                     : rawWholesalerId || item.wholesaler?._id || item.wholesaler?.id;
-                return !productWholesalerId || String(productWholesalerId) === wsId;
+                return Boolean(productWholesalerId) && String(productWholesalerId) === wsId;
               })
               .map((item: ApiProduct, idx: number) => {
                 const mapped = mapProduct(item, idx);
@@ -715,35 +782,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 };
               });
             setProducts(publicProducts);
-
-            const catNames = Array.from(new Set(publicProducts.map((p: any) => p.category).filter(Boolean)));
-            const publicCategories = catNames.map((name: any) => ({
-              id: String(name),
-              name: String(name),
-              description: `${name} category`,
-            }));
-            setCategories(referralCategories.length ? referralCategories : publicCategories);
+              setCategories(referralCategories);
           } else {
-            setProducts([]);
-            setCategories([]);
-            setRelationships({});
+              setProducts([]);
+              setCategories([]);
+              setRelationships({});
+              setStorefrontReferralCode("");
+              setStorefrontError("This invitation link is invalid or inactive. Please ask your wholesaler for a new link.");
           }
         } catch (e) {
+          const message = e instanceof Error
+              ? e.message
+              : "Could not load this wholesaler's store. Please try the invitation link again.";
+          setProducts([]);
+          setCategories([]);
+          setLinkedWholesaler(null);
+          setStorefrontReferralCode("");
+          setRelationships({});
+          setStorefrontError(message);
           console.warn("Could not load referral public catalog", e);
         } finally {
-          if (!silent) setIsLoading(false);
+          if (shouldShowLoading) setIsLoading(false);
         }
       } else {
         setProducts([]);
         setCategories([]);
         setLinkedWholesaler(null);
+        setStorefrontReferralCode("");
         setRelationships({});
+        setStorefrontError(null);
       }
       return;
     }
 
     try {
-      if (!silent) setIsLoading(true);
+      setStorefrontError(null);
+      if (shouldShowLoading) setIsLoading(true);
 
       let userId = localStorage.getItem("nexora_retailer_user_id") || "";
       if (!currentUserRef.current || !userId) {
@@ -762,7 +836,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
-      // Sync any guest cart items added before logging in
+      const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>, staleTime?: number) =>
+        queryClient.fetchQuery({
+          queryKey: retailerQueryKeys.resource(userId, resource),
+          queryFn,
+          ...(staleTime !== undefined && { staleTime }),
+        });
+
+      if (requestedReferralWholesaler && activeReferral) {
+        const currentWholesalerRes = await fetchUserData(
+          "wholesaler",
+          () => api.getConnectedWholesaler(),
+          60_000,
+        );
+        const currentWholesaler = mapWholesaler(
+          (currentWholesalerRes as { data?: ApiWholesaler } | null)?.data ?? null,
+        );
+        const requestedWholesalerId = String(
+          requestedReferralWholesaler.id || requestedReferralWholesaler._id || "",
+        );
+        if (requestedWholesalerId && requestedWholesalerId !== String(currentWholesaler?.id || "")) {
+          try {
+            await api.switchWholesalerByReferral(activeReferral.code);
+          } catch (error) {
+            setProducts([]);
+            setCategories([]);
+            setLinkedWholesaler(null);
+            setRelationships({});
+            setStorefrontReferralCode("");
+            setStorefrontError(
+              error instanceof Error
+                ? error.message
+                : "Could not connect your account to the invited wholesaler.",
+            );
+            if (shouldShowLoading) setIsLoading(false);
+            return;
+          }
+          for (const resource of ["wholesaler", "products", "categories", "cart", "dashboard"]) {
+            queryClient.removeQueries({
+              queryKey: retailerQueryKeys.resource(userId, resource),
+            });
+          }
+        }
+      }
+
+      // Sync guest cart items only after the invite has switched the active supplier.
       let guestCartSync = guestCartSyncRef.current;
       if (!guestCartSync) {
         guestCartSync = (async () => {
@@ -783,13 +901,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const { guestCart, unsyncedGuestCart } = await guestCartSync;
       if (guestCartSyncRef.current === guestCartSync) guestCartSyncRef.current = null;
-
-      const fetchUserData = <T,>(resource: string, queryFn: () => Promise<T>, staleTime?: number) =>
-        queryClient.fetchQuery({
-          queryKey: retailerQueryKeys.resource(userId, resource),
-          queryFn,
-          ...(staleTime !== undefined && { staleTime }),
-        });
 
       const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
       const loadDashboard = pathname === "/dashboard";
@@ -832,6 +943,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setDashboard((dashboardRes as { data?: Record<string, unknown> } | null)?.data ?? null);
       }
       setLinkedWholesaler(connectedWholesalerData);
+      setStorefrontReferralCode(activeReferral?.code || "");
       if (connectedWholesalerData) {
         setRelationships({ [connectedWholesalerData.id]: "Connected" });
       } else {
@@ -919,9 +1031,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProfile(emptyProfile);
       setDashboard(null);
       setLinkedWholesaler(null);
+      setStorefrontReferralCode("");
       setRelationships({});
     } finally {
-      if (!silent) setIsLoading(false);
+      if (shouldShowLoading) setIsLoading(false);
     }
   }, [queryClient]);
 
@@ -1121,6 +1234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [currentUser?.id, queryClient]);
 
   const logout = useCallback(async () => {
+    const registrationComplete = hasCompletedRetailerRegistration();
     try {
       await api.logout().catch(() => undefined);
     } finally {
@@ -1131,6 +1245,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("nexora_retailer_user_id");
       localStorage.clear();
       sessionStorage.clear();
+      if (registrationComplete) markRetailerRegistrationComplete();
       setCurrentUser(null);
       setProfile(emptyProfile);
       setProducts([]);
@@ -1141,6 +1256,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setNotifications([]);
       setDashboard(null);
       setLinkedWholesaler(null);
+      setStorefrontReferralCode("");
       setRelationships({});
       toast.success("Signed out successfully");
     }
@@ -1336,7 +1452,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast.success("Retailer profile saved");
   }, [invalidateUserData, syncSession]);
 
-  const placeOrder = useCallback(async (paymentMethod = "COD", couponCode?: string) => {
+  const placeOrder = useCallback(async (paymentMethod = "UPI", couponCode?: string, expectedQuoteHash?: string) => {
     if (!cart.length) {
       throw new Error("Your cart is empty");
     }
@@ -1359,6 +1475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         shippingAddress,
         paymentMethod,
         ...(couponCode ? { couponCode } : {}),
+        ...(expectedQuoteHash ? { expectedQuoteHash } : {}),
       });
 
       setCart([]);
@@ -1392,6 +1509,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       isLoading,
       linkedWholesalerId,
       linkedWholesaler,
+      storefrontReferralCode,
+      storefrontError,
       connectedWholesalers: linkedWholesaler ? [linkedWholesaler] : [],
       products,
       categories,
@@ -1423,7 +1542,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addRecentlyViewed,
       refreshOrders,
     }),
-    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, products, categories, cart, cartCount, uniqueCartCount, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders, syncSession]
+    [currentUser, isLoading, linkedWholesalerId, linkedWholesaler, storefrontReferralCode, storefrontError, products, categories, cart, cartCount, uniqueCartCount, wishlist, relationships, orders, returns, profile, unread, notifications, recentlyViewed, dashboard, addedToCartProduct, clearAddedToCartProduct, login, logout, connectWholesaler, addToCart, setQuantity, removeCart, toggleWishlist, saveProfile, placeOrder, markRead, addRecentlyViewed, refreshOrders, syncSession]
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

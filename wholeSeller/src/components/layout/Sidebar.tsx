@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowRight,
   LayoutDashboard,
   Package,
   FolderTree,
@@ -13,10 +12,8 @@ import {
   ShieldCheck,
   LogOut,
   Sparkles,
-  MessageSquare,
   Sliders,
   Headphones,
-  PhoneCall,
   HandCoins,
   Ticket,
   FileText,
@@ -28,8 +25,6 @@ import {
 import { useWholesaler } from '@/context/WholesalerContext';
 import BusinessLogo from '@/components/BusinessLogo';
 import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
-import { FeedbackModal } from './FeedbackModal';
-import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -62,9 +57,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
   const pathname = location.pathname;
   const navigate = useNavigate();
   const { profile } = useWholesaler();
-  const [showProfile, setShowProfile] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [showHelpModal, setShowHelpModal] = useState(false);
   const [subscription, setSubscription] = useState<WholesalerSubscription | null>(null);
 
   useEffect(() => {
@@ -205,36 +197,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
           })}
         </nav>
 
-      {/* User Profile & Super Admin Call Helpline Box */}
-      <div className="p-3 border-t border-tradeflow-navy-hover bg-tradeflow-navy space-y-2">
-        <button
-          type="button"
-          onClick={() => setShowHelpModal(true)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-tradeflow-green text-white rounded-xl text-xs font-semibold hover:bg-tradeflow-green-hover transition-all shadow-xs"
-        >
-          <PhoneCall className="w-3.5 h-3.5 text-white animate-pulse" />
-          <span>Call Super Admin Support</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowFeedbackModal(true)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#FAF9F6] text-[#44403C] border border-[#E7E5E4] rounded-xl text-xs font-medium hover:bg-white hover:border-tradeflow-green/30 transition-colors"
-        >
-          <MessageSquare className="w-3.5 h-3.5 text-[#78716C]" />
-          <span>Give Feedback & Review</span>
-        </button>
-
-        <div
-          className="relative"
-          onMouseEnter={() => setShowProfile(true)}
-          onMouseLeave={() => setShowProfile(false)}
-        >
+      {/* User Profile */}
+      <div className="p-3 border-t border-tradeflow-navy-hover bg-tradeflow-navy">
           <div className="p-2 rounded-xl bg-[#FAF9F6] border border-[#E7E5E4] flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setShowProfile((open) => !open)}
-              aria-expanded={showProfile}
-              aria-label="Open wholesaler contact information"
+            <Link
+              to="/dashboard/profile"
+              onClick={onClose}
+              aria-label="Open business profile"
               className="flex min-w-0 items-center gap-2.5 overflow-hidden text-left"
             >
               <BusinessLogo
@@ -250,7 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
                   {profile.businessName ? profile.ownerName : profile.email}
                 </span>
               </span>
-            </button>
+            </Link>
             <button
               onClick={handleLogout}
               title="Log Out"
@@ -261,40 +230,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
             </button>
           </div>
 
-          {showProfile && (
-            <div className="absolute bottom-full left-0 z-50 mb-2 w-full rounded-xl border border-[#E7E5E4] bg-white p-4 text-[#1C1917] shadow-xl">
-              <p className="truncate text-sm font-bold text-[#1C1917]">{profile.businessName || 'Business details'}</p>
-              <dl className="mt-3 space-y-2 text-xs">
-                <div>
-                  <dt className="text-[#78716C]">Contact name</dt>
-                  <dd className="font-semibold text-[#1C1917]">{profile.ownerName || 'Not provided'}</dd>
-                </div>
-                <div>
-                  <dt className="text-[#78716C]">Email</dt>
-                  <dd className="break-all font-semibold text-[#1C1917]">{profile.email || 'Not provided'}</dd>
-                </div>
-                <div>
-                  <dt className="text-[#78716C]">Phone</dt>
-                  <dd className="font-semibold text-[#1C1917]">{profile.phone || 'Not provided'}</dd>
-                </div>
-              </dl>
-              <Link
-                to="/dashboard/profile"
-                onClick={() => {
-                  setShowProfile(false);
-                  onClose?.();
-                }}
-                className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-tradeflow-green hover:underline"
-              >
-                View details <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          )}
-        </div>
       </div>
 
-      <FeedbackModal isOpen={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} />
-      <SuperAdminHelpModal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} />
     </aside>
     </>
   );

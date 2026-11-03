@@ -16,9 +16,34 @@ const {
   Review,
   Coupon,
   WalletTransaction,
+  SubscriptionPlan,
+  WholesalerSubscription,
+  SubscriptionPayment,
 } = require('../../models');
 const { ROLES, USER_STATUS, KYC_STATUS, ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS, RELATIONSHIP_STATUS } = require('../../config/constants');
 const { BadRequestError, NotFoundError } = require('../../utils/errors');
+
+const DASHBOARD_SUBSCRIPTION_PLAN_KEYS = [
+  'WHOLESALER_MONTHLY',
+  'WHOLESALER_ANNUAL',
+  'WHOLESALER_499',
+  'WHOLESALER_PRO_YEARLY',
+];
+
+function addSubscriptionPeriod(date, billingPeriod) {
+  const renewalDate = new Date(date);
+  const day = renewalDate.getDate();
+  renewalDate.setDate(1);
+  if (billingPeriod === 'YEARLY') renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+  else renewalDate.setMonth(renewalDate.getMonth() + 1);
+  const lastDay = new Date(
+    renewalDate.getFullYear(),
+    renewalDate.getMonth() + 1,
+    0,
+  ).getDate();
+  renewalDate.setDate(Math.min(day, lastDay));
+  return renewalDate;
+}
 
 class AdminService {
   /**
@@ -609,12 +634,30 @@ class AdminService {
   static async getDashboardStats(query = {}) {
     const { range = '30d' } = query;
 
-    const [wholesalers, retailers, products, orders, users] = await Promise.all([
+    const [wholesalers, retailers, products, orders, users, subscriptionPlanStats] = await Promise.all([
       WholesalerProfile.aggregate([
         {
           $facet: {
             total: [{ $match: { isDeleted: false } }, { $count: 'c' }],
-            active: [{ $match: { isDeleted: false, kycStatus: KYC_STATUS.APPROVED } }, { $count: 'c' }],
+            active: [
+              { $match: { isDeleted: false } },
+              {
+                $lookup: {
+                  from: User.collection.name,
+                  localField: 'userId',
+                  foreignField: '_id',
+                  as: 'user',
+                },
+              },
+              { $unwind: '$user' },
+              {
+                $match: {
+                  'user.isDeleted': false,
+                  'user.status': USER_STATUS.ACTIVE,
+                },
+              },
+              { $count: 'c' },
+            ],
           },
         },
       ]),
@@ -651,10 +694,40 @@ class AdminService {
           },
         },
       ]),
+      WholesalerSubscription.aggregate([
+        {
+          $match: {
+            planId: { $ne: null },
+            status: 'ACTIVE',
+            renewalDate: { $gt: new Date() },
+          },
+        },
+        {
+          $lookup: {
+            from: SubscriptionPlan.collection.name,
+            localField: 'planId',
+            foreignField: '_id',
+            as: 'plan',
+          },
+        },
+        { $unwind: '$plan' },
+        { $match: { 'plan.key': { $in: DASHBOARD_SUBSCRIPTION_PLAN_KEYS } } },
+        {
+          $lookup: {
+            from: WholesalerProfile.collection.name,
+            localField: 'userId',
+            foreignField: 'userId',
+            as: 'profile',
+          },
+        },
+        { $unwind: '$profile' },
+        { $match: { 'profile.isDeleted': false } },
+        { $group: { _id: '$plan.key', userIds: { $addToSet: '$userId' } } },
+      ]),
     ]);
 
     const totalW = wholesalers[0]?.total[0]?.c || 0;
-    const activeW = wholesalers[0]?.active[0]?.c || totalW;
+    const activeW = wholesalers[0]?.active[0]?.c || 0;
     const totalR = retailers[0]?.total[0]?.c || 0;
     const activeR = retailers[0]?.active[0]?.c || totalR;
     const totalP = products[0]?.total[0]?.c || 0;
@@ -664,6 +737,14 @@ class AdminService {
     const totalU = users[0]?.total[0]?.c || (totalW + totalR);
     const activeU = users[0]?.active[0]?.c || (activeW + activeR);
     const inactiveU = users[0]?.inactive[0]?.c || 0;
+    const subscriptionPlanCounts = Object.fromEntries(
+      DASHBOARD_SUBSCRIPTION_PLAN_KEYS.map((key) => [key, 0]),
+    );
+    const subscriptionUserIds = new Set();
+    subscriptionPlanStats.forEach(({ _id, userIds }) => {
+      subscriptionPlanCounts[_id] = userIds.length;
+      userIds.forEach((userId) => subscriptionUserIds.add(String(userId)));
+    });
 
     return {
       totalWholesalers: totalW,
@@ -677,6 +758,8 @@ class AdminService {
       totalUsers: totalU,
       activeUsers: activeU,
       inactiveUsers: inactiveU,
+      subscriptionPlanCounts,
+      subscriptionUsers: subscriptionUserIds.size,
     };
   }
 
@@ -803,7 +886,7 @@ class AdminService {
    * Get Dashboard Recent Records
    */
   static async getDashboardRecent() {
-    const [recentOrders, recentUsers, pendingApprovals, lowStock] = await Promise.all([
+    const [recentOrders, recentUsers, pendingApprovals, lowStock, recentSubscriptionActivities] = await Promise.all([
       Order.find()
         .populate('retailerId', 'name businessName email')
         .populate('wholesalerId', 'name businessName email')
@@ -824,6 +907,7 @@ class AdminService {
         .select('name sku quantity wholesalePrice')
         .limit(5)
         .lean(),
+      this.getSubscriptionActivities({ limit: 8 }),
     ]);
 
     return {
@@ -856,7 +940,95 @@ class AdminService {
         stock: p.quantity,
         price: p.wholesalePrice,
       })),
+      recentSubscriptionActivities,
     };
+  }
+
+  static async getSubscriptionActivities({ limit = null } = {}) {
+    const [payments, subscriptions] = await Promise.all([
+      SubscriptionPayment.find({ status: { $in: ['PAID', 'PENDING'] } })
+        .populate({ path: 'userId', select: 'name' })
+        .populate({ path: 'wholesalerProfileId', select: 'businessName' })
+        .populate({ path: 'planId', select: 'name' })
+        .lean(),
+      WholesalerSubscription.find()
+        .populate({ path: 'userId', select: 'name' })
+        .populate({ path: 'wholesalerProfileId', select: 'businessName' })
+        .lean(),
+    ]);
+
+    const currentByUser = new Map(
+      subscriptions.map((subscription) => [String(subscription.userId?._id || subscription.userId), subscription]),
+    );
+    const orderedPayments = [...payments].sort(
+      (left, right) => (
+        new Date(left.verifiedAt || left.createdAt).getTime()
+        - new Date(right.verifiedAt || right.createdAt).getTime()
+      ),
+    );
+    const expiryByUser = new Map();
+    const paymentUserIds = new Set();
+    const activities = orderedPayments.map((payment) => {
+      const userId = String(payment.userId?._id || payment.userId);
+      paymentUserIds.add(userId);
+      const activityDate = payment.verifiedAt || payment.createdAt;
+      let expiryDate = null;
+      if (payment.status === 'PAID') {
+        const previousExpiry = expiryByUser.get(userId);
+        const startDate = previousExpiry && previousExpiry > activityDate
+          ? previousExpiry
+          : activityDate;
+        expiryDate = addSubscriptionPeriod(startDate, payment.billingPeriod);
+        expiryByUser.set(userId, expiryDate);
+      }
+
+      const current = currentByUser.get(userId);
+      const isCurrentPayment = Boolean(
+        payment.razorpayOrderId &&
+        current?.razorpayOrderId === payment.razorpayOrderId,
+      );
+      if (isCurrentPayment && current.renewalDate) expiryDate = current.renewalDate;
+
+      return {
+        id: String(payment._id),
+        businessName: payment.wholesalerProfileId?.businessName || 'Business not provided',
+        ownerName: payment.userId?.name || 'Owner not provided',
+        planName: payment.planName || payment.planId?.name || 'Subscription plan',
+        amount: payment.amount,
+        currency: payment.currency || 'INR',
+        purchaseDate: activityDate,
+        expiryDate,
+        status: payment.status === 'PENDING'
+          ? 'PENDING'
+          : isCurrentPayment && current.status === 'ACTIVE' && current.renewalDate > new Date()
+            ? 'ACTIVE'
+            : 'EXPIRED',
+        sortDate: payment.verifiedAt || payment.createdAt,
+      };
+    });
+
+    subscriptions.forEach((subscription) => {
+      const userId = String(subscription.userId?._id || subscription.userId);
+      if (paymentUserIds.has(userId)) return;
+      activities.push({
+        id: String(subscription._id),
+        businessName: subscription.wholesalerProfileId?.businessName || 'Business not provided',
+        ownerName: subscription.userId?.name || 'Owner not provided',
+        planName: subscription.planName || 'Subscription plan',
+        amount: subscription.amount,
+        currency: subscription.currency || 'INR',
+        purchaseDate: subscription.startedAt || subscription.createdAt,
+        expiryDate: subscription.renewalDate,
+        status: subscription.status === 'ACTIVE' && subscription.renewalDate > new Date()
+          ? 'ACTIVE'
+          : 'EXPIRED',
+        sortDate: subscription.startedAt || subscription.createdAt,
+      });
+    });
+
+    activities.sort((left, right) => new Date(right.sortDate) - new Date(left.sortDate));
+    const result = activities.map(({ sortDate, ...activity }) => activity);
+    return Number.isInteger(limit) && limit > 0 ? result.slice(0, limit) : result;
   }
 
   /**

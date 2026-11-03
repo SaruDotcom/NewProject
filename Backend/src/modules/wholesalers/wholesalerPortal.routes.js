@@ -35,6 +35,7 @@ router.get('/inventory', Controller.listInventory);
 router.get('/inventory/:productId/history', Controller.inventoryHistory);
 router.post('/inventory/:productId/adjustments', requireActiveWholesaler, Controller.adjustInventory);
 router.get('/analytics', Controller.analytics);
+router.get('/financial-summary', Controller.getFinancialSummary);
 router.get('/analytics/export', Controller.exportAnalytics);
 const couponController = require('../coupons/coupons.controller');
 
