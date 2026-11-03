@@ -287,8 +287,9 @@ export default function SubscriptionPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-extrabold uppercase tracking-wide text-tradeflow-green">Billing & Membership</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-tradeflow-green/10 px-2.5 py-0.5 text-[11px] font-bold text-tradeflow-green">
-              <ShieldCheck className="h-3 w-3" /> Razorpay Verified
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${paymentConfigured ? 'bg-tradeflow-green/10 text-tradeflow-green' : 'bg-amber-100 text-amber-800'}`}>
+              {paymentConfigured ? <ShieldCheck className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+              {paymentConfigured ? 'Razorpay Configured' : 'Razorpay Setup Required'}
             </span>
           </div>
           <h1 className="mt-1 text-2xl font-extrabold text-tradeflow-navy">Wholesaler Subscription Plans</h1>
@@ -324,7 +325,7 @@ export default function SubscriptionPage() {
           <div>
             <p className="font-bold">Online Payment Gateway Pending</p>
             <p className="text-xs text-amber-800 font-normal mt-0.5">
-              Razorpay API keys are not configured in the backend environment. Please verify your Razorpay credentials.
+              Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the backend hosting environment using the matching Razorpay test or live credentials, then restart or redeploy the backend. Never add these secrets to frontend code.
             </p>
           </div>
         </div>
