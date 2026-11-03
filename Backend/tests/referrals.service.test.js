@@ -6,6 +6,8 @@ jest.mock('../src/models', () => ({
   WholesalerProfile: {
     findOne: jest.fn(),
     updateOne: jest.fn(),
+    findOneAndUpdate: jest.fn(),
+    findById: jest.fn(),
     find: jest.fn(),
   },
   User: {
@@ -101,6 +103,39 @@ describe('ReferralService', () => {
       expect(result.profile.retailerReferralCode).toBe('WDE15J');
     });
 
+    it('matches legacy lowercase codes and profiles without an isDeleted field', async () => {
+      const profile = {
+        _id: 'legacy-profile',
+        userId: 'legacy-user',
+        retailerReferralCode: 'ab12cd',
+        kycStatus: KYC_STATUS.APPROVED,
+        retailerSignupsEnabled: true,
+      };
+      WholesalerProfile.findOne
+        .mockReturnValueOnce({ lean: jest.fn().mockResolvedValue(null) })
+        .mockReturnValueOnce({ lean: jest.fn().mockResolvedValue(profile) });
+      User.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            _id: 'legacy-user',
+            role: ROLES.WHOLESALER,
+            status: USER_STATUS.ACTIVE,
+          }),
+        }),
+      });
+
+      const result = await ReferralService.resolveActiveCode('ab12cd');
+
+      expect(result.profile).toBe(profile);
+      expect(WholesalerProfile.findOne.mock.calls[0][0]).toEqual({
+        retailerReferralCode: 'AB12CD',
+        isDeleted: { $ne: true },
+      });
+      expect(WholesalerProfile.findOne.mock.calls[1][0].retailerReferralCode)
+        .toEqual(/^AB12CD$/i);
+      expect(User.findOne.mock.calls[0][0].isDeleted).toEqual({ $ne: true });
+    });
+
     it('throws 403 if wholesaler account is suspended or blocked', async () => {
       WholesalerProfile.findOne.mockReturnValue({
         lean: jest.fn().mockResolvedValue({
@@ -162,8 +197,62 @@ describe('ReferralService', () => {
       );
       expect(WholesalerProfile.findOne).toHaveBeenCalledWith({
         retailerReferralCode: 'WDE15J',
-        isDeleted: false,
+        isDeleted: { $ne: true },
       });
+    });
+  });
+
+  describe('ensureCode', () => {
+    it('atomically saves a unique referral code and reuses the saved value', async () => {
+      const profile = { _id: 'profile-without-code' };
+      WholesalerProfile.findOneAndUpdate.mockImplementation(async (_filter, update) => ({
+        retailerReferralCode: update.$set.retailerReferralCode,
+      }));
+
+      const code = await ReferralService.ensureCode(profile);
+
+      expect(code).toMatch(/^[A-Z0-9]{6}$/);
+      expect(profile.retailerReferralCode).toBe(code);
+      expect(WholesalerProfile.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: profile._id,
+          isDeleted: { $ne: true },
+          retailerReferralCode: { $in: [null, ''] },
+        },
+        { $set: { retailerReferralCode: code } },
+        { new: true, runValidators: true },
+      );
+    });
+
+    it('retries code collisions reported by the unique index', async () => {
+      const profile = { _id: 'profile-without-code' };
+      WholesalerProfile.findOneAndUpdate
+        .mockRejectedValueOnce({ code: 11000 })
+        .mockImplementationOnce(async (_filter, update) => ({
+          retailerReferralCode: update.$set.retailerReferralCode,
+        }));
+
+      const code = await ReferralService.ensureCode(profile);
+
+      expect(code).toMatch(/^[A-Z0-9]{6}$/);
+      expect(WholesalerProfile.findOneAndUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses the code persisted by a concurrent request instead of overwriting it', async () => {
+      const profile = { _id: 'profile-without-code' };
+      WholesalerProfile.findOneAndUpdate.mockResolvedValue(null);
+      WholesalerProfile.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            retailerReferralCode: 'SAVED1',
+            isDeleted: false,
+          }),
+        }),
+      });
+
+      await expect(ReferralService.ensureCode(profile)).resolves.toBe('SAVED1');
+      expect(profile.retailerReferralCode).toBe('SAVED1');
+      expect(WholesalerProfile.findOneAndUpdate).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -194,8 +283,6 @@ describe('ReferralService', () => {
           lean: jest.fn().mockResolvedValue({ _id: 'user123', role: ROLES.WHOLESALER, status: USER_STATUS.ACTIVE }),
         }),
       });
-
-      Product.distinct.mockResolvedValue(['cat1']);
 
       Category.find.mockReturnValue({
         sort: jest.fn().mockReturnValue({
@@ -242,6 +329,12 @@ describe('ReferralService', () => {
         { _id: 'p2', name: 'gown', price: 300, wholesalerId: 'user123' },
       ];
 
+      Category.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue([{ _id: 'cat1' }]),
+        }),
+      });
+
       const populate2 = jest.fn().mockReturnValue({
         sort: jest.fn().mockReturnValue({
           skip: jest.fn().mockReturnValue({
@@ -267,7 +360,8 @@ describe('ReferralService', () => {
       expect(Product.find).toHaveBeenCalledWith(
         expect.objectContaining({
           wholesalerId: 'user123',
-          isDeleted: false,
+          isDeleted: { $ne: true },
+          categoryId: { $in: ['cat1'] },
         })
       );
       expect(result.products).toHaveLength(2);

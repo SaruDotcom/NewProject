@@ -78,6 +78,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       categoryDetails: [],
       businessCategory: 'CLOTHING',
       activeStoreTheme: 'DEFAULT',
+      businessLogoUrl: 'https://example.test/logo.png',
       banners: [],
     });
     expect(Object.keys(response.body.data.wholesaler).sort()).toEqual([
@@ -85,6 +86,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       'activeStoreTheme',
       'banners',
       'businessCategory',
+      'businessLogoUrl',
       'businessName',
       'businessTagline',
       'categories',
@@ -383,9 +385,9 @@ describe('Wholesaler referral-only retailer registration', () => {
       .post('/api/v1/auth/register')
       .send({ ...payload, email: 'retailer2@example.test', referralCode: 'NOTVALID123' });
 
-    expect(missingCode.status).toBe(403);
-    expect(invalidCode.status).toBe(403);
-    expect(invalidCode.body.message).toBe('This link is not valid. Please ask your wholesaler for a new link.');
+    expect(missingCode.status).toBe(404);
+    expect(invalidCode.status).toBe(404);
+    expect(invalidCode.body.message).toBe('Invalid invitation link. This referral code does not exist.');
     expect(await User.countDocuments({ role: ROLES.RETAILER })).toBe(0);
   });
 
@@ -463,7 +465,7 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect((await WholesalerProfile.findById(wholesalerProfile._id)).retailerReferralCode)
       .toBe(response.body.data.code);
     expect((await request(app).get('/api/v1/referral/E17DA0E32BE5E17DC9DEBBBC459AEDCB')).status)
-      .toBe(403);
+      .toBe(404);
   });
 
   test('referral registration validates uniqueness and preserves wholesaler branding through login', async () => {
@@ -648,7 +650,7 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(regenerated.body.data.code).not.toBe(initial.body.data.code);
     expect(regenerated.body.data.code).toMatch(/^[A-Z0-9]{6}$/);
     expect(regenerated.body.data.joinedCount).toBe(1);
-    expect((await request(app).get(`/api/v1/referral/${initial.body.data.code}`)).status).toBe(403);
+    expect((await request(app).get(`/api/v1/referral/${initial.body.data.code}`)).status).toBe(404);
 
     const paused = await request(app)
       .patch('/api/v1/wholesaler/referral')
@@ -673,7 +675,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       password: 'Password@123',
       inviteToken: 'legacy-token',
     });
-    expect(legacyRegister.status).toBe(403);
+    expect(legacyRegister.status).toBe(404);
 
     const legacyInviteCreation = await request(app)
       .post('/api/v1/wholesaler/invite-links')

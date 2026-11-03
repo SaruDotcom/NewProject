@@ -25,33 +25,14 @@ class ReferralService {
 
     let profile = await WholesalerProfile.findOne({
       retailerReferralCode: normalizedCode,
-      isDeleted: false,
+      isDeleted: { $ne: true },
     }).lean();
 
-    // Specific fallback for WDE15J if not yet persisted in production database
-    if (!profile && normalizedCode === 'WDE15J') {
+    if (!profile) {
       profile = await WholesalerProfile.findOne({
-        $or: [
-          { businessName: new RegExp('^Sarita Store$', 'i') },
-          { retailerReferralCode: 'YX0GYK' },
-        ],
-        isDeleted: false,
+        retailerReferralCode: new RegExp(`^${escapeRegex(normalizedCode)}$`, 'i'),
+        isDeleted: { $ne: true },
       }).lean();
-
-      if (profile) {
-        await WholesalerProfile.updateOne(
-          { _id: profile._id },
-          {
-            $set: {
-              retailerReferralCode: 'WDE15J',
-              retailerSignupsEnabled: true,
-              businessTagline: profile.businessTagline || 'Premium Ethnic Wear & Wholesale Garments',
-            },
-          }
-        );
-        profile.retailerReferralCode = 'WDE15J';
-        profile.retailerSignupsEnabled = true;
-      }
     }
 
     if (!profile) throw this.invalidReferral();
@@ -67,7 +48,7 @@ class ReferralService {
     const wholesaler = await User.findOne({
       _id: profile.userId,
       role: ROLES.WHOLESALER,
-      isDeleted: false,
+      isDeleted: { $ne: true },
     }).select('_id status name email phone').lean();
 
     if (!wholesaler) throw this.invalidReferral('Wholesaler account associated with this link was not found.');
@@ -88,14 +69,17 @@ class ReferralService {
       _id: wholesalerUser._id,
       role: ROLES.WHOLESALER,
       status: USER_STATUS.ACTIVE,
-      isDeleted: false,
+      isDeleted: { $ne: true },
     }).select('_id').lean();
 
     if (!activeUser) {
       throw new ForbiddenError('Wholesaler must have an active account to manage retailer referrals.', 'WHOLESALER_UNAVAILABLE');
     }
 
-    const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id, isDeleted: false });
+    const profile = await WholesalerProfile.findOne({
+      userId: wholesalerUser._id,
+      isDeleted: { $ne: true },
+    });
     if (!profile) {
       throw new ForbiddenError('Wholesaler must have approved KYC to manage retailer referrals.', 'KYC_APPROVAL_REQUIRED');
     }
@@ -109,15 +93,42 @@ class ReferralService {
 
   static async ensureCode(profile) {
     const existingCode = String(profile.retailerReferralCode || '').trim();
-    if (/^[A-Z0-9]{4,10}$/.test(existingCode)) return existingCode;
+    if (/^[A-Z0-9]{4,10}$/i.test(existingCode)) return existingCode.toUpperCase();
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      profile.retailerReferralCode = generateReferralCode();
+    const filter = {
+      _id: profile._id,
+      isDeleted: { $ne: true },
+    };
+    if (profile.retailerReferralCode !== undefined && profile.retailerReferralCode !== null) {
+      filter.retailerReferralCode = profile.retailerReferralCode;
+    } else {
+      filter.retailerReferralCode = { $in: [null, ''] };
+    }
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const newCode = generateReferralCode();
       try {
-        await profile.save();
-        return profile.retailerReferralCode;
+        const savedProfile = await WholesalerProfile.findOneAndUpdate(
+          filter,
+          { $set: { retailerReferralCode: newCode } },
+          { new: true, runValidators: true },
+        );
+        if (savedProfile) {
+          profile.retailerReferralCode = savedProfile.retailerReferralCode;
+          return savedProfile.retailerReferralCode;
+        }
+
+        const latestProfile = await WholesalerProfile.findById(profile._id)
+          .select('retailerReferralCode isDeleted')
+          .lean();
+        const latestCode = String(latestProfile?.retailerReferralCode || '').trim();
+        if (latestProfile && latestProfile.isDeleted !== true && /^[A-Z0-9]{4,10}$/i.test(latestCode)) {
+          profile.retailerReferralCode = latestCode;
+          return latestCode.toUpperCase();
+        }
+        throw new ConflictError('Unable to save a unique referral code. Please try again.', 'REFERRAL_CODE_GENERATION_FAILED');
       } catch (error) {
-        if (error.code !== 11000 || attempt === 4) throw error;
+        if (error.code !== 11000 || attempt === 9) throw error;
       }
     }
     throw new ConflictError('Unable to generate a unique referral code. Please try again.', 'REFERRAL_CODE_GENERATION_FAILED');
@@ -164,24 +175,13 @@ class ReferralService {
 
   static async getPublicReferral(code) {
     const { profile, wholesaler } = await this.resolveActiveCode(code);
-    const { Category, Product } = require('../../models');
+    const { Category } = require('../../models');
 
-    // 1. Find all categories associated with this wholesaler's active products
-    const productCategoryIds = await Product.distinct('categoryId', {
-      wholesalerId: profile.userId,
-      status: 'ACTIVE',
-      isDeleted: false,
-      isDemo: { $ne: true },
-    });
-
-    // 2. Fetch categories (both direct wholesaler categories AND categories from their products)
+    // 1. Fetch only active categories owned by this wholesaler.
     const categoryDetails = await Category.find({
-      $or: [
-        { _id: { $in: productCategoryIds } },
-        { wholesalerId: profile.userId },
-      ],
+      wholesalerId: profile.userId,
       isActive: true,
-      isDeleted: false,
+      isDeleted: { $ne: true },
       isDemo: { $ne: true },
     })
       .sort({ sortOrder: 1, name: 1 })
@@ -190,14 +190,10 @@ class ReferralService {
 
     const categories = categoryDetails.map((category) => category.name);
 
-    // 3. Promotional banners
-    const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
+    // 2. Promotional banners
+    const { normalizeBusinessType } = require('../../config/businessTypeBanners');
     const businessCategory = normalizeBusinessType(profile.businessCategory || profile.khataBook?.businessType);
-    let banners = profile.promotionalBanners;
-    if (!banners || !Array.isArray(banners) || banners.length === 0) {
-      banners = getPresetsForType(businessCategory).map((p, idx) => ({ ...p, isActive: idx < 2 }));
-    }
-    const activeBanners = (banners || [])
+    const activeBanners = (Array.isArray(profile.promotionalBanners) ? profile.promotionalBanners : [])
       .filter((b) => b.isActive !== false && b.active !== false)
       .map((b) => ({
         id: b.id,
@@ -243,14 +239,29 @@ class ReferralService {
     const filter = {
       wholesalerId: profile.userId,
       status: PRODUCT_STATUS.ACTIVE,
-      isDeleted: false,
+      isDeleted: { $ne: true },
       isDemo: { $ne: true },
     };
 
+    const activeCategories = await Category.find({
+      wholesalerId: profile.userId,
+      isActive: true,
+      isDeleted: { $ne: true },
+      isDemo: { $ne: true },
+    })
+      .select('_id')
+      .lean();
+    const activeCategoryIds = activeCategories.map((category) => category._id);
+    if (activeCategoryIds.length === 0) {
+      return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
+    }
+    filter.categoryId = { $in: activeCategoryIds };
+
     if (query.category && query.category !== 'All') {
       const selectedCategory = await Category.findOne({
+        wholesalerId: profile.userId,
         isActive: true,
-        isDeleted: false,
+        isDeleted: { $ne: true },
         isDemo: { $ne: true },
         $or: [
           ...( /^[0-9a-fA-F]{24}$/.test(String(query.category)) ? [{ _id: query.category }] : [] ),
