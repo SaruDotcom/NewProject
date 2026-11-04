@@ -932,6 +932,7 @@ export const api = {
     type: string;
     subject: string;
     message: string;
+    rating?: number;
     priority?: string;
     relatedOrderId?: string;
     attachments?: Array<{ url: string; publicId?: string }>;

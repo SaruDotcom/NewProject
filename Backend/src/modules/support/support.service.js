@@ -248,6 +248,9 @@ class SupportService {
         .map(([category]) => category);
       filters.push({ $or: [{ type: query.type }, { category: { $in: legacyCategories } }] });
     }
+    if (/^[1-5]$/.test(String(query.rating || ''))) {
+      filters.push({ rating: Number(query.rating) });
+    }
     if (query.startDate || query.endDate) {
       const createdAt = {};
       if (query.startDate) createdAt.$gte = new Date(`${query.startDate}T00:00:00.000Z`);
@@ -261,7 +264,14 @@ class SupportService {
           { ticketNo: pattern },
           { ticketNumber: pattern },
           { businessName: pattern },
+          { contactName: pattern },
+          { email: pattern },
           { subject: pattern },
+          { message: pattern },
+          { type: pattern },
+          { category: pattern },
+          { 'messages.message': pattern },
+          { 'replies.message': pattern },
         ],
       });
     }
@@ -271,7 +281,7 @@ class SupportService {
       SupportTicket.find(filter)
         .populate('assignedTo', 'name email role')
         .populate('relatedOrderId', 'orderNumber')
-        .sort({ updatedAt: -1 })
+        .sort({ createdAt: query.sortOrder === 'asc' ? 1 : -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),

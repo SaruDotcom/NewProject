@@ -156,7 +156,7 @@ describe('Support ticket routes', () => {
     expect(second.status).toBe(201);
 
     const response = await request(app)
-      .get(`/api/v1/admin/support/tickets?creatorId=${wholesaler._id}&role=WHOLESALER&type=Feedback`)
+      .get(`/api/v1/admin/support/tickets?creatorId=${wholesaler._id}&role=WHOLESALER&type=Feedback&rating=4&search=dashboard%20is%20helpful`)
       .set('Authorization', `Bearer ${adminToken}`)
 
     expect(response.status).toBe(200);
@@ -197,7 +197,7 @@ describe('Support ticket routes', () => {
     expect(response.body.data.items[0]).toMatchObject({
       comment: 'Great service.',
       rating: 5,
-      reviewer: { name: 'Retailer Contact', email: retailer.email },
+      reviewer: { name: 'Retailer Business', email: retailer.email },
       wholesaler: { id: String(wholesaler._id), name: 'Wholesale Business' },
     });
   });

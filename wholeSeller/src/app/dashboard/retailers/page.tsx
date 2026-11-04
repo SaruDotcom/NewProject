@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Check, Copy, Download, Eye, MessageCircle, RefreshCw, Search, Share2, ShieldCheck, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Retailer } from '@/lib/types';
@@ -114,6 +115,7 @@ function PrivateDocumentViewer({
 }
 
 export default function RetailersPage() {
+  const navigate = useNavigate();
   const {
     profile,
     retailers,
@@ -418,7 +420,7 @@ export default function RetailersPage() {
                     <td className="py-4 font-bold text-tradeflow-navy">₹{(ret.totalSpent || 0).toLocaleString('en-IN')}</td>
                     <td className="py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => setSelectedRetailerDetails(ret)} className="flex items-center gap-1 rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 px-3 py-1.5 text-xs font-bold text-gray-700 transition-colors hover:bg-tradeflow-gray-200">
+                        <button onClick={() => navigate(`/dashboard/retailers/${encodeURIComponent(ret.id)}`)} className="flex items-center gap-1 rounded-xl border border-tradeflow-gray-200 bg-tradeflow-gray-50 px-3 py-1.5 text-xs font-bold text-gray-700 transition-colors hover:bg-tradeflow-gray-200">
                           <Eye className="h-3.5 w-3.5 text-gray-500" />
                           <span>View</span>
                         </button>

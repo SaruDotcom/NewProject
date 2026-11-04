@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Paperclip,
   Send,
+  Star,
   Ticket,
   Upload,
   X,
@@ -66,6 +67,7 @@ export default function SupportPage() {
     null,
   );
   const [type, setType] = useState<TicketType>("Issue");
+  const [feedbackRating, setFeedbackRating] = useState(5);
   const [priority, setPriority] = useState("Medium");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -128,6 +130,7 @@ export default function SupportPage() {
         type,
         subject: subject.trim(),
         message: message.trim(),
+        rating: type === "Feedback" ? feedbackRating : undefined,
         priority,
         relatedOrderId: relatedOrderId.trim() || undefined,
         attachments: uploaded.data || [],
@@ -136,6 +139,7 @@ export default function SupportPage() {
       setSuccess(`Ticket ${created.ticketNo} was sent to Super Admin Support.`);
       setSubject("");
       setMessage("");
+      setFeedbackRating(5);
       setRelatedOrderId("");
       setFiles([]);
       setSelectedTicket(created);
@@ -256,6 +260,26 @@ export default function SupportPage() {
                 </select>
               </label>
             </div>
+            {type === "Feedback" && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                <p className="text-xs font-bold text-gray-700">Rate your experience</p>
+                <div className="mt-1 flex gap-1" role="group" aria-label="Feedback rating">
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                      aria-pressed={feedbackRating === value}
+                      onClick={() => setFeedbackRating(value)}
+                      className="rounded p-1 text-amber-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+                    >
+                      <Star className={`h-5 w-5 ${value <= feedbackRating ? "fill-current" : ""}`} />
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Your feedback and rating are sent directly to Superadmin.</p>
+              </div>
+            )}
             <label className="block space-y-1 text-xs font-bold text-gray-700">
               Subject
               <input

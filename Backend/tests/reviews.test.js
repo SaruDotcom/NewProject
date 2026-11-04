@@ -106,6 +106,25 @@ describe('Partner reviews', () => {
       ROLES.RETAILER,
       ROLES.WHOLESALER,
     ]);
+    const wholesalerReviewSection = await request(app)
+      .get('/api/v1/admin/reviews?userRole=WHOLESALER&recipientRole=RETAILER&search=Wholesale%20Business')
+      .set('Authorization', 'Bearer ' + adminToken);
+    expect(wholesalerReviewSection.body.data.items).toHaveLength(1);
+    expect(wholesalerReviewSection.body.data.items[0]).toMatchObject({
+      category: 'Wholesaler review for retailer',
+      reviewer: { name: 'Wholesale Business' },
+      recipient: { role: ROLES.RETAILER },
+    });
+
+    const retailerReviewSection = await request(app)
+      .get('/api/v1/admin/reviews?userRole=RETAILER&recipientRole=WHOLESALER&search=Retail%20Business')
+      .set('Authorization', 'Bearer ' + adminToken);
+    expect(retailerReviewSection.body.data.items).toHaveLength(1);
+    expect(retailerReviewSection.body.data.items[0]).toMatchObject({
+      category: 'Retailer review for wholesaler',
+      reviewer: { name: 'Retail Business' },
+      recipient: { role: ROLES.WHOLESALER },
+    });
     expect(await Review.countDocuments({ isDeleted: false })).toBe(2);
   });
 

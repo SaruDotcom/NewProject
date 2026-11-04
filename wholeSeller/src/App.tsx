@@ -9,6 +9,7 @@ const CategoriesPage = lazy(() => import('./app/dashboard/categories/page'));
 const InventoryPage = lazy(() => import('./app/dashboard/inventory/page'));
 const ProductDetailPage = lazy(() => import('./app/dashboard/inventory/ProductDetailPage'));
 const RetailersPage = lazy(() => import('./app/dashboard/retailers/page'));
+const RetailerDetailPage = lazy(() => import('./app/dashboard/retailers/RetailerDetailPage'));
 const ReviewsPage = lazy(() => import('./app/dashboard/reviews/page'));
 const OrdersPage = lazy(() => import('./app/dashboard/orders/page'));
 const AnalyticsPage = lazy(() => import('./app/dashboard/analytics/page'));
@@ -99,6 +100,7 @@ export function App() {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="inventory/:productId" element={<ProductDetailPage />} />
           <Route path="retailers" element={<RetailersPage />} />
+          <Route path="retailers/:relationshipId" element={<RetailerDetailPage />} />
           <Route path="reviews" element={<ReviewsPage />} />
           <Route path="banner-slides" element={<BannerSlidesPage />} />
           <Route path="orders" element={<OrdersPage />} />

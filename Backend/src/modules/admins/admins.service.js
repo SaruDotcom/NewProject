@@ -1832,9 +1832,11 @@ class AdminService {
       status = 'all',
       rating = 'all',
       userRole = 'all',
+      recipientRole = 'all',
       wholesalerId,
       dateFrom,
       dateTo,
+      sortOrder = 'desc',
     } = query;
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, parseInt(limit, 10) || 10);
@@ -1844,6 +1846,17 @@ class AdminService {
     if (status !== 'all' && status) filter.status = status;
     if (rating !== 'all' && rating) filter.rating = parseInt(rating, 10);
     if (userRole !== 'all' && userRole) filter.userRole = userRole.toUpperCase();
+    if (['RETAILER', 'WHOLESALER'].includes(String(recipientRole).toUpperCase())) {
+      const normalizedRecipientRole = String(recipientRole).toUpperCase();
+      if (normalizedRecipientRole === 'WHOLESALER') {
+        filter.$or = [
+          { recipientRole: normalizedRecipientRole },
+          { recipientRole: { $exists: false }, wholesalerId: { $exists: true, $ne: null } },
+        ];
+      } else {
+        filter.recipientRole = normalizedRecipientRole;
+      }
+    }
     if (wholesalerId) {
       if (!mongoose.Types.ObjectId.isValid(wholesalerId)) {
         throw new BadRequestError('Wholesaler ID is invalid');
@@ -1854,12 +1867,35 @@ class AdminService {
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
-      if (dateTo) filter.createdAt.$lte = new Date(dateTo);
+      if (dateTo) {
+        const endDate = new Date(dateTo);
+        endDate.setUTCDate(endDate.getUTCDate() + 1);
+        filter.createdAt.$lt = endDate;
+      }
     }
 
     if (search && search.trim()) {
-      const q = new RegExp(search.trim(), 'i');
-      filter.$or = [{ comment: q }, { title: q }];
+      const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const q = new RegExp(escapedSearch, 'i');
+      const [matchingUsers, matchingWholesalers, matchingRetailers] = await Promise.all([
+        User.find({ $or: [{ name: q }, { email: q }, { phone: q }] }).select('_id').lean(),
+        WholesalerProfile.find({ $or: [{ businessName: q }, { ownerName: q }] }).select('userId').lean(),
+        RetailerProfile.find({ $or: [{ businessName: q }, { ownerName: q }] }).select('userId').lean(),
+      ]);
+      const matchingIds = [
+        ...matchingUsers.map((user) => user._id),
+        ...matchingWholesalers.map((profile) => profile.userId),
+        ...matchingRetailers.map((profile) => profile.userId),
+      ];
+      filter.$and = [
+        { $or: [
+          { comment: q },
+          { title: q },
+          { userId: { $in: matchingIds } },
+          { recipientId: { $in: matchingIds } },
+          { wholesalerId: { $in: matchingIds } },
+        ] },
+      ];
     }
 
     const [reviews, total, approvedCount, pendingCount, hiddenCount] = await Promise.all([
@@ -1868,7 +1904,7 @@ class AdminService {
         .populate('wholesalerId', 'name email businessName')
         .populate('recipientId', 'name email role')
         .populate('productId', 'name title')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: sortOrder === 'asc' ? 1 : -1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
@@ -1879,11 +1915,27 @@ class AdminService {
     ]);
 
     const wholesalerIds = reviews.map((review) => review.wholesalerId?._id).filter(Boolean);
-    const wholesalerProfiles = await WholesalerProfile.find({ userId: { $in: wholesalerIds } })
-      .select('userId businessName')
-      .lean();
+    const wholesalerReviewerIds = reviews
+      .filter((review) => (review.userRole || review.userId?.role) === 'WHOLESALER')
+      .map((review) => review.userId?._id)
+      .filter(Boolean);
+    const retailerReviewerIds = reviews
+      .filter((review) => (review.userRole || review.userId?.role) === 'RETAILER')
+      .map((review) => review.userId?._id)
+      .filter(Boolean);
+    const [wholesalerProfiles, wholesalerReviewerProfiles, retailerReviewerProfiles] = await Promise.all([
+      WholesalerProfile.find({ userId: { $in: [...wholesalerIds, ...wholesalerReviewerIds] } })
+        .select('userId businessName ownerName')
+        .lean(),
+      WholesalerProfile.find({ userId: { $in: wholesalerReviewerIds } })
+        .select('userId businessName ownerName')
+        .lean(),
+      RetailerProfile.find({ userId: { $in: retailerReviewerIds } })
+        .select('userId businessName ownerName')
+        .lean(),
+    ]);
     const wholesalerBusinessNames = new Map(
-      wholesalerProfiles.map((profile) => [String(profile.userId), profile.businessName]),
+      wholesalerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
     );
     const retailerIds = reviews
       .filter((review) => review.recipientRole === 'RETAILER' && review.recipientId?._id)
@@ -1894,12 +1946,19 @@ class AdminService {
     const retailerBusinessNames = new Map(
       retailerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
     );
+    const reviewerBusinessNames = new Map([
+      ...wholesalerReviewerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
+      ...retailerReviewerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
+    ]);
 
     const items = reviews.map((r) => {
-      const reviewerName = r.userId?.businessName || r.userId?.name || 'Anonymous User';
       const role = (r.userRole || r.userId?.role || 'RETAILER').toUpperCase();
       const recipientRole = r.recipientRole || (r.wholesalerId ? 'WHOLESALER' : null);
       const recipientId = r.recipientId || (recipientRole === 'WHOLESALER' ? r.wholesalerId : null);
+      const reviewerName = reviewerBusinessNames.get(String(r.userId?._id))
+        || r.userId?.businessName
+        || r.userId?.name
+        || 'Anonymous User';
       const recipientName = recipientRole === 'RETAILER'
         ? retailerBusinessNames.get(String(recipientId?._id)) || recipientId?.name
         : recipientRole === 'WHOLESALER'
@@ -1910,6 +1969,11 @@ class AdminService {
         id: String(r._id),
         comment: r.comment,
         title: r.title || 'Platform Feedback',
+        category: recipientRole === 'RETAILER'
+          ? 'Wholesaler review for retailer'
+          : recipientRole === 'WHOLESALER'
+            ? 'Retailer review for wholesaler'
+            : 'General feedback',
         rating: r.rating || 5,
         status: r.status || 'approved',
         userRole: role,
