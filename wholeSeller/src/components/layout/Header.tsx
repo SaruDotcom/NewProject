@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import BusinessLogo from '@/components/BusinessLogo';
-import ThokStoreBrand from '@/components/ThokStoreBrand';
 import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
@@ -37,11 +36,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
     <header className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-tradeflow-navy text-white border-b border-tradeflow-navy-pressed flex items-center justify-between px-3 sm:px-6 z-20 shadow-[0_1px_3px_rgba(18,48,74,0.18)]">
       {/* Left Area: Brand, mobile menu, and search */}
       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 pr-2">
-        <ThokStoreBrand
-          className="shrink-0 text-white"
-          hideNameOnMobile
-          markClassName="h-8 w-8 rounded-lg text-base"
-        />
         <button
           type="button"
           onClick={onToggleMenu}

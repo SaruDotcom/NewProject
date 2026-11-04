@@ -58,19 +58,6 @@ export function HomePage() {
     });
   }, [wholesalerProducts, selectedCategoryFilter]);
 
-  const displayedCategorySections = useMemo(() => {
-    const categoryNames = Array.from(
-      new Set(displayedProducts.map((product) => product.category.trim() || "Other products")),
-    );
-
-    return categoryNames.map((category) => ({
-      category,
-      products: displayedProducts.filter(
-        (product) => (product.category.trim() || "Other products") === category,
-      ),
-    }));
-  }, [displayedProducts]);
-
   // Recently viewed products strictly for this wholesaler
   const recentlyViewedProducts = useMemo(() => {
     return wholesalerProducts.filter((p) => recentlyViewed.includes(p.id));
@@ -288,29 +275,10 @@ export function HomePage() {
 
           {/* Product Grid or Professional Empty State */}
           {displayedProducts.length > 0 ? (
-            <div className="space-y-10 sm:space-y-12">
-              {displayedCategorySections.map(({ category, products: categoryProducts }) => (
-                <section key={category} aria-label={`${category} products`}>
-                  <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <h3 className="text-lg font-extrabold text-ink sm:text-xl">{category}</h3>
-                      <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-                        Related wholesale products · {categoryProducts.length} item{categoryProducts.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <Button asChild variant="ghost" size="sm" className="min-h-10 shrink-0 font-bold text-primary">
-                      <Link to="/products" search={category === "Other products" ? undefined : { category }}>
-                        View all <ChevronRight className="size-4" />
-                      </Link>
-                    </Button>
-                  </div>
-                  <ProductGrid
-                    products={categoryProducts}
-                    className="storefront-featured-products grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5"
-                  />
-                </section>
-              ))}
-            </div>
+            <ProductGrid
+              products={displayedProducts}
+              className="storefront-featured-products grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5"
+            />
           ) : (
             <div className="rounded-2xl border border-dashed border-border/80 bg-card/80 p-12 text-center shadow-xs">
               <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">

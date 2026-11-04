@@ -17,22 +17,26 @@ describe('Partner reviews', () => {
   let retailer;
   let wholesaler;
   let unrelatedRetailer;
+  let unrelatedWholesaler;
   let retailerToken;
   let wholesalerToken;
+  let unrelatedWholesalerToken;
   let adminToken;
 
   beforeEach(async () => {
     await clearDatabase();
     const passwordHash = await User.hashPassword('ReviewTest123!');
-    [retailer, wholesaler, unrelatedRetailer] = await Promise.all([
+    [retailer, wholesaler, unrelatedRetailer, unrelatedWholesaler] = await Promise.all([
       User.create({ name: 'Retail Store', email: 'retailer-review@test.com', passwordHash, role: ROLES.RETAILER, status: USER_STATUS.ACTIVE }),
       User.create({ name: 'Wholesale Store', email: 'wholesaler-review@test.com', passwordHash, role: ROLES.WHOLESALER, status: USER_STATUS.ACTIVE }),
       User.create({ name: 'Unrelated Store', email: 'unrelated-review@test.com', passwordHash, role: ROLES.RETAILER, status: USER_STATUS.ACTIVE }),
+      User.create({ name: 'Unrelated Wholesaler', email: 'unrelated-wholesaler-review@test.com', passwordHash, role: ROLES.WHOLESALER, status: USER_STATUS.ACTIVE }),
     ]);
     await Promise.all([
       RetailerProfile.create({ userId: retailer._id, businessName: 'Retail Business' }),
       RetailerProfile.create({ userId: unrelatedRetailer._id, businessName: 'Unrelated Business' }),
       WholesalerProfile.create({ userId: wholesaler._id, businessName: 'Wholesale Business' }),
+      WholesalerProfile.create({ userId: unrelatedWholesaler._id, businessName: 'Unrelated Wholesale Business' }),
       WholesalerRetailerRelationship.create({
         retailerId: retailer._id,
         wholesalerId: wholesaler._id,
@@ -48,6 +52,7 @@ describe('Partner reviews', () => {
     });
     retailerToken = AuthService.generateTokens(retailer).accessToken;
     wholesalerToken = AuthService.generateTokens(wholesaler).accessToken;
+    unrelatedWholesalerToken = AuthService.generateTokens(unrelatedWholesaler).accessToken;
     adminToken = AuthService.generateTokens(admin).accessToken;
   });
 
@@ -73,10 +78,30 @@ describe('Partner reviews', () => {
 
     const wholesalerReviews = await request(app)
       .get('/api/v1/wholesaler/reviews')
-      .set('Authorization', `Bearer ${wholesalerToken}`);
+      .set('Authorization', 'Bearer ' + wholesalerToken);
     expect(wholesalerReviews.status).toBe(200);
     expect(wholesalerReviews.body.data).toHaveLength(1);
     expect(wholesalerReviews.body.data[0].reviewer.name).toBe('Retail Business');
+    expect(wholesalerReviews.body.data[0].isRead).toBe(false);
+
+    const markRead = await request(app)
+      .patch(`/api/v1/wholesaler/reviews/${wholesalerReviews.body.data[0].id}/read`)
+      .set('Authorization', 'Bearer ' + wholesalerToken);
+    expect(markRead.status).toBe(200);
+
+    const refreshedWholesalerReviews = await request(app)
+      .get('/api/v1/wholesaler/reviews')
+      .set('Authorization', 'Bearer ' + wholesalerToken);
+    expect(refreshedWholesalerReviews.body.data[0].isRead).toBe(true);
+
+    const unrelatedReceivedReviews = await request(app)
+      .get('/api/v1/wholesaler/reviews')
+      .set('Authorization', 'Bearer ' + unrelatedWholesalerToken);
+    expect(unrelatedReceivedReviews.body.data).toHaveLength(0);
+    const unrelatedMarkRead = await request(app)
+      .patch(`/api/v1/wholesaler/reviews/${wholesalerReviews.body.data[0].id}/read`)
+      .set('Authorization', 'Bearer ' + unrelatedWholesalerToken);
+    expect(unrelatedMarkRead.status).toBe(403);
 
     const retailerReviewsBefore = await request(app)
       .get('/api/v1/retailer/reviews')
@@ -90,6 +115,20 @@ describe('Partner reviews', () => {
     expect(wholesalerSubmission.status).toBe(201);
     expect(wholesalerSubmission.body.data.recipientRole).toBe(ROLES.RETAILER);
     expect(wholesalerSubmission.body.data.wholesalerId).toBeUndefined();
+
+    const submittedReviews = await request(app)
+      .get('/api/v1/wholesaler/reviews/submitted')
+      .set('Authorization', 'Bearer ' + wholesalerToken);
+    expect(submittedReviews.status).toBe(200);
+    expect(submittedReviews.body.data).toHaveLength(1);
+    expect(submittedReviews.body.data[0]).toMatchObject({
+      comment: 'Pays on time.',
+      recipient: { id: String(retailer._id), name: 'Retail Business', role: ROLES.RETAILER },
+    });
+    const unrelatedSubmittedReviews = await request(app)
+      .get('/api/v1/wholesaler/reviews/submitted')
+      .set('Authorization', 'Bearer ' + unrelatedWholesalerToken);
+    expect(unrelatedSubmittedReviews.body.data).toHaveLength(0);
 
     const retailerReviewsAfter = await request(app)
       .get('/api/v1/retailer/reviews')

@@ -39,7 +39,7 @@ const NAV_ITEMS = [
   { name: 'Categories', path: '/dashboard/categories', icon: FolderTree },
   { name: 'Inventory', path: '/dashboard/inventory', icon: Boxes },
   { name: 'Retailers', path: '/dashboard/retailers', icon: Users },
-  { name: 'Partner Reviews', path: '/dashboard/reviews', icon: Star },
+  { name: 'My Reviews', path: '/dashboard/reviews', icon: Star },
   { name: 'Credit Policy', path: '/dashboard/credit-policy', icon: HandCoins, badge: 'Credit' },
   { name: 'Payment Settings', path: '/dashboard/payment-settings', icon: QrCode },
   // { name: 'Store Theme', path: '/dashboard/store-theme', icon: Palette },

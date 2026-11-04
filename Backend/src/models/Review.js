@@ -25,6 +25,10 @@ const reviewSchema = new mongoose.Schema(
       type: String,
       enum: ['RETAILER', 'WHOLESALER'],
     },
+    recipientReadAt: {
+      type: Date,
+      default: null,
+    },
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',

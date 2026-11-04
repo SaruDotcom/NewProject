@@ -85,6 +85,8 @@ class ReviewsService {
         comment: review.comment,
         rating: review.rating,
         createdAt: review.createdAt,
+        readAt: review.recipientReadAt || null,
+        isRead: Boolean(review.recipientReadAt),
         reviewer: {
           id: reviewer ? String(reviewer._id) : '',
           name: profile?.businessName || profile?.ownerName || reviewer?.name || 'Business partner',
@@ -92,6 +94,65 @@ class ReviewsService {
         },
       };
     });
+  }
+
+  static async listSubmitted(user) {
+    const userRole = String(user.role || '').toUpperCase();
+    if (![ROLES.RETAILER, ROLES.WHOLESALER].includes(userRole)) {
+      throw new ForbiddenError('Submitted reviews are not available for this account');
+    }
+
+    const reviews = await Review.find({
+      userId: user._id,
+      userRole,
+      isDeleted: false,
+    })
+      .populate('recipientId', 'name email role')
+      .sort({ createdAt: -1 })
+      .lean();
+    const recipientIds = reviews
+      .filter((review) => review.recipientRole === ROLES.RETAILER)
+      .map((review) => review.recipientId?._id)
+      .filter(Boolean);
+    const retailerProfiles = await RetailerProfile.find({ userId: { $in: recipientIds } })
+      .select('userId businessName ownerName')
+      .lean();
+    const retailerNames = new Map(
+      retailerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
+    );
+
+    return reviews.map((review) => ({
+      id: String(review._id),
+      title: review.title,
+      comment: review.comment,
+      rating: review.rating,
+      status: review.status,
+      createdAt: review.createdAt,
+      recipient: {
+        id: review.recipientId?._id ? String(review.recipientId._id) : '',
+        name: review.recipientRole === ROLES.RETAILER
+          ? retailerNames.get(String(review.recipientId?._id)) || review.recipientId?.name || 'Retailer'
+          : review.recipientId?.name || 'Business partner',
+        role: review.recipientRole || review.recipientId?.role || '',
+      },
+    }));
+  }
+
+  static async markReceivedRead(user, reviewId) {
+    if (!mongoose.isValidObjectId(reviewId)) throw new BadRequestError('A valid review ID is required');
+    const review = await Review.findOneAndUpdate(
+      {
+        _id: reviewId,
+        recipientId: user._id,
+        recipientRole: String(user.role).toUpperCase(),
+        status: 'approved',
+        isDeleted: false,
+      },
+      { $set: { recipientReadAt: new Date() } },
+      { new: true },
+    ).select('_id recipientReadAt');
+    if (!review) throw new ForbiddenError('Review is not available to this account');
+    return { id: String(review._id), readAt: review.recipientReadAt, isRead: true };
   }
 
   static async getConnectedPartners(user) {
