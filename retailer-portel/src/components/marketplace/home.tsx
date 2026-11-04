@@ -305,7 +305,7 @@ export function HomePage() {
                     </Button>
                   </div>
                   <ProductGrid
-                    products={categoryProducts.slice(0, 8)}
+                    products={categoryProducts}
                     className="storefront-featured-products grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5"
                   />
                 </section>
