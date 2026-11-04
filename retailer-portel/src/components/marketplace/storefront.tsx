@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { ProductImage } from "./ProductImage";
 import { ColorSwatches } from "./ColorSwatches";
 import { ProductImageGallery } from "./ProductImageGallery";
+import { WholesalerBannerCarousel } from "./WholesalerBannerCarousel";
 
 function Filters({
   categories,
@@ -132,33 +133,8 @@ function Filters({
   );
 }
 
-export const categoryImages: Record<string, string> = {
-  "Grocery & Staples": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1200&q=80",
-  Beverages: "https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=1200&q=80",
-  "Snacks & Foods": "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?auto=format&fit=crop&w=1200&q=80",
-  "Home Care": "https://images.unsplash.com/photo-1585421514738-01798e348b17?auto=format&fit=crop&w=1200&q=80",
-  "Personal Care": "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80",
-  Kitchenware: "https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=1200&q=80",
-  Stationery: "https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=1200&q=80",
-  Electricals: "https://images.unsplash.com/photo-1558002038-1055907df827?auto=format&fit=crop&w=1200&q=80",
-  Packaging: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80",
-  "Health & Wellness": "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=1200&q=80",
-  Clothes: "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&w=1200&q=80",
-  clothes: "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&w=1200&q=80",
-  Clothing: "https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&w=1200&q=80",
-  "Mans Wear": "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1200&q=80",
-  "Men's Wear": "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=1200&q=80",
-  "Women's Wear": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1200&q=80",
-  "Ethnic Wear": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1200&q=80",
-  Trouser: "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=1200&q=80",
-  Trousers: "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=1200&q=80",
-  Footwear: "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=1200&q=80",
-  Cosmetics: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1200&q=80",
-  Electronics: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=1200&q=80",
-};
-
-export function ProductsPage({ initialCategory = "All" }: { initialCategory?: string }) {
-  const [search, setSearch] = useState("");
+export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { initialCategory?: string; initialSearch?: string }) {
+  const [search, setSearch] = useState(initialSearch);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() =>
     initialCategory && initialCategory !== "All" ? [initialCategory] : ["All"]
   );
@@ -183,6 +159,7 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
     products,
     categories,
   } = useStore();
+  const supplierName = linkedWholesaler?.businessName || linkedWholesaler?.name || "your wholesaler";
   const selectedCategoryFilters = selectedCategories.filter((category) => category !== "All");
 
   const categoryProductsQuery = useQuery({
@@ -236,6 +213,10 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
   }, [search, selectedCategories, availability, minPrice, maxPrice, minRating, sort]);
 
   useEffect(() => {
+    setSearch(initialSearch);
+  }, [initialSearch]);
+
+  useEffect(() => {
     if (initialCategory && initialCategory !== "All") {
       setSelectedCategories([initialCategory]);
     }
@@ -272,11 +253,17 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
   };
 
   const connectedProducts = useMemo(() => {
+    const sourceProducts = selectedCategoryFilters.length > 0
+      ? categoryProductsQuery.data ?? []
+      : products;
+    if (linkedWholesaler?.id) {
+      return sourceProducts.filter((product) => String(product.wholesalerId) === String(linkedWholesaler.id));
+    }
     if (selectedCategoryFilters.length === 0) {
       return products.filter((product) => relationships[product.wholesalerId] === "Connected");
     }
     return categoryProductsQuery.data ?? [];
-  }, [products, relationships, selectedCategoryFilters.length, categoryProductsQuery.data]);
+  }, [products, relationships, linkedWholesaler?.id, selectedCategoryFilters.length, categoryProductsQuery.data]);
 
   const categoryOptions = useMemo(() => {
     const set = new Set<string>();
@@ -369,10 +356,25 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
           Could not load products for this category. Please try again.
         </p>
       )}
+      <section className="relative isolate mb-8 flex min-h-56 items-center overflow-hidden rounded-3xl bg-ink px-5 py-8 text-white shadow-xl sm:min-h-64 sm:px-10">
+        <WholesalerBannerCarousel />
+        <div className="relative z-10 max-w-2xl">
+          <span className="inline-flex rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/90 backdrop-blur">
+            Supplier collection
+          </span>
+          <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Restock with confidence.</h1>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-white/85">
+            Explore live products and current offers from {supplierName}.
+          </p>
+          <Button asChild className="mt-5 min-h-11 rounded-xl bg-white font-bold text-ink hover:bg-white/90">
+            <Link to="/coupons">Browse current offers <ChevronRight className="ml-1 size-4" /></Link>
+          </Button>
+        </div>
+      </section>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase text-primary">Connected Wholesale Network</p>
-          <h1 className="mt-1 text-3xl font-extrabold text-ink">Products</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Wholesale catalogue</p>
+          <h2 className="mt-1 text-3xl font-extrabold tracking-tight text-ink">Shop products</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {shown.length} product{shown.length === 1 ? "" : "s"} available from {connectedWholesalers.length} connected wholesaler{connectedWholesalers.length === 1 ? "" : "s"}
           </p>
@@ -1015,37 +1017,40 @@ export function ProductDetailPage({ productId }: { productId: string }) {
   );
 }
 export function CategoriesPage() {
-  const { relationships, products, categories } = useStore();
-  const connectedProducts = useMemo(() => products.filter((p) => relationships[p.wholesalerId] === "Connected"), [products, relationships]);
+  const { relationships, products, categories, linkedWholesaler } = useStore();
+  const connectedProducts = useMemo(
+    () => products.filter((product) => linkedWholesaler?.id
+      ? String(product.wholesalerId) === String(linkedWholesaler.id)
+      : relationships[product.wholesalerId] === "Connected"),
+    [products, relationships, linkedWholesaler?.id],
+  );
+  const supplierName = linkedWholesaler?.businessName || linkedWholesaler?.name || "your connected wholesaler";
   const totalProducts = connectedProducts.length;
 
   return (
     <main>
       <section className="border-y border-primary/10 bg-primary/[0.045]">
-        <div className="shell py-16 sm:py-20">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Trade Catalogue</p>
-          <h1 className="mt-3 text-4xl font-extrabold tracking-tight text-ink sm:text-5xl">Shop by category</h1>
+        <div className="shell py-12 sm:py-16">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Explore the catalogue</p>
+          <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink sm:text-5xl">Find your next best-seller.</h1>
           <div className="mt-5 h-px w-16 bg-primary" />
-          <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">Explore trade categories supplied by your connected wholesalers.</p>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">Browse product categories curated by {supplierName}.</p>
           <p className="mt-4 text-sm font-semibold text-ink"><span className="text-primary">{categories.length} categories</span><span className="mx-2 text-border">•</span>{totalProducts} trade products available</p>
         </div>
       </section>
       <section className="shell py-12 sm:py-14">
-        <div className="mb-10 border-b border-border/80 pb-6"><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Store catalogue</p><h2 className="mt-2 text-2xl font-extrabold text-ink">Category Directory</h2></div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:gap-5">
+        <div className="mb-7 border-b border-border/80 pb-5"><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Shop by department</p><h2 className="mt-2 text-2xl font-extrabold text-ink">Browse categories</h2></div>
+        <div className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:gap-6">
           {categories.map((c, i) => {
             const catProductsCount = connectedProducts.filter((p) => p.category === c.name).length;
-            const lead = c.name === "Grocery & Staples";
-            const featured = lead || c.name === "Home Care";
             return (
               <CategoryCard
                 key={c.id}
                 name={c.name}
-                imageUrl={c.imageUrl || categoryImages[c.name] || categoryImages["Grocery & Staples"]}
+                imageUrl={c.imageUrl}
                 description={c.description}
                 subcategories={categories.filter((child) => child.parentId === c.id).map((child) => child.name)}
                 itemCount={catProductsCount}
-                badge={featured ? (c.name === "Home Care" ? "Trending" : "Popular") : undefined}
                 actionLabel="Shop category"
                 animationDelay={i * 50}
               />

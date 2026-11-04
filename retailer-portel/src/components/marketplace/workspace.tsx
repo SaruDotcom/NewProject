@@ -374,19 +374,33 @@ export function OrdersPage() {
   const totalSpent = useMemo(() => filteredOrders.reduce((sum, o) => sum + o.total, 0), [filteredOrders]);
 
   return (
-    <main className="shell py-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-primary">Wholesale Order History</p>
-          <h1 className="mt-1 text-3xl font-extrabold text-ink">Your Orders</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Track, filter, and manage your wholesale orders fulfilled by {supplierName}.
-          </p>
+    <main className="shell py-8 sm:py-10">
+      <section className="rounded-3xl border border-primary/10 bg-gradient-to-br from-card via-card to-primary/[0.07] p-5 shadow-sm sm:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Order history</p>
+            <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">My Orders</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Review payments, follow delivery progress, and manage orders from {supplierName}.
+            </p>
+          </div>
+          <Button asChild className="min-h-11 rounded-xl font-bold">
+            <Link to="/products">Continue shopping</Link>
+          </Button>
         </div>
-        <Button asChild variant="outline" className="rounded-xl font-bold">
-          <Link to="/products">Browse Products</Link>
-        </Button>
-      </div>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {[
+            ["All orders", visibleOrders.length],
+            ["In progress", visibleOrders.filter((order) => !["Delivered", "Cancelled"].includes(order.status)).length],
+            ["Delivered", visibleOrders.filter((order) => order.status === "Delivered").length],
+          ].map(([label, count]) => (
+            <div key={label} className="rounded-2xl border border-border/70 bg-background/80 p-4">
+              <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+              <strong className="mt-1 block text-2xl font-black text-ink">{count}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="mt-6 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center justify-between">
         <Input
@@ -1501,7 +1515,7 @@ export function CartPage() {
   );
 }
 
-export function CheckoutPage() {
+export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string }) {
   const { currentUser, cart, retailerProfile, placeOrder, products, refreshData, linkedWholesaler } = useStore();
   const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [placed, setPlaced] = useState(false);
@@ -1621,12 +1635,17 @@ export function CheckoutPage() {
   }, [paymentMode, paymentOptions?.qrPaymentsEnabled, Boolean(activeQrImage)]);
 
   // Available Coupons & Offers State
-  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [couponCodeInput, setCouponCodeInput] = useState(initialCoupon);
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [validatingCode, setValidatingCode] = useState<string | null>(null);
   const [showManualInput, setShowManualInput] = useState(false);
+  const initialCouponAttempted = useRef("");
+
+  useEffect(() => {
+    setCouponCodeInput(initialCoupon);
+  }, [initialCoupon]);
 
   const couponsQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "coupons"),
@@ -1640,7 +1659,7 @@ export function CheckoutPage() {
   const availableCoupons = couponsQuery.data || [];
   const loadingCoupons = couponsQuery.isLoading;
 
-  const handleApplyCoupon = async (codeToApply?: string) => {
+  const handleApplyCoupon = useCallback(async (codeToApply?: string) => {
     const rawCode = (codeToApply || couponCodeInput).trim().toUpperCase();
     if (!rawCode) {
       setCouponError("Please enter a coupon code");
@@ -1651,7 +1670,7 @@ export function CheckoutPage() {
     try {
       const res = await api.validateCoupon({
         code: rawCode,
-        wholesalerId: linkedWholesaler?.id,
+        ...(linkedWholesaler?.id ? { wholesalerId: linkedWholesaler.id } : {}),
         subtotal: total,
       });
       if (res && res.success && res.data && res.data.valid) {
@@ -1666,7 +1685,13 @@ export function CheckoutPage() {
     } finally {
       setValidatingCode(null);
     }
-  };
+  }, [couponCodeInput, linkedWholesaler?.id, total]);
+
+  useEffect(() => {
+    if (!initialCoupon || total <= 0 || initialCouponAttempted.current === initialCoupon) return;
+    initialCouponAttempted.current = initialCoupon;
+    void handleApplyCoupon(initialCoupon);
+  }, [initialCoupon, total, handleApplyCoupon]);
 
   const handleRemoveCoupon = () => {
     const prevCode = appliedCoupon?.code;
@@ -4155,7 +4180,7 @@ export function AuthPage({
 }
 
 export function CouponsPage() {
-  const { currentUser } = useStore();
+  const { currentUser, linkedWholesaler } = useStore();
   const couponsQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "coupons"),
     queryFn: async () => {
@@ -4165,9 +4190,12 @@ export function CouponsPage() {
     enabled: Boolean(currentUser?.id),
   });
   const coupons = couponsQuery.data ?? [];
+  const activeCoupons = coupons.filter((coupon) => {
+    const couponWholesalerId = coupon.wholesalerId?._id || coupon.wholesalerId?.id || coupon.wholesalerId;
+    return coupon.isAvailable && linkedWholesaler?.id && String(couponWholesalerId) === String(linkedWholesaler.id);
+  });
   const loading = couponsQuery.isLoading;
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"ALL" | "AVAILABLE" | "EXPIRED">("ALL");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -4181,24 +4209,21 @@ export function CouponsPage() {
     setTimeout(() => setCopiedCode(null), 2500);
   };
 
-  const filteredCoupons = coupons.filter((c) => {
+  const filteredCoupons = activeCoupons.filter((c) => {
     const matchesSearch =
       c.code.toLowerCase().includes(search.toLowerCase()) ||
       c.title.toLowerCase().includes(search.toLowerCase());
-
-    if (tab === "AVAILABLE") return matchesSearch && c.isAvailable;
-    if (tab === "EXPIRED") return matchesSearch && !c.isAvailable;
     return matchesSearch;
   });
 
   return (
-    <main className="shell py-10">
+    <main className="shell py-8 sm:py-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-primary">Exclusive Wholesale Deals</span>
-          <h1 className="mt-1 text-3xl font-black text-ink">Coupons & Promotional Offers</h1>
+          <span className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Offers from {linkedWholesaler?.businessName || linkedWholesaler?.name || "your supplier"}</span>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-ink sm:text-4xl">Coupons &amp; offers</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Browse and apply active discount coupons from your connected wholesaler to save on trade orders.
+            Exclusive, currently available savings for your wholesale orders.
           </p>
         </div>
         <Button asChild className="rounded-xl font-bold">
@@ -4206,25 +4231,9 @@ export function CouponsPage() {
         </Button>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border bg-card p-4 rounded-2xl shadow-xs">
-        <div className="flex items-center gap-2">
-          {(["ALL", "AVAILABLE", "EXPIRED"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={cn(
-                "rounded-xl px-4 py-2 text-xs font-extrabold transition-all",
-                tab === t
-                  ? "bg-primary text-primary-foreground shadow-xs"
-                  : "bg-muted/40 text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {t === "ALL" ? `All (${coupons.length})` : t === "AVAILABLE" ? `Available (${coupons.filter(c => c.isAvailable).length})` : `Unavailable (${coupons.filter(c => !c.isAvailable).length})`}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative w-full sm:w-64">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+        <p className="text-sm font-semibold text-ink">{activeCoupons.length} active offer{activeCoupons.length === 1 ? "" : "s"}</p>
+        <div className="relative w-full sm:w-72">
           <input
             type="text"
             placeholder="Search coupons..."
@@ -4252,10 +4261,7 @@ export function CouponsPage() {
           {filteredCoupons.map((coupon) => (
             <div
               key={coupon._id}
-              className={cn(
-                "rounded-2xl border bg-card p-6 shadow-xs flex flex-col justify-between transition-all",
-                coupon.isAvailable ? "hover:border-primary/40 hover:shadow-md" : "opacity-75 border-dashed bg-muted/20"
-              )}
+              className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg sm:p-6"
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
@@ -4275,8 +4281,8 @@ export function CouponsPage() {
                       )}
                     </button>
                   </div>
-                  <Badge className={cn("text-[10px] font-extrabold uppercase", coupon.isAvailable ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800")}>
-                    {coupon.isAvailable ? "Active" : coupon.unavailableReason || "Limit Reached"}
+                  <Badge className="bg-emerald-100 text-[10px] font-extrabold uppercase text-emerald-800">
+                    Active
                   </Badge>
                 </div>
 
@@ -4322,13 +4328,11 @@ export function CouponsPage() {
               </div>
 
               <div className="mt-5 pt-3 border-t flex items-center justify-between">
-                <Button
-                  onClick={() => copyCode(coupon.code)}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl font-bold w-full"
-                >
-                  Copy Code
+                <Button onClick={() => copyCode(coupon.code)} variant="outline" size="sm" className="min-h-10 flex-1 rounded-xl font-bold">
+                  Copy code
+                </Button>
+                <Button asChild size="sm" className="ml-2 min-h-10 flex-1 rounded-xl font-bold">
+                  <Link to="/checkout" search={{ coupon: coupon.code }}>Apply at checkout</Link>
                 </Button>
               </div>
             </div>

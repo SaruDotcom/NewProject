@@ -1,9 +1,9 @@
-import { ChevronRight } from "@mui/icons-material";
+import { Category as CategoryIcon, ChevronRight } from "@mui/icons-material";
 import { Link } from "@/lib/router";
 
 type CategoryCardProps = {
   name: string;
-  imageUrl: string;
+  imageUrl?: string | undefined;
   description?: string;
   subcategories: string[];
   itemCount: number;
@@ -29,15 +29,21 @@ export function CategoryCard({
       to="/products"
       search={{ category: name }}
       aria-label={`Find ${name} trade products`}
-      className={`group relative flex ${hasSubcategories ? "h-[500px]" : "h-auto self-start"} flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg focus-visible:border-primary focus-visible:outline-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2`}
+      className="group relative flex h-full min-h-[320px] flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/45 hover:shadow-xl focus-visible:border-primary focus-visible:outline-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
       style={{ animationDelay: `${animationDelay}ms` }}
     >
-      <div className="relative h-[120px] shrink-0 overflow-hidden bg-tradeflow-gray-50">
-        <img
-          src={imageUrl}
-          alt=""
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
+      <div className="relative h-40 shrink-0 overflow-hidden bg-gradient-to-br from-primary/20 via-accent to-secondary sm:h-48">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="grid h-full place-items-center text-primary/50">
+            <CategoryIcon className="size-16" />
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/5 to-transparent" />
         {badge && (
           <span className="absolute left-4 top-4 rounded-sm bg-primary px-2.5 py-1 text-[10px] font-bold uppercase text-primary-foreground">
@@ -47,12 +53,12 @@ export function CategoryCard({
         <span className="absolute right-4 top-4 rounded-sm bg-card/95 px-2.5 py-1 text-[10px] font-bold text-ink">
           {itemCount} items
         </span>
-        <h3 className="absolute inset-x-5 bottom-4 truncate whitespace-nowrap text-xl font-extrabold leading-tight text-primary-foreground">
+        <h3 className="absolute inset-x-5 bottom-4 truncate whitespace-nowrap text-xl font-extrabold leading-tight text-primary-foreground sm:text-2xl">
           {name}
         </h3>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col p-4">
-        <p className="h-10 shrink-0 line-clamp-2 text-xs leading-5 text-muted-foreground">
+      <div className="flex min-h-0 flex-1 flex-col p-4 sm:p-5">
+        <p className="min-h-10 shrink-0 line-clamp-2 text-sm leading-5 text-muted-foreground">
           {description || "Trade products from your connected wholesaler."}
         </p>
         {hasSubcategories && (

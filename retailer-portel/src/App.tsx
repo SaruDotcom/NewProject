@@ -198,15 +198,17 @@ function RouterView() {
       const activeRef = searchParams.get("ref") || getStoredReferralAttribution()?.code;
       const returnUrl = new URL("/checkout", url.origin);
       if (activeRef) returnUrl.searchParams.set("ref", activeRef);
+      const couponCode = searchParams.get("coupon");
+      if (couponCode) returnUrl.searchParams.set("coupon", couponCode);
       const initialMode = hasCompletedRetailerRegistration() || !activeRef ? "login" : "register";
       return <AuthPage key={`checkout-auth-${url.search}`} mode={initialMode} redirect={`${returnUrl.pathname}${returnUrl.search}`} />;
     }
-    return <CheckoutPage />;
+    return <CheckoutPage initialCoupon={url.searchParams.get("coupon") ?? ""} />;
   }
 
   // 2. Retailer Navigation: Public store pages navigate directly to retailer home page and catalog
   if (path === "/") return <HomePage />;
-  if (path === "/products") return <ProductsPage initialCategory={url.searchParams.get("category") ?? "All"} />;
+  if (path === "/products") return <ProductsPage initialCategory={url.searchParams.get("category") ?? "All"} initialSearch={url.searchParams.get("q") ?? ""} />;
   if (path.startsWith("/products/")) return <ProductDetailPage productId={decodeURIComponent(path.split("/")[2] ?? "")} />;
   if (path === "/categories") return <CategoriesPage />;
   if (path === "/wholesalers") return <WholesalersPage initialCategory={url.searchParams.get("category") ?? "All"} />;

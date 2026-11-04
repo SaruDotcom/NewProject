@@ -241,13 +241,13 @@ export function ProductCard({
 
   // Grid Card: Amazon & Myntra Clean Minimal Design
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-600/40 hover:shadow-lg">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl">
       {/* Product Image Area */}
       <Link
         to="/products/$productId"
         params={{ productId: product.id }}
         onClick={() => addRecentlyViewed(product.id)}
-        className="relative block aspect-square sm:aspect-[4/3] max-h-52 w-full overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-2.5 sm:p-3 flex items-center justify-center cursor-pointer"
+        className="relative block aspect-square w-full overflow-hidden bg-gradient-to-br from-slate-50 to-white p-3 sm:p-4 flex items-center justify-center cursor-pointer"
       >
         {productImg ? (
           <ProductImage
@@ -295,23 +295,33 @@ export function ProductCard({
       </button>
 
       {/* Product Details (Clean & Minimal) */}
-      <div className="flex flex-1 flex-col p-2.5 sm:p-3.5">
+      <div className="flex flex-1 flex-col p-3 sm:p-4">
+        <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          {product.category}
+        </p>
         {/* Product Name */}
         <Link
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="font-bold text-sm leading-snug text-ink hover:text-emerald-600 transition-colors line-clamp-2 h-10 block"
+          className="block h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-primary"
           title={product.name}
         >
           {product.name}
         </Link>
 
+        {product.rating > 0 && (
+          <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground" aria-label={`Rated ${product.rating} out of 5`}>
+            <Star className="size-3.5 fill-amber-400 text-amber-400" />
+            <span>{product.rating.toFixed(1)}</span>
+          </div>
+        )}
+
         {/* Selling Price */}
-        <div className="mt-2 flex min-h-6 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+        <div className="mt-2 flex min-h-7 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
           <strong className="text-sm sm:text-lg font-black text-ink">{money(product.price)}</strong>
-          <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
-          {discount > 0 && <span className="text-xs font-bold text-emerald-600">({discount}% off)</span>}
+          {discount > 0 && <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>}
+          {discount > 0 && <span className="text-[11px] font-bold text-emerald-700">{discount}% off</span>}
         </div>
 
         {/* Pinned Action Buttons: View Details & Add to Cart */}
@@ -827,11 +837,20 @@ export function OrderCard({ order }: { order: Order }) {
             <strong className="text-primary font-black text-sm sm:text-base">{money(order.total)}</strong>
           </span>
         </div>
-        <Button asChild variant="outline" size="sm" className="rounded-xl font-bold min-h-[44px] sm:min-h-9">
-          <Link to="/orders/$orderId" params={{ orderId: order.id }}>
-            View details <ArrowRight className="size-4" />
-          </Link>
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button asChild variant="outline" size="sm" className="min-h-10 rounded-xl font-bold">
+            <Link to="/orders/$orderId" params={{ orderId: order.id }}>
+              View details <ArrowRight className="size-4" />
+            </Link>
+          </Button>
+          {!["Delivered", "Cancelled"].includes(order.status) && (
+            <Button asChild size="sm" className="min-h-10 rounded-xl font-bold">
+              <Link to="/orders/$orderId" params={{ orderId: order.id }}>
+                <LocalShipping className="size-4" /> Track order
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
     </article>
   );

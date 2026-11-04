@@ -35,13 +35,15 @@ import { money, TradeFlowMark, WholesalerLogo } from "./primitives";
 import { FeedbackModal } from "./FeedbackModal";
 
 const primary = [
+  { to: "/" as const, label: "Home" },
   { to: "/products" as const, label: "Products" },
   { to: "/categories" as const, label: "Categories" },
-  { to: "/coupons" as const, label: "Coupons" },
-  { to: "/orders" as const, label: "Orders" },
+  { to: "/coupons" as const, label: "Coupons & Offers" },
+  { to: "/orders" as const, label: "My Orders" },
 ];
 
 const account = [
+  { to: "/profile" as const, label: "My Account", icon: Person },
   { to: "/dashboard" as const, label: "Dashboard", icon: Dashboard },
   { to: "/coupons" as const, label: "Coupons", icon: LocalOffer },
   { to: "/orders" as const, label: "Orders", icon: Assignment },
@@ -54,7 +56,6 @@ const account = [
     icon: Notifications,
   },
   { to: "/support" as const, label: "Support", icon: SupportAgent },
-  { to: "/profile" as const, label: "Profile", icon: Person },
   { to: "/addresses" as const, label: "Addresses", icon: LocationOn },
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
@@ -66,7 +67,7 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
-      navigate({ to: "/products" });
+      navigate({ to: "/products", search: { q: query.trim() } });
     }
   };
 
@@ -344,14 +345,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                       Navigation
                     </h3>
                     <div className="grid gap-1">
-                      <Link
-                        to="/"
-                        onClick={() => setMobileMenuOpen(false)}
-                        className="flex items-center justify-between rounded-xl px-3.5 py-3 text-sm font-extrabold text-ink hover:bg-accent min-h-[44px]"
-                      >
-                        <span>Home</span>
-                        <ChevronRight className="size-4 text-muted-foreground" />
-                      </Link>
                       {primary.map((item) => (
                         <Link
                           key={item.to}
@@ -468,8 +461,10 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="text-xs font-extrabold uppercase tracking-wider text-primary-foreground/90">Marketplace</h4>
               <ul className="mt-4 space-y-2 text-xs text-primary-foreground/70">
+                <li><Link to="/" className="hover:text-primary transition-colors min-h-[44px] inline-flex items-center">Home</Link></li>
                 <li><Link to="/products" className="hover:text-primary transition-colors min-h-[44px] inline-flex items-center">All Products</Link></li>
                 <li><Link to="/categories" className="hover:text-primary transition-colors min-h-[44px] inline-flex items-center">Browse Categories</Link></li>
+                <li><Link to="/coupons" className="hover:text-primary transition-colors min-h-[44px] inline-flex items-center">Coupons &amp; Offers</Link></li>
                 {/* ===== COMMENTED OUT: multi-wholesaler discovery & connection-request flow ===== */}
                 {/* Reason: switched to single-wholesaler-per-retailer model (wholesaler sends direct registration link) */}
                 {/* Kept for potential future use — do not delete */}

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore, type BannerSlide } from "@/state/store";
 
-const FALLBACK_BANNER_BG = "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80";
-
 export function WholesalerBannerCarousel() {
   const { linkedWholesaler } = useStore();
   const theme = linkedWholesaler?.activeStoreTheme || "DEFAULT";
@@ -28,16 +26,28 @@ export function WholesalerBannerCarousel() {
 
   return (
     <div
-      className="storefront-theme-banner pointer-events-none absolute inset-0"
+      className="storefront-theme-banner absolute inset-0 bg-gradient-to-br from-ink via-ink/90 to-primary/65"
       data-store-theme={theme}
-      aria-hidden="true"
     >
-      <img
-        src={currentBanner?.imageUrl || FALLBACK_BANNER_BG}
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-700"
-      />
-      <div className="storefront-banner-overlay absolute inset-0 bg-gradient-to-r from-ink/90 via-ink/70 to-ink/35" />
+      {currentBanner?.imageUrl && (
+        <img
+          src={currentBanner.imageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-700"
+        />
+      )}
+      <div className="storefront-banner-overlay pointer-events-none absolute inset-0 bg-gradient-to-r from-ink/90 via-ink/70 to-ink/35" />
+      {currentBanner && (currentBanner.title || currentBanner.subtitle || currentBanner.tag || currentBanner.discountBadge) && (
+        <aside className="pointer-events-none absolute bottom-5 right-5 z-10 hidden max-w-xs rounded-2xl border border-white/20 bg-ink/55 p-4 text-right text-white shadow-xl backdrop-blur-md md:block lg:bottom-8 lg:right-8">
+          {(currentBanner.tag || currentBanner.discountBadge) && (
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/75">
+              {currentBanner.tag || currentBanner.discountBadge}
+            </p>
+          )}
+          {currentBanner.title && <p className="mt-1 text-base font-bold leading-snug">{currentBanner.title}</p>}
+          {currentBanner.subtitle && <p className="mt-1 text-xs leading-5 text-white/80">{currentBanner.subtitle}</p>}
+        </aside>
+      )}
     </div>
   );
 }
