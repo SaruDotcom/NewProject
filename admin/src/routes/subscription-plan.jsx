@@ -5,6 +5,6 @@ import { createLazyRoute } from "@/lib/lazy-route";
 const SubscriptionPlanPage = createLazyRoute(() => import("@/components/subscription-plan-page"), "SubscriptionPlanPage");
 
 export const Route = createFileRoute("/subscription-plan")({
-  head: () => ({ meta: [{ title: "Subscription Plan · VyaparOne Super Admin" }] }),
+  head: () => ({ meta: [{ title: "Subscription Plan · ThokStore Super Admin" }] }),
   component: () => _jsx(AdminShell, { children: _jsx(SubscriptionPlanPage, {}) }),
 });

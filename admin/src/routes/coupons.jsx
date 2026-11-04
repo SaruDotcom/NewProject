@@ -6,7 +6,7 @@ const CouponsManagementPage = createLazyRoute(() => import("@/components/coupons
 export const Route = createFileRoute("/coupons")({
   head: () => ({
     meta: [
-      { title: "Coupons & Offers · VyaparOne Super Admin" },
+      { title: "Coupons & Offers · ThokStore Super Admin" },
       {
         name: "description",
         content: "Create and control promotional discounts.",

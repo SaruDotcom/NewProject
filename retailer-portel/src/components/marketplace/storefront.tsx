@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet,SheetContent,SheetHeader,SheetTitle,SheetTrigger } from "@/components/ui/sheet";
 import { mapProduct, useStore } from "@/state/store";
-import { api } from "@/api/api";
+import { api, type ApiProduct } from "@/api/api";
 import { retailerQueryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 import { CategoryCard } from "./CategoryCard";
@@ -174,13 +174,22 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
   const [sort, setSort] = useState("popular");
   const [list, setList] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40);
-  const { currentUser, relationships, connectedWholesalers, linkedWholesaler, products, categories } = useStore();
+  const {
+    currentUser,
+    relationships,
+    connectedWholesalers,
+    linkedWholesaler,
+    storefrontReferralCode,
+    products,
+    categories,
+  } = useStore();
   const selectedCategoryFilters = selectedCategories.filter((category) => category !== "All");
 
   const categoryProductsQuery = useQuery({
     queryKey: retailerQueryKeys.resource(
       currentUser?.id || "",
       "category-products",
+      storefrontReferralCode,
       linkedWholesaler?.id,
       selectedCategoryFilters,
     ),
@@ -192,12 +201,19 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
       });
       const responses = await Promise.all(
         selectedCategoryFilters.map((category) =>
-          api.getProducts({ category, limit: 200 }),
+          storefrontReferralCode
+            ? api.getReferralProducts(storefrontReferralCode, { category, limit: 200 })
+            : api.getProducts({ category, limit: 200 }),
         ),
       );
       const productsById = new Map<string, ReturnType<typeof mapProduct>>();
       responses.forEach((response) => {
-        response.data.forEach((item, index) => {
+        const items: ApiProduct[] = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray((response.data as { products?: ApiProduct[] } | undefined)?.products)
+            ? (response.data as { products: ApiProduct[] }).products
+            : [];
+        items.forEach((item, index) => {
           const wholesalerId = typeof item.wholesalerId === "object" && item.wholesalerId
             ? item.wholesalerId._id || item.wholesalerId.id
             : item.wholesalerId;
@@ -209,9 +225,9 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
       return [...productsById.values()];
     },
     enabled: Boolean(
-      currentUser?.id &&
       linkedWholesaler?.id &&
-      selectedCategoryFilters.length > 0,
+      selectedCategoryFilters.length > 0 &&
+      (storefrontReferralCode || currentUser?.id),
     ),
   });
 
@@ -488,7 +504,7 @@ export function ProductsPage({ initialCategory = "All" }: { initialCategory?: st
             <ProductGrid
               products={shown.slice(0, visibleCount)}
               list={list}
-              className="grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5"
+              className="grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-5"
             />
           ) : (
             <div className="border border-dashed bg-card p-10 text-center rounded-2xl">
@@ -1676,7 +1692,7 @@ export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }
               </div>
 
               {/* Product Grid with Stagger Fade Animation */}
-              <div className="storefront-featured-products grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+              <div className="storefront-featured-products grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4 lg:gap-8">
                 {catProds.map((p, index) => (
                   <div
                     key={p.id}

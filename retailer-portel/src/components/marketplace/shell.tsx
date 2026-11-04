@@ -45,6 +45,7 @@ const account = [
   { to: "/dashboard" as const, label: "Dashboard", icon: Dashboard },
   { to: "/coupons" as const, label: "Coupons", icon: LocalOffer },
   { to: "/orders" as const, label: "Orders", icon: Assignment },
+  { to: "/reviews" as const, label: "Partner Reviews", icon: RateReview },
   { to: "/transactions" as const, label: "Transactions History", icon: ReceiptLong },
   { to: "/wishlist" as const, label: "Wishlist", icon: Favorite },
   {
@@ -92,38 +93,25 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
 
   if (linkedWholesaler) {
     const wholesalerName = linkedWholesaler.businessName?.trim() || linkedWholesaler.name?.trim() || "Wholesaler Store";
-    const tagline = linkedWholesaler.businessTagline?.trim() || "Wholesale Partner Storefront";
 
     return (
       <Link to="/" className="flex items-center gap-2 sm:gap-3 group focus-visible:outline-none shrink-0 min-w-0">
-        <WholesalerLogo
-          src={linkedWholesaler.logo}
-          name={wholesalerName}
-          className="size-9 sm:size-11 rounded-xl border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105 shrink-0"
-        />
-        <div className="flex flex-col min-w-0 justify-center">
-          <div className="flex items-center gap-1.5">
-            <span
-              title={wholesalerName}
-              className={cn(
-                "font-black tracking-tight text-sm sm:text-lg leading-tight truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[280px]",
-                isLight ? "text-white" : "text-ink"
-              )}
-            >
-              {wholesalerName}
-            </span>
-            <span className="hidden sm:inline-flex items-center rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600">
-              Verified
-            </span>
-          </div>
+        {linkedWholesaler.logo?.trim() && (
+          <WholesalerLogo
+            src={linkedWholesaler.logo}
+            name={wholesalerName}
+            className="size-9 sm:size-11 rounded-xl border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105 shrink-0"
+          />
+        )}
+        <div className="min-w-0">
           <span
-            title={tagline}
+            title={wholesalerName}
             className={cn(
-              "text-[10px] sm:text-xs font-semibold tracking-normal leading-tight truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[280px] mt-0.5",
-              isLight ? "text-emerald-300" : "text-primary font-bold"
+              "block font-black tracking-tight text-sm sm:text-lg leading-tight truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[280px]",
+              isLight ? "text-white" : "text-ink"
             )}
           >
-            {tagline}
+            {wholesalerName}
           </span>
         </div>
       </Link>
@@ -204,8 +192,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const retailerOwnerName = safeRetailerProfile?.ownerName?.trim() || "Retailer";
   const retailerBusinessName = safeRetailerProfile?.businessName?.trim() || "Your business";
   const linkedWholesalerName = linkedWholesaler?.businessName?.trim() || linkedWholesaler?.name?.trim() || "No wholesaler linked";
-  const linkedWholesalerOwner = linkedWholesaler?.ownerName?.trim() || linkedWholesalerName;
-  const linkedWholesalerLocation = linkedWholesaler?.location?.trim() || "";
 
   useEffect(() => {
     document.title = linkedWholesaler?.businessName?.trim()
@@ -233,11 +219,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top Banner */}
-      <div className="bg-ink py-2 px-4 text-center text-xs font-semibold text-primary-foreground flex items-center justify-center gap-2">
-        <span>Direct B2B Wholesale Marketplace • Free delivery on orders above ₹15,000</span>
-      </div>
-
       {/* Header */}
       <header className="premium-header sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
         <div className="shell flex h-16 sm:h-18 items-center justify-between gap-1.5 sm:gap-6 px-2.5 sm:px-4 lg:px-6">
@@ -354,22 +335,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                 </SheetHeader>
 
                 <div className="mt-4 space-y-6">
-                  {/* Linked Wholesaler Badge in Drawer */}
-                  <div className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-3.5 text-xs">
-                    {linkedWholesaler ? (
-                      <WholesalerLogo src={linkedWholesaler.logo || ""} name={linkedWholesalerName} className="size-10 rounded-lg bg-white text-xs" />
-                    ) : (
-                      <Store className="size-5 text-primary shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase font-extrabold text-primary tracking-wider">Shopping With</p>
-                      <p className="truncate font-extrabold text-ink text-sm">{linkedWholesalerName}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {[linkedWholesalerOwner, linkedWholesalerLocation].filter(Boolean).join(" • ")}
-                      </p>
-                    </div>
-                  </div>
-
                   {/* Search in Drawer */}
                   <SearchBar />
 

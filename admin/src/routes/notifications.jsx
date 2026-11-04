@@ -6,7 +6,7 @@ const NotificationsManagementPage = createLazyRoute(() => import("@/components/n
 export const Route = createFileRoute("/notifications")({
   head: () => ({
     meta: [
-      { title: "Notifications · VyaparOne Super Admin" },
+      { title: "Notifications · ThokStore Super Admin" },
       {
         name: "description",
         content: "Platform events and alerts across every module.",

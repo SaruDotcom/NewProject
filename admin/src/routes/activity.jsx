@@ -7,7 +7,7 @@ const ActivityPage = createLazyRoute(() => import("@/components/system-pages"), 
 export const Route = createFileRoute("/activity")({
   head: () => ({
     meta: [
-      { title: "Activity Log · VyaparOne Super Admin" },
+      { title: "Activity Log · ThokStore Super Admin" },
     ],
   }),
   component: () =>

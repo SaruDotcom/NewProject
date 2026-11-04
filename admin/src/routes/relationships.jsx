@@ -6,7 +6,7 @@ const RelationshipsManagementPage = createLazyRoute(() => import("@/components/r
 export const Route = createFileRoute("/relationships")({
   head: () => ({
     meta: [
-      { title: "Relationships · VyaparOne Super Admin" },
+      { title: "Relationships · ThokStore Super Admin" },
       {
         name: "description",
         content: "Manage every wholesaler–retailer commercial connection.",

@@ -6,7 +6,7 @@ const ContentManagementPage = createLazyRoute(() => import("@/components/content
 export const Route = createFileRoute("/content")({
   head: () => ({
     meta: [
-      { title: "Content Management · VyaparOne Super Admin" },
+      { title: "Content Management · ThokStore Super Admin" },
       {
         name: "description",
         content: "Control banners, pages, and announcements.",

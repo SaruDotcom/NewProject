@@ -6,7 +6,7 @@ const CategoriesManagementPage = createLazyRoute(() => import("@/components/cate
 export const Route = createFileRoute("/categories")({
   head: () => ({
     meta: [
-      { title: "Categories · VyaparOne Super Admin" },
+      { title: "Categories · ThokStore Super Admin" },
       {
         name: "description",
         content: "Organize catalog hierarchy, visibility, and display order.",

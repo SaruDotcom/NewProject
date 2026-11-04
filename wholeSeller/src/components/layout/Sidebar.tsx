@@ -6,6 +6,7 @@ import {
   FolderTree,
   Boxes,
   Users,
+  Star,
   ShoppingBag,
   TrendingUp,
   CreditCard,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import BusinessLogo from '@/components/BusinessLogo';
+import ThokStoreBrand from '@/components/ThokStoreBrand';
 import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
 
 interface SidebarProps {
@@ -37,6 +39,7 @@ const NAV_ITEMS = [
   { name: 'Categories', path: '/dashboard/categories', icon: FolderTree },
   { name: 'Inventory', path: '/dashboard/inventory', icon: Boxes },
   { name: 'Retailers', path: '/dashboard/retailers', icon: Users },
+  { name: 'Partner Reviews', path: '/dashboard/reviews', icon: Star },
   { name: 'Credit Policy', path: '/dashboard/credit-policy', icon: HandCoins, badge: 'Credit' },
   { name: 'Payment Settings', path: '/dashboard/payment-settings', icon: QrCode },
   // { name: 'Store Theme', path: '/dashboard/store-theme', icon: Palette },
@@ -100,24 +103,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
       >
         {/* Brand Logo Header */}
         <div className="h-16 px-5 sm:px-6 border-b border-tradeflow-navy-hover flex items-center justify-between bg-tradeflow-navy">
-          <Link
-            to="/dashboard"
-            onClick={onClose}
-            className="flex items-center gap-3 group"
-          >
-            <BusinessLogo
-              src={profile.businessLogoUrl}
-              name={profile.businessName || 'Your business'}
-              className="h-10 w-10 rounded-xl bg-white text-tradeflow-green shadow-xs transition-transform group-hover:scale-105"
-            />
-            <div className="flex flex-col">
-              <span className="max-w-40 truncate font-bold text-base tracking-tight text-white">
-                {profile.businessName || 'Your business'}
-              </span>
-              <span className="text-[10px] uppercase tracking-wider font-semibold text-tradeflow-green flex items-center gap-1">
-                Verified Partner
-              </span>
-            </div>
+          <Link to="/dashboard" onClick={onClose} className="group text-white">
+            <ThokStoreBrand />
           </Link>
 
           {/* Close button on mobile */}

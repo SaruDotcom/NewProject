@@ -148,6 +148,14 @@ describe('Wholesaler referral-only retailer registration', () => {
         wholesalePrice: 100,
       },
       {
+        wholesalerId: wholesaler._id,
+        name: 'Legacy category product',
+        slug: 'legacy-category-product',
+        sku: 'LEGACY-CATEGORY-PRODUCT',
+        category: firstCategory._id,
+        wholesalePrice: 125,
+      },
+      {
         wholesalerId: secondWholesaler._id,
         name: 'Second wholesaler product',
         slug: 'second-wholesaler-product',
@@ -185,6 +193,8 @@ describe('Wholesaler referral-only retailer registration', () => {
     const secondCatalog = await request(app).get('/api/v1/referral/ZX90YU/products?limit=200');
     const firstCategoryProducts = await request(app)
       .get(`/api/v1/referral/${referralCode}/products?category=${firstCategory._id}`);
+    const firstCategoryByName = await request(app)
+      .get(`/api/v1/referral/${referralCode}/products?category=Staples`);
     const secondCategoryProducts = await request(app)
       .get('/api/v1/referral/ZX90YU/products?category=beverages');
     const wrongWholesalerCategory = await request(app)
@@ -192,10 +202,20 @@ describe('Wholesaler referral-only retailer registration', () => {
     const firstReferral = await request(app).get(`/api/v1/referral/${referralCode}`);
 
     expect(firstCatalog.status).toBe(200);
-    expect(firstCatalog.body.data.map((product) => product.name)).toEqual(['First wholesaler product']);
+    expect(firstCatalog.body.data.map((product) => product.name).sort()).toEqual([
+      'First wholesaler product',
+      'Legacy category product',
+    ]);
     expect(secondCatalog.status).toBe(200);
     expect(secondCatalog.body.data.map((product) => product.name)).toEqual(['Second wholesaler product']);
-    expect(firstCategoryProducts.body.data.map((product) => product.name)).toEqual(['First wholesaler product']);
+    expect(firstCategoryProducts.body.data.map((product) => product.name).sort()).toEqual([
+      'First wholesaler product',
+      'Legacy category product',
+    ]);
+    expect(firstCategoryByName.body.data.map((product) => product.name).sort()).toEqual([
+      'First wholesaler product',
+      'Legacy category product',
+    ]);
     expect(secondCategoryProducts.body.data.map((product) => product.name)).toEqual(['Second wholesaler product']);
     expect(wrongWholesalerCategory.body.data).toEqual([]);
     expect(firstReferral.body.data.wholesaler.categoryDetails.map((category) => category.name))

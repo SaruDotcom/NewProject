@@ -10,10 +10,13 @@ const wholesalerController = require('./wholesalers.controller');
 const { createTicketLimit } = require('../support/support.routes');
 const { businessLogoUpload } = require('../../middleware/upload');
 const { requireActiveWholesaler } = require('../../middleware/wholesalerAccess');
+const reviewController = require('../reviews/reviews.controller');
 
 router.use(authenticate, authorize(ROLES.WHOLESALER, ROLES.SUPER_ADMIN, ROLES.ADMIN));
 router.post('/help-center', authorize(ROLES.WHOLESALER), createTicketLimit, Controller.submitHelpRequest);
 router.get('/profile', Controller.getProfile);
+router.get('/reviews', reviewController.listReceived);
+router.get('/review-partners', reviewController.listPartners);
 router.patch('/profile', Controller.updateProfile);
 router.post('/profile/logo', businessLogoUpload.single('businessLogo'), Controller.updateBusinessLogo);
 router.delete('/profile/logo', Controller.removeBusinessLogo);

@@ -12,8 +12,8 @@ const THEMES: Array<{
 }> = [
   {
     id: 'DEFAULT',
-    name: 'TradeFlow Classic',
-    description: 'The current TradeFlow green and navy storefront.',
+    name: 'ThokStore Classic',
+    description: 'The current ThokStore green and navy storefront.',
     colors: ['#20A66A', '#12304A', '#F4F7F8'],
   },
   {

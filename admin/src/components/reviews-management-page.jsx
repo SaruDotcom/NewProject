@@ -121,13 +121,13 @@ export function ReviewsManagementPage() {
   const exportCsv = () => {
     const esc = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
     const csv = [
-      ["Reviewer Name", "Role", "Email", "Subject/Product", "Related Wholesaler", "Rating", "Review", "Status", "Date"],
+      ["Reviewer Name", "Role", "Email", "Subject/Product", "Recipient", "Rating", "Review", "Status", "Date"],
       ...result.items.map((row) => [
         row.reviewer?.name || row.retailer?.name || "User",
         row.userRole || row.reviewer?.role || "RETAILER",
         row.reviewer?.email || "",
         row.product?.name || row.title || "Feedback",
-        row.wholesaler?.name || "",
+        row.recipient?.name || row.wholesaler?.name || "",
         row.rating,
         row.comment,
         row.status,
@@ -293,7 +293,7 @@ export function ReviewsManagementPage() {
                   <TableHead>Reviewer</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Subject / Product</TableHead>
-                  <TableHead>Related wholesaler</TableHead>
+                  <TableHead>Review Recipient</TableHead>
                   <TableHead>Rating</TableHead>
                   <TableHead>Review Comment</TableHead>
                   <TableHead>Status</TableHead>
@@ -333,9 +333,12 @@ export function ReviewsManagementPage() {
 
                       <TableCell>
                         <div className="flex min-w-[150px] flex-col">
-                          <span className="font-medium">{row.wholesaler?.name || "Platform"}</span>
-                          {row.wholesaler?.email && (
-                            <span className="text-[11px] text-muted-foreground">{row.wholesaler.email}</span>
+                          <span className="font-medium">{row.recipient?.name || row.wholesaler?.name || "Platform"}</span>
+                          {row.recipient?.role && (
+                            <span className="text-[11px] text-muted-foreground">{row.recipient.role}</span>
+                          )}
+                          {(row.recipient?.email || row.wholesaler?.email) && (
+                            <span className="text-[11px] text-muted-foreground">{row.recipient?.email || row.wholesaler.email}</span>
                           )}
                         </div>
                       </TableCell>

@@ -7,7 +7,7 @@ const SettingsPage = createLazyRoute(() => import("@/components/system-pages"), 
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings · VyaparOne Super Admin" },
+      { title: "Settings · ThokStore Super Admin" },
     ],
   }),
   component: () =>

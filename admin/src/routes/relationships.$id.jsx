@@ -6,7 +6,7 @@ const RelationshipDetailPage = createLazyRoute(() => import("@/components/relati
 export const Route = createFileRoute("/relationships/$id")({
   head: () => ({
     meta: [
-      { title: "Relationship Detail · VyaparOne Super Admin" },
+      { title: "Relationship Detail · ThokStore Super Admin" },
       {
         name: "description",
         content: "Commercial relationship details, orders, trade history, and metadata.",

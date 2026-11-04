@@ -3190,7 +3190,6 @@ export function AuthPage({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [loginId, setLoginId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
   const [businessType, setBusinessType] = useState("");
@@ -3332,12 +3331,6 @@ export function AuthPage({
           );
           return;
         }
-        const trimmedLoginId = loginId.trim().toUpperCase();
-        if (trimmedLoginId && !/^[A-Z0-9_-]{4,32}$/.test(trimmedLoginId)) {
-          toast.error("Choose a login ID with 4-32 letters, numbers, underscores, or hyphens.");
-          setIsSubmitting(false);
-          return;
-        }
         if (!/^[6-9]\d{9}$/.test(phone.trim())) {
           toast.error("Enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.");
           setIsSubmitting(false);
@@ -3379,7 +3372,6 @@ export function AuthPage({
 
         await api.register({
           name: name.trim(),
-          ...(trimmedLoginId && { loginId: trimmedLoginId }),
           businessName: businessName.trim(),
           businessType: businessType.trim(),
           address: address.trim(),
@@ -3749,24 +3741,6 @@ export function AuthPage({
                         onChange={(e) => setName(e.target.value)}
                         required
                       />
-                    </label>
-
-                    {/* Retailer Login ID */}
-                    <label className="block text-xs font-bold text-[#12304A]">
-                      Retailer Login ID (Username) <span className="text-muted-foreground text-[11px] font-normal">(Optional)</span>
-                      <Input
-                        className="mt-1.5 uppercase font-mono tracking-wide"
-                        type="text"
-                        autoComplete="username"
-                        maxLength={32}
-                        pattern="[A-Za-z0-9_-]{4,32}"
-                        placeholder={phone ? `e.g. RET${phone.slice(-6)} (leave blank to auto-generate)` : "e.g. SARITA123 (or auto-generated)"}
-                        value={loginId}
-                        onChange={(e) => setLoginId(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32))}
-                      />
-                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                        Optional. Leave blank to auto-generate. You can also sign in with your mobile number or email.
-                      </span>
                     </label>
 
                     {/* Business / Store Name */}

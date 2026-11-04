@@ -6,7 +6,7 @@ const ReviewsManagementPage = createLazyRoute(() => import("@/components/reviews
 export const Route = createFileRoute("/reviews")({
   head: () => ({
     meta: [
-      { title: "Reviews · VyaparOne Super Admin" },
+      { title: "Reviews · ThokStore Super Admin" },
       {
         name: "description",
         content: "Moderate retailer reviews across the marketplace.",

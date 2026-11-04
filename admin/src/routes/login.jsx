@@ -1,17 +1,18 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, LogIn, ShieldCheck, Sparkles } from "lucide-react";
+import { Eye, EyeOff, LogIn, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import BrandLogo from "@/components/brand-logo";
 import { loginAdmin, isAdminAuthenticated } from "@/lib/auth";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Admin Login · VyaparOne" },
+      { title: "Admin Login · ThokStore" },
       {
         name: "description",
-        content: "Secure super-admin login for VyaparOne marketplace control.",
+        content: "Secure super-admin login for ThokStore marketplace control.",
       },
     ],
   }),
@@ -53,13 +54,8 @@ function LoginRoute() {
         <div className="login-orb login-orb-one" aria-hidden="true" />
         <div className="login-orb login-orb-two" aria-hidden="true" />
         <div className="relative z-10 flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-black/10">
-            <ShieldCheck className="size-5" />
-          </span>
+          <BrandLogo className="w-44" />
           <div>
-            <p className="font-heading text-lg font-semibold tracking-tight">
-              VyaparOne
-            </p>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/55">
               Marketplace Control
             </p>
@@ -88,14 +84,14 @@ function LoginRoute() {
           onSubmit={submit}
           className="w-full max-w-md rounded-2xl border border-border/80 bg-card p-6 shadow-[0_18px_55px_rgba(18,48,74,0.08)] sm:p-9"
         >
-          <div className="mb-7 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary lg:hidden">
-            <ShieldCheck className="size-5" />
+          <div className="mb-7 flex items-center gap-3 lg:hidden">
+            <BrandLogo className="w-40" />
           </div>
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
             Administrator access
           </p>
           <h2 className="mt-2 font-heading text-3xl font-semibold tracking-tight">
-            Welcome back
+            Welcome
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Sign in to manage your marketplace workspace.

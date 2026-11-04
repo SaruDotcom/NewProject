@@ -6,7 +6,7 @@ const PaymentsManagementPage = createLazyRoute(() => import("@/components/paymen
 export const Route = createFileRoute("/payments")({
   head: () => ({
     meta: [
-      { title: "Payments · VyaparOne Super Admin" },
+      { title: "Payments · ThokStore Super Admin" },
       {
         name: "description",
         content: "Track collections, pending dues, and settlements.",

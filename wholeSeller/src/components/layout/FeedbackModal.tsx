@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Star, MessageSquare, CheckCircle2, X } from 'lucide-react';
-import api from '@/lib/api';
+import api, { type ReviewPartner } from '@/lib/api';
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -15,37 +15,58 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
-  const [successTicketNo, setSuccessTicketNo] = useState('');
+  const [partners, setPartners] = useState<ReviewPartner[]>([]);
+  const [recipientId, setRecipientId] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    api.getReviewPartners()
+      .then((response) => {
+        if (!active) return;
+        setPartners(response.data);
+        setRecipientId(response.data[0]?.id || '');
+      })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load connected retailers.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!comment.trim()) {
-      setError('Please provide a comment for your feedback.');
+      setError('Please provide a comment for your review.');
+      return;
+    }
+    if (!recipientId) {
+      setError('You need an active retailer connection before submitting a partner review.');
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
-      const response = await api.submitFeedback({
+      await api.submitPartnerReview({
+        recipientId,
         rating,
-        title: title.trim() || 'Wholesaler Partner Feedback',
+        title: title.trim(),
         comment: comment.trim(),
       });
-      setSuccessTicketNo(response.data?.ticketNo || response.data?.ticketNumber || '');
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
-        setSuccessTicketNo('');
         setTitle('');
         setComment('');
         setRating(5);
         onClose();
       }, 1800);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to submit feedback. Please try again.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to submit review. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -55,7 +76,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
     if (!loading) {
       setError(null);
       setSuccess(false);
-      setSuccessTicketNo('');
       onClose();
     }
   };
@@ -73,7 +93,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
             </div>
             <div>
               <h3 className="font-bold text-base text-[#1C1917]">Partner Feedback & Review</h3>
-              <p className="text-xs text-[#78716C]">Submit your feedback directly to the Admin team</p>
+              <p className="text-xs text-[#78716C]">Share a rating and review with a connected retailer</p>
             </div>
           </div>
           <button
@@ -90,7 +110,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
             <CheckCircle2 className="h-14 w-14 text-emerald-500 animate-bounce" />
             <h4 className="font-bold text-lg text-[#1C1917]">Thank You!</h4>
             <p className="text-xs text-[#78716C] max-w-xs">
-              Your feedback ticket {successTicketNo ? <strong>{successTicketNo}</strong> : ''} has been sent to the Admin team.
+              Your review has been saved and shared with the retailer.
             </p>
           </div>
         ) : (
@@ -100,6 +120,19 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                 {error}
               </div>
             )}
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-[#1C1917]">Review retailer</label>
+              <select
+                value={recipientId}
+                onChange={(event) => setRecipientId(event.target.value)}
+                required
+                disabled={!partners.length || loading}
+                className="h-10 w-full rounded-xl border border-[#E7E5E4] bg-[#FAF9F6] px-3 text-sm"
+              >
+                {partners.length ? partners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name}</option>) : <option value="">No connected retailer</option>}
+              </select>
+            </div>
 
             {/* Rating Stars */}
             <div className="flex flex-col items-center space-y-1.5 bg-[#FAF9F6] p-3 rounded-xl border border-[#E7E5E4]">
@@ -144,7 +177,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Platform Features, Order Management..."
+                placeholder="e.g. Order management, payment..."
                 className="w-full rounded-xl border border-[#E7E5E4] bg-[#FAF9F6] px-3.5 py-2 text-sm focus:outline-none focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green"
               />
             </div>
@@ -159,7 +192,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                 required
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Write your feedback, suggestions, or issue details for the Admin team..."
+                placeholder="Describe your experience working with this retailer..."
                 className="w-full rounded-xl border border-[#E7E5E4] bg-[#FAF9F6] px-3.5 py-2 text-sm focus:outline-none focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green resize-none"
               />
             </div>
@@ -178,7 +211,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                 disabled={loading}
                 className="px-5 py-2 text-xs font-bold text-white bg-tradeflow-green hover:bg-tradeflow-green-hover rounded-xl shadow-xs transition-all disabled:opacity-50"
               >
-                {loading ? 'Submitting...' : 'Submit Feedback'}
+                {loading ? 'Submitting...' : 'Submit Review'}
               </button>
             </div>
           </form>

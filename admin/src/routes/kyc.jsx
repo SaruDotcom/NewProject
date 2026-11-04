@@ -7,7 +7,7 @@ const KycManagementPage = createLazyRoute(() => import("@/components/kyc-managem
 export const Route = createFileRoute("/kyc")({
   head: () => ({
     meta: [
-      { title: "KYC Review · VyaparOne Super Admin" },
+      { title: "KYC Review · ThokStore Super Admin" },
       { name: "description", content: "Review wholesaler KYC applications." },
     ],
   }),

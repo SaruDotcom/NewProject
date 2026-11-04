@@ -6,7 +6,7 @@ const WholesalerInvitesPage = createLazyRoute(() => import("@/components/wholesa
 export const Route = createFileRoute("/wholesaler-invites")({
   head: () => ({
     meta: [
-      { title: "Wholesaler Invites · VyaparOne Super Admin" },
+      { title: "Wholesaler Invites · ThokStore Super Admin" },
       { name: "description", content: "Create and manage secure wholesaler registration invitations." },
     ],
   }),

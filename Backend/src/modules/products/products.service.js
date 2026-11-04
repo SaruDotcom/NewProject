@@ -27,6 +27,7 @@ const {
   assertWholesalerAvailable,
   assertWholesalerBusinessActivated,
 } = require('../../services/wholesaler-access.service');
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function validateTaxDetails(tax) {
   const { cgst, sgst, igst } = tax;
@@ -320,27 +321,49 @@ class ProductService {
     const filter = {
       wholesalerId,
       status: PRODUCT_STATUS.ACTIVE,
-      isDeleted: false,
+      isDeleted: { $ne: true },
       isDemo: { $ne: true },
     };
+    const filterConditions = [];
 
     if (query.category && query.category !== 'All') {
       const categoryDoc = await Category.findOne({
-        $or: [{ name: new RegExp(query.category, 'i') }, { slug: query.category }],
+        wholesalerId,
+        isActive: true,
+        isDeleted: { $ne: true },
+        isDemo: { $ne: true },
+        $or: [
+          ...( /^[0-9a-fA-F]{24}$/.test(String(query.category)) ? [{ _id: query.category }] : [] ),
+          { name: new RegExp(`^${escapeRegex(query.category)}$`, 'i') },
+          { slug: query.category },
+        ],
       });
-      if (categoryDoc) {
-        filter.$or = [{ categoryId: categoryDoc._id }, { subcategoryId: categoryDoc._id }];
+      if (!categoryDoc) {
+        return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
       }
+      filterConditions.push({
+        $or: [
+          { categoryId: categoryDoc._id },
+          { category: categoryDoc._id },
+          { subcategoryId: categoryDoc._id },
+          { subCategory: categoryDoc._id },
+          { subSubcategoryId: categoryDoc._id },
+        ],
+      });
     }
 
     if (query.search) {
-      const searchRegex = new RegExp(query.search, 'i');
-      filter.$or = [{ name: searchRegex }, { title: searchRegex }, { sku: searchRegex }, { brand: searchRegex }];
+      const searchRegex = new RegExp(escapeRegex(query.search), 'i');
+      filterConditions.push({
+        $or: [{ name: searchRegex }, { title: searchRegex }, { sku: searchRegex }, { brand: searchRegex }],
+      });
     }
+    if (filterConditions.length > 0) filter.$and = filterConditions;
 
     const [products, total] = await Promise.all([
       Product.find(filter)
         .populate('categoryId', 'name slug')
+        .populate('category', 'name slug')
         .sort(sort)
         .skip(skip)
         .limit(limit)

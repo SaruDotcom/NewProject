@@ -6,13 +6,13 @@ const DashboardPage = createLazyRoute(() => import("@/components/dashboard-page"
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Dashboard · VyaparOne Super Admin" },
+      { title: "Dashboard · ThokStore Super Admin" },
       {
         name: "description",
         content:
           "Marketplace overview: wholesalers, retailers, orders, sales, and platform revenue in one control center.",
       },
-      { property: "og:title", content: "VyaparOne Super Admin Dashboard" },
+      { property: "og:title", content: "ThokStore Super Admin Dashboard" },
       {
         property: "og:description",
         content: "Complete visibility across the wholesale commerce network.",

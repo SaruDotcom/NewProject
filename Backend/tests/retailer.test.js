@@ -292,6 +292,18 @@ describe('Retailer Portal Complete Layered Test Suite', () => {
         .set('Authorization', `Bearer ${retailerToken}`);
       expect(globalCategoryProducts.status).toBe(200);
       expect(globalCategoryProducts.body.data).toEqual([]);
+
+      const categoryAndSearchProducts = await request(app)
+        .get('/api/v1/retailer/products?category=Hardware%20%26%20Tools&search=DRILL')
+        .set('Authorization', `Bearer ${retailerToken}`);
+      expect(categoryAndSearchProducts.status).toBe(200);
+      expect(categoryAndSearchProducts.body.data.map((item) => item.sku)).toEqual(['DRILL-001']);
+
+      const unmatchedCategoryAndSearchProducts = await request(app)
+        .get('/api/v1/retailer/products?category=global-category&search=DRILL')
+        .set('Authorization', `Bearer ${retailerToken}`);
+      expect(unmatchedCategoryAndSearchProducts.status).toBe(200);
+      expect(unmatchedCategoryAndSearchProducts.body.data).toEqual([]);
     });
 
     it('should forbid store access for retailer with no active wholesaler relationship', async () => {

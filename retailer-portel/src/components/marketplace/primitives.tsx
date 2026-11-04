@@ -295,7 +295,7 @@ export function ProductCard({
       </button>
 
       {/* Product Details (Clean & Minimal) */}
-      <div className="flex flex-1 flex-col p-3.5">
+      <div className="flex flex-1 flex-col p-2.5 sm:p-3.5">
         {/* Product Name */}
         <Link
           to="/products/$productId"
@@ -308,8 +308,8 @@ export function ProductCard({
         </Link>
 
         {/* Selling Price */}
-        <div className="mt-2 flex items-baseline gap-1.5 h-6">
-          <strong className="text-base sm:text-lg font-black text-ink">{money(product.price)}</strong>
+        <div className="mt-2 flex min-h-6 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <strong className="text-sm sm:text-lg font-black text-ink">{money(product.price)}</strong>
           <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
           {discount > 0 && <span className="text-xs font-bold text-emerald-600">({discount}% off)</span>}
         </div>
@@ -362,7 +362,7 @@ export function ProductGrid({
   const gridClassName = list
     ? cn("grid gap-3", className)
     : cn(
-        "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5",
+        "grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5",
         className,
       );
 

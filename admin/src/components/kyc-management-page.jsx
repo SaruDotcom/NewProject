@@ -922,7 +922,7 @@ export function KycManagementPage() {
               </span>
               <span className="flex items-center gap-1.5">
                 <ShieldCheck className="size-3.5 text-primary" />
-                VyaparOne Compliance Core
+                ThokStore Compliance Core
               </span>
             </div>
           )}

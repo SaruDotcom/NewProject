@@ -793,7 +793,7 @@ export function ActivityPage() {
 }
 const settingsGroups = {
   General: [
-    ["Marketplace name", "VyaparOne"],
+    ["Marketplace name", "ThokStore"],
     ["Support email", "support@vyaparone.in"],
     ["Support phone", "+91 1800 419 0000"],
     ["Currency", "INR (₹)"],
@@ -820,10 +820,10 @@ const settingsGroups = {
 export function SettingsPage() {
   const [settings, setSettings] = useState({
     // General
-    marketplaceName: "VyaparOne B2B Marketplace",
+    marketplaceName: "ThokStore",
     supportEmail: "support@vyaparone.com",
     supportPhone: "+91 1800-123-9999",
-    supportAddress: "VyaparOne Tech Tower, Sector 62, Noida, UP - 201309",
+    supportAddress: "ThokStore Tech Tower, Sector 62, Noida, UP - 201309",
     currency: "INR (₹)",
     maintenanceMode: false,
 
@@ -870,7 +870,7 @@ export function SettingsPage() {
       .then((data) => {
         if (!mounted) return;
         if (data && typeof data === "object") {
-          setSettings((prev) => ({ ...prev, ...data }));
+          setSettings((prev) => ({ ...prev, ...data, marketplaceName: "ThokStore" }));
         }
       })
       .catch((err) => {
@@ -906,10 +906,10 @@ export function SettingsPage() {
 
   const handleResetDefaults = () => {
     setSettings({
-      marketplaceName: "VyaparOne B2B Marketplace",
+      marketplaceName: "ThokStore",
       supportEmail: "support@vyaparone.com",
       supportPhone: "+91 1800-123-9999",
-      supportAddress: "VyaparOne Tech Tower, Sector 62, Noida, UP - 201309",
+      supportAddress: "ThokStore Tech Tower, Sector 62, Noida, UP - 201309",
       currency: "INR (₹)",
       maintenanceMode: false,
       platformCommissionRate: 3.5,
@@ -1019,11 +1019,11 @@ export function SettingsPage() {
               <div className="space-y-2">
                 <Label className="text-xs font-bold">Marketplace Name *</Label>
                 <Input
-                  value={settings.marketplaceName}
-                  onChange={(e) => handleChange("marketplaceName", e.target.value)}
-                  placeholder="e.g. VyaparOne B2B Wholesale"
+                  value="ThokStore"
+                  disabled
+                  placeholder="ThokStore"
                 />
-                <p className="text-[11px] text-muted-foreground">Brand name displayed on invoices, emails, and headers.</p>
+                <p className="text-[11px] text-muted-foreground">The platform name is fixed as ThokStore.</p>
               </div>
 
               <div className="space-y-2">

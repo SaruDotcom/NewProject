@@ -318,10 +318,20 @@ function cleanImageUrl(img: any): string {
 
 export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, string>): Product {
   let categoryName = "Grocery & Staples";
-  if (typeof item.category === "object" && item.category !== null && (item.category as any).name) {
-    categoryName = String((item.category as any).name);
-  } else if (typeof item.category === "string" && item.category.trim()) {
-    const rawCat = item.category.trim();
+  const categoryObject =
+    (typeof item.category === "object" && item.category !== null ? item.category : null) ||
+    (typeof item.categoryId === "object" && item.categoryId !== null ? item.categoryId : null);
+  const categoryValue =
+    typeof item.category === "string" && item.category.trim()
+      ? item.category.trim()
+      : typeof item.categoryId === "string"
+        ? item.categoryId.trim()
+        : "";
+
+  if (categoryObject?.name) {
+    categoryName = String(categoryObject.name);
+  } else if (categoryValue) {
+    const rawCat = categoryValue;
     if (categoryMap && categoryMap.has(rawCat)) {
       categoryName = categoryMap.get(rawCat)!;
     } else if (categoryMap && categoryMap.has(rawCat.toLowerCase())) {
@@ -331,10 +341,6 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     } else {
       categoryName = rawCat;
     }
-  } else if (item.categoryId && categoryMap && categoryMap.has(String(item.categoryId))) {
-    categoryName = categoryMap.get(String(item.categoryId))!;
-  } else if (item.categoryId && typeof item.categoryId === "object" && (item.categoryId as any).name) {
-    categoryName = String((item.categoryId as any).name);
   }
 
   const rawImages = Array.isArray(item.images) ? item.images : [];

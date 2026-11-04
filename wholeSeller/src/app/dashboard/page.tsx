@@ -35,6 +35,7 @@ import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 import api from '@/lib/api';
 import { ProductImage } from '@/components/products/ProductImage';
 import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
+import { BRAND_NAME } from '@/config/brand';
 
 export default function OverviewPage() {
   const {
@@ -93,7 +94,7 @@ export default function OverviewPage() {
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-            {profile.businessName ? `Welcome back, ${profile.businessName}` : 'Welcome to your dashboard'}
+            Welcome to {BRAND_NAME}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
             Track products, stock, retailers, and orders.

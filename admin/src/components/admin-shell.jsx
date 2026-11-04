@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import BrandLogo from "@/components/brand-logo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -353,6 +354,10 @@ export function AdminShell({ children }) {
                 "aria-label": "Open navigation menu",
                 children: _jsx(Menu, {}),
               }),
+              _jsxs("div", {
+                className: "flex shrink-0 items-center gap-2 sm:hidden",
+                children: _jsx(BrandLogo, { className: "w-32" }),
+              }),
               _jsx("div", {
                 className: "hidden shrink-0 sm:block",
                 children: pathname.startsWith("/kyc/") && pathname !== "/kyc"
@@ -630,7 +635,7 @@ export function AdminShell({ children }) {
           _jsx("footer", {
             className:
               "px-4 pb-5 text-center text-[10px] font-medium tracking-wide text-muted-foreground sm:px-6 lg:px-7",
-            children: "VyaparOne Admin · v0.0.0",
+            children: "ThokStore Admin · v0.0.0",
           }),
         ],
       }),
@@ -684,35 +689,10 @@ function Brand({ compact = false }) {
       compact && "justify-center px-2",
     ),
     children: [
-      _jsx("div", {
-        className:
-          "flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-extrabold text-primary-foreground",
-        children: "V",
+      _jsx(BrandLogo, {
+        className: "w-40",
+        compact,
       }),
-      !compact &&
-        _jsxs("div", {
-          children: [
-            _jsx("p", {
-              className: "text-sm font-extrabold",
-              children: "VyaparOne",
-            }),
-            _jsxs("div", {
-              className: "mt-0.5 flex items-center gap-1.5",
-              children: [
-                _jsx("p", {
-                  className:
-                    "text-[10px] font-semibold uppercase tracking-wide text-white/60",
-                  children: "Marketplace Control",
-                }),
-                _jsx("span", {
-                  className:
-                    "rounded-full border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[9px] font-extrabold leading-none text-emerald-200",
-                  children: "PRO",
-                }),
-              ],
-            }),
-          ],
-        }),
     ],
   });
 }

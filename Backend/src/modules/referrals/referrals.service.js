@@ -255,7 +255,15 @@ class ReferralService {
     if (activeCategoryIds.length === 0) {
       return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
     }
-    filter.categoryId = { $in: activeCategoryIds };
+    filter.$and = [{
+      $or: [
+        { categoryId: { $in: activeCategoryIds } },
+        { category: { $in: activeCategoryIds } },
+        { subcategoryId: { $in: activeCategoryIds } },
+        { subCategory: { $in: activeCategoryIds } },
+        { subSubcategoryId: { $in: activeCategoryIds } },
+      ],
+    }];
 
     if (query.category && query.category !== 'All') {
       const selectedCategory = await Category.findOne({
@@ -273,22 +281,33 @@ class ReferralService {
       if (!selectedCategory) {
         return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
       }
-      filter.categoryId = selectedCategory._id;
+      filter.$and.push({
+        $or: [
+          { categoryId: selectedCategory._id },
+          { category: selectedCategory._id },
+          { subcategoryId: selectedCategory._id },
+          { subCategory: selectedCategory._id },
+          { subSubcategoryId: selectedCategory._id },
+        ],
+      });
     }
 
     if (query.search) {
       const search = new RegExp(escapeRegex(query.search), 'i');
-      filter.$or = [
+      filter.$and.push({
+        $or: [
         { name: search },
         { title: search },
         { sku: search },
         { description: search },
-      ];
+        ],
+      });
     }
 
     const [products, total] = await Promise.all([
       Product.find(filter)
         .populate('categoryId', 'name slug imageUrl')
+        .populate('category', 'name slug imageUrl')
         .populate('subcategoryId', 'name slug')
         .sort(sort)
         .skip(skip)

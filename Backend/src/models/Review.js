@@ -16,6 +16,15 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    recipientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
+    recipientRole: {
+      type: String,
+      enum: ['RETAILER', 'WHOLESALER'],
+    },
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',
@@ -49,5 +58,7 @@ const reviewSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+reviewSchema.index({ recipientId: 1, recipientRole: 1, status: 1, isDeleted: 1 });
 
 module.exports = mongoose.model('Review', reviewSchema);

@@ -6,7 +6,7 @@ const ReportsManagementPage = createLazyRoute(() => import("@/components/reports
 export const Route = createFileRoute("/reports")({
   head: () => ({
     meta: [
-      { title: "Reports & Analytics · VyaparOne Super Admin" },
+      { title: "Reports & Analytics · ThokStore Super Admin" },
       {
         name: "description",
         content: "Sales, revenue, and network performance analytics.",

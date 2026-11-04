@@ -1866,6 +1866,7 @@ class AdminService {
       Review.find(filter)
         .populate('userId', 'name email phone businessName role')
         .populate('wholesalerId', 'name email businessName')
+        .populate('recipientId', 'name email role')
         .populate('productId', 'name title')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -1884,10 +1885,26 @@ class AdminService {
     const wholesalerBusinessNames = new Map(
       wholesalerProfiles.map((profile) => [String(profile.userId), profile.businessName]),
     );
+    const retailerIds = reviews
+      .filter((review) => review.recipientRole === 'RETAILER' && review.recipientId?._id)
+      .map((review) => review.recipientId._id);
+    const retailerProfiles = await RetailerProfile.find({ userId: { $in: retailerIds } })
+      .select('userId businessName ownerName')
+      .lean();
+    const retailerBusinessNames = new Map(
+      retailerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
+    );
 
     const items = reviews.map((r) => {
       const reviewerName = r.userId?.businessName || r.userId?.name || 'Anonymous User';
       const role = (r.userRole || r.userId?.role || 'RETAILER').toUpperCase();
+      const recipientRole = r.recipientRole || (r.wholesalerId ? 'WHOLESALER' : null);
+      const recipientId = r.recipientId || (recipientRole === 'WHOLESALER' ? r.wholesalerId : null);
+      const recipientName = recipientRole === 'RETAILER'
+        ? retailerBusinessNames.get(String(recipientId?._id)) || recipientId?.name
+        : recipientRole === 'WHOLESALER'
+          ? wholesalerBusinessNames.get(String(recipientId?._id)) || recipientId?.businessName || recipientId?.name
+          : null;
       return {
         _id: String(r._id),
         id: String(r._id),
@@ -1912,6 +1929,14 @@ class AdminService {
           phone: r.userId?.phone || '',
           role,
         },
+        recipient: recipientId
+          ? {
+              id: String(recipientId._id),
+              name: recipientName || 'Business partner',
+              email: recipientId.email || '',
+              role: recipientRole,
+            }
+          : null,
         wholesaler: r.wholesalerId
           ? {
               id: String(r.wholesalerId._id),

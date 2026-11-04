@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Building2, Lock, Mail, ArrowRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { WholesalerProvider, useWholesaler } from '@/context/WholesalerContext';
+import ThokStoreBrand from '@/components/ThokStoreBrand';
 
 type LoginFormProps = {
   onSuccess?: () => void;
@@ -100,11 +101,9 @@ export function LoginForm({ onSuccess, embedded = false, initialEmail = '', regi
   return (
     <div className={`${embedded ? 'bg-white text-tradeflow-navy' : 'min-h-screen bg-tradeflow-gray-50 text-tradeflow-navy'} flex flex-col justify-center py-6 px-6 lg:px-8`}>
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-tradeflow-green text-tradeflow-navy flex items-center justify-center shadow-lg font-bold text-2xl">
-          <Building2 className="w-8 h-8" />
-        </div>
+        <ThokStoreBrand className="justify-center" />
         <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-tradeflow-navy">
-          Wholesaler Portal Login
+          Wholesaler Login
         </h1>
         <p className="mt-2 text-xs text-gray-600">
           Access catalog management, automated inventory, connected retailers & orders

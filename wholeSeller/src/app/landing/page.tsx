@@ -25,6 +25,7 @@ import { WholesalerProvider } from '@/context/WholesalerContext';
 import { LoginForm } from '@/app/login/page';
 import { RegisterForm } from '@/app/register/page';
 import { BRAND_NAME } from '@/config/brand';
+import ThokStoreBrand from '@/components/ThokStoreBrand';
 import { clearAuthToken, getAuthToken, type SubscriptionPlan, default as api } from '@/lib/api';
 
 const landingCopy = {
@@ -390,8 +391,7 @@ function LandingContent() {
       <header className="sticky top-0 z-40 border-b border-tradeflow-gray-200 bg-white/95 backdrop-blur">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 lg:px-8" aria-label="Main navigation">
           <a href="#home" className="flex items-center gap-2.5" aria-label={`${BRAND_NAME} home`}>
-            <span className="flex size-10 items-center justify-center rounded-xl bg-tradeflow-green text-tradeflow-navy"><Store className="size-5" /></span>
-            <span><span className="block font-heading text-lg font-extrabold tracking-tight">{BRAND_NAME}</span><span className="block text-[8px] font-medium leading-3 text-gray-500 sm:text-[10px]">Your Business. Your Store. Your Way.</span></span>
+            <ThokStoreBrand />
           </a>
           <button type="button" className="rounded-lg p-2 md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>
             {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -499,7 +499,7 @@ function LandingContent() {
               <div className="relative overflow-hidden rounded-[1.15rem] bg-white text-slate-800 sm:rounded-[1.5rem]">
                 <div className="flex h-5 items-center justify-between bg-white px-2 text-[6px] font-bold sm:h-7 sm:px-3 sm:text-[8px]"><span>9:41</span><span className="h-1 w-7 rounded-full bg-slate-800 sm:w-9" /><span>● ●</span></div>
                 <div className="px-2 pb-2 sm:px-3 sm:pb-3">
-                  <div className="flex items-center justify-between"><div className="flex items-center gap-1"><span className="flex size-4 items-center justify-center rounded bg-emerald-500 text-[7px] font-black text-white sm:size-5 sm:text-[9px]">V</span><span className="text-[7px] font-extrabold sm:text-[9px]">VyapaarDwaar Store</span></div><ShoppingBag className="size-3 text-slate-600 sm:size-3.5" /></div>
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-1"><span className="flex size-4 items-center justify-center rounded bg-emerald-500 text-[7px] font-black text-white sm:size-5 sm:text-[9px]">T</span><span className="text-[7px] font-extrabold sm:text-[9px]">ThokStore Store</span></div><ShoppingBag className="size-3 text-slate-600 sm:size-3.5" /></div>
                   <div className="mt-1.5 flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[6px] text-slate-400 sm:mt-2 sm:py-1.5 sm:text-[7px]"><Store className="size-2.5 sm:size-3" />Search products</div>
                   <div className="relative mt-2 overflow-hidden rounded-lg bg-gradient-to-br from-[#0f4c5c] to-emerald-700 px-2 py-2.5 text-white sm:mt-3 sm:rounded-xl sm:px-3 sm:py-4">
                     <p className="relative z-10 text-[6px] font-bold uppercase tracking-wide text-emerald-100 sm:text-[8px]">Wholesale picks</p><p className="relative z-10 mt-0.5 text-[9px] font-extrabold leading-tight sm:text-sm">Fresh styles,<br />better margins</p><span className="relative z-10 mt-1 inline-flex rounded-full bg-white px-1.5 py-0.5 text-[5px] font-bold text-emerald-800 sm:text-[6px]">Explore collection</span>
@@ -647,7 +647,7 @@ function LandingContent() {
 
       <footer className="border-t border-white/10 bg-slate-950 text-white">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[1.3fr_2fr] lg:px-8">
-          <div><a href="#home" className="font-heading text-xl font-extrabold">{BRAND_NAME}</a><p className="mt-2 text-sm text-white/65">Your Business. Your Store. Your Way.</p></div>
+          <div><a href="#home" className="font-heading text-xl font-extrabold">{BRAND_NAME}</a><p className="mt-2 text-sm text-white/65">Your wholesale business, online.</p></div>
           <nav className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/75" aria-label="Footer navigation">
             <a href="#home" className="hover:text-tradeflow-green">Home</a>
             <a href="#features" className="hover:text-tradeflow-green">Features</a>

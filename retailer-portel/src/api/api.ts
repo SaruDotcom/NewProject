@@ -31,7 +31,7 @@ export type ApiProduct = {
   title?: string;
   brand?: string;
   category?: { _id?: string; name?: string; slug?: string } | string;
-  categoryId?: string;
+  categoryId?: string | { _id?: string; id?: string; name?: string; slug?: string };
   subcategoryId?: string;
   wholesalerId?: string | { _id?: string; id?: string; name?: string };
   wholesalePrice?: number;
@@ -112,6 +112,16 @@ export type ApiWholesaler = {
   available?: boolean;
   unavailableMessage?: string;
   categoryDetails?: ApiCategory[];
+};
+
+export type ReviewPartner = { id: string; name: string; role: string };
+export type PartnerReview = {
+  id: string;
+  title?: string;
+  comment: string;
+  rating: number;
+  createdAt: string;
+  reviewer: { id: string; name: string; role: string };
 };
 
 export type ApiOrder = {
@@ -235,6 +245,8 @@ function getRetailerResources(path: string): string[] {
   }
   if (path.startsWith("/retailer/addresses")) return ["addresses"];
   if (path.startsWith("/retailer/notifications")) return ["notifications"];
+  if (path.startsWith("/retailer/reviews")) return ["reviews"];
+  if (path.startsWith("/retailer/review-partners")) return ["review-partners"];
   if (path.startsWith("/retailer/invitations")) {
     return ["wholesaler", "products", "categories", "dashboard"];
   }
@@ -728,6 +740,10 @@ export const api = {
   setDefaultAddress: (addressId: string) => request<ApiEnvelope<ApiAddress>>(`/retailer/addresses/${addressId}/default`, { method: 'PATCH' }),
 
   getNotifications: () => request<ApiEnvelope<any[]>>('/retailer/notifications', { method: 'GET' }),
+  getReceivedReviews: () => request<ApiEnvelope<PartnerReview[]>>('/retailer/reviews', { method: 'GET' }),
+  getReviewPartners: () => request<ApiEnvelope<ReviewPartner[]>>('/retailer/review-partners', { method: 'GET' }),
+  submitPartnerReview: (payload: { recipientId: string; title?: string; comment: string; rating: number }) =>
+    request<ApiEnvelope<any>>('/reviews', { method: 'POST', body: JSON.stringify(payload) }),
 
   markNotificationRead: (notificationId: string) => request<ApiEnvelope<any>>(`/retailer/notifications/${notificationId}/read`, { method: 'PATCH' }),
 
@@ -748,7 +764,8 @@ export const api = {
       body: JSON.stringify({
         type: 'Feedback',
         subject: payload.title?.trim() || 'Retailer Platform Feedback',
-        message: `Rating: ${payload.rating}/5\n\n${payload.comment.trim()}`,
+        message: payload.comment.trim(),
+        rating: payload.rating,
       }),
     }),
 

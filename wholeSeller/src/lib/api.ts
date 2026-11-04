@@ -221,6 +221,21 @@ export interface WholesalerSubscription {
   renewalDate: string;
 }
 
+export interface ReviewPartner {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface PartnerReview {
+  id: string;
+  title?: string;
+  comment: string;
+  rating: number;
+  createdAt: string;
+  reviewer: { id: string; name: string; role: string };
+}
+
 export interface SubscriptionPaymentRecord {
   id: string;
   planId: string;
@@ -282,6 +297,8 @@ function getWholesalerResources(path: string): string[] {
   if (path.startsWith('/orders/returns') || path.startsWith('/wholesaler/returns')) return ['returns', 'orders', 'wallet'];
   if (path.startsWith('/wholesaler/orders') || path.startsWith('/orders/')) return ['orders', 'analytics', 'wallet'];
   if (path.startsWith('/wholesaler/retailers')) return ['retailers', 'credit-overview'];
+  if (path.startsWith('/wholesaler/reviews')) return ['reviews'];
+  if (path.startsWith('/wholesaler/review-partners')) return ['review-partners'];
   if (path.startsWith('/wholesaler/inventory')) return ['inventory', 'products', 'analytics'];
   if (path.startsWith('/wholesaler/banners') || path.startsWith('/wholesaler/store-theme')) return ['banners', 'products'];
   if (path.startsWith('/wholesaler/profile')) return ['profile', 'kyc'];
@@ -887,6 +904,18 @@ export const api = {
     
   getWalletTransactions: () =>
     request<{ success: boolean; data: any[] }>('/wallets/transactions', { method: 'GET' }),
+
+  getReceivedReviews: () =>
+    request<{ success: boolean; data: PartnerReview[] }>('/wholesaler/reviews', { method: 'GET' }),
+
+  getReviewPartners: () =>
+    request<{ success: boolean; data: ReviewPartner[] }>('/wholesaler/review-partners', { method: 'GET' }),
+
+  submitPartnerReview: (data: { recipientId: string; title?: string; comment: string; rating: number }) =>
+    request<{ success: boolean; data: any }>('/reviews', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   submitFeedback: (data: { title?: string; comment: string; rating: number; productId?: string }) =>
     request<{ success: boolean; data: any }>('/support/tickets', {

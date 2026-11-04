@@ -9,6 +9,7 @@ const validate = require('../../middleware/validate');
 const idempotency = require('../../middleware/idempotency');
 const { ROLES } = require('../../config/constants');
 const { createTicketLimit } = require('../support/support.routes');
+const reviewController = require('../reviews/reviews.controller');
 const {
   addToCartSchema,
   updateCartItemSchema,
@@ -30,6 +31,8 @@ router.use(authenticate, authorize(ROLES.RETAILER));
 
 // Dashboard
 router.get('/dashboard', retailerController.getDashboard);
+router.get('/reviews', reviewController.listReceived);
+router.get('/review-partners', reviewController.listPartners);
 
 // Profile
 router.get('/profile', retailerController.getProfile);

@@ -6,7 +6,7 @@ const ProductsManagementPage = createLazyRoute(() => import("@/components/produc
 export const Route = createFileRoute("/products")({
   head: () => ({
     meta: [
-      { title: "Products · VyaparOne Super Admin" },
+      { title: "Products · ThokStore Super Admin" },
       {
         name: "description",
         content:

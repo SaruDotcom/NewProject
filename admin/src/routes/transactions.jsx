@@ -6,7 +6,7 @@ const TransactionsManagementPage = createLazyRoute(() => import("@/components/tr
 export const Route = createFileRoute("/transactions")({
   head: () => ({
     meta: [
-      { title: "Transactions · VyaparOne Super Admin" },
+      { title: "Transactions · ThokStore Super Admin" },
       {
         name: "description",
         content: "Every commission and settlement movement on the platform.",

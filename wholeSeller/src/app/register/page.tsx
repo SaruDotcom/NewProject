@@ -17,6 +17,7 @@ import {
 import { WholesalerProvider, useWholesaler } from '@/context/WholesalerContext';
 import api from '@/lib/api';
 import { BRAND_NAME } from '@/config/brand';
+import ThokStoreBrand from '@/components/ThokStoreBrand';
 
 type RegisterFormProps = {
   onGoToLogin?: (email: string) => void;
@@ -50,7 +51,6 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   const [inviteError, setInviteError] = useState('');
   const [refValid, setRefValid] = useState(false);
   const [refError, setRefError] = useState('');
-  const [platformName, setPlatformName] = useState(BRAND_NAME);
 
   // Form Fields State
   const [email, setEmail] = useState('');
@@ -91,7 +91,6 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
         if (res?.data?.valid) {
           setRefValid(true);
           setRefError('');
-          if (res.data.platformName) setPlatformName(res.data.platformName);
         } else {
           setRefValid(false);
           setRefError(res?.data?.message || 'This registration link is not valid or has expired.');
@@ -248,9 +247,7 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   return (
     <div className={`${embedded ? 'bg-white text-tradeflow-navy' : 'min-h-screen bg-tradeflow-gray-50 text-tradeflow-navy'} flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8`}>
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-tradeflow-green text-tradeflow-navy flex items-center justify-center shadow-lg font-bold text-2xl">
-          <Building2 className="w-8 h-8" />
-        </div>
+        <ThokStoreBrand className="justify-center" />
         <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-tradeflow-navy">
           Create your {BRAND_NAME} account
         </h1>
@@ -264,7 +261,7 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
           {refCode && refValid && (
             <div className="mb-5 rounded-xl border border-tradeflow-green/30 bg-tradeflow-green/10 p-3 text-xs text-tradeflow-navy flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-tradeflow-green shrink-0" />
-              <p className="font-bold">You are invited by {platformName || BRAND_NAME}</p>
+              <p className="font-bold">You are invited by {BRAND_NAME}</p>
             </div>
           )}
 

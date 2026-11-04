@@ -21,6 +21,7 @@ const TransactionsHistoryPage = lazy(() => import("@/components/marketplace/work
 const ProfilePage = lazy(() => import("@/components/marketplace/workspace").then(({ ProfilePage }) => ({ default: ProfilePage })));
 const SettingsPage = lazy(() => import("@/components/marketplace/workspace").then(({ SettingsPage }) => ({ default: SettingsPage })));
 const WishlistPage = lazy(() => import("@/components/marketplace/workspace").then(({ WishlistPage }) => ({ default: WishlistPage })));
+const PartnerReviewsPage = lazy(() => import("@/components/marketplace/PartnerReviewsPage").then(({ PartnerReviewsPage }) => ({ default: PartnerReviewsPage })));
 
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
@@ -231,6 +232,7 @@ function RouterView() {
 
   // Protected workspace views
   if (path === "/dashboard") return <DashboardPage />;
+  if (path === "/reviews") return <PartnerReviewsPage />;
   if (path === "/orders") return <OrdersPage />;
   if (path === "/transactions") return <TransactionsHistoryPage />;
   if (path.startsWith("/orders/")) return <OrderDetailsPage orderId={decodeURIComponent(path.split("/")[2] ?? "")} />;

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Star, StarBorder, RateReview, CheckCircle } from '@mui/icons-material';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import api from '@/api/api';
+import type { ReviewPartner } from '@/api/api';
 
 interface FeedbackModalProps {
   open: boolean;
@@ -17,35 +18,56 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
-  const [successTicketNo, setSuccessTicketNo] = useState('');
+  const [partners, setPartners] = useState<ReviewPartner[]>([]);
+  const [recipientId, setRecipientId] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api.getReviewPartners()
+      .then((response) => {
+        if (!active) return;
+        setPartners(response.data);
+        setRecipientId(response.data[0]?.id || '');
+      })
+      .catch((loadError: unknown) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load connected wholesalers.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!comment.trim()) {
-      setError('Please provide a comment for your feedback.');
+      setError('Please provide a comment for your review.');
+      return;
+    }
+    if (!recipientId) {
+      setError('You need an active wholesaler connection before submitting a partner review.');
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
-      const response = await api.submitFeedback({
+      await api.submitPartnerReview({
+        recipientId,
         rating,
-        title: title.trim() || 'Retailer Platform Feedback',
+        title: title.trim(),
         comment: comment.trim(),
       });
-      setSuccessTicketNo(response.data?.ticketNo || response.data?.ticketNumber || '');
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
-        setSuccessTicketNo('');
         setTitle('');
         setComment('');
         setRating(5);
         onOpenChange(false);
       }, 1800);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to submit feedback. Please try again.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to submit review. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -55,7 +77,6 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
     if (!loading) {
       setError(null);
       setSuccess(false);
-      setSuccessTicketNo('');
       onOpenChange(false);
     }
   };
@@ -73,7 +94,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
             Submit Feedback & Review
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Your feedback helps us improve the platform. Submitted reviews are reviewed by the Admin team.
+            Share a rating and review with your connected wholesaler.
           </DialogDescription>
         </DialogHeader>
 
@@ -82,7 +103,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
             <CheckCircle className="size-14 text-emerald-500 animate-bounce" />
             <h4 className="font-extrabold text-lg text-ink">Thank You!</h4>
             <p className="text-xs text-muted-foreground max-w-xs">
-              Your feedback ticket {successTicketNo ? <strong>{successTicketNo}</strong> : ''} has been sent to the Admin team.
+              Your review has been saved and shared with your wholesaler.
             </p>
           </div>
         ) : (
@@ -92,6 +113,19 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
                 {error}
               </div>
             )}
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-ink">Review wholesaler</label>
+              <select
+                value={recipientId}
+                onChange={(event) => setRecipientId(event.target.value)}
+                required
+                disabled={!partners.length || loading}
+                className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+              >
+                {partners.length ? partners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name}</option>) : <option value="">No connected wholesaler</option>}
+              </select>
+            </div>
 
             {/* Rating Stars */}
             <div className="flex flex-col items-center space-y-1.5 bg-secondary/30 p-3 rounded-xl">
@@ -134,7 +168,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Order Delivery, Platform Interface..."
+                placeholder="e.g. Delivery, product quality..."
                 className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
               />
             </div>
@@ -149,7 +183,7 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
                 required
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Describe your experience or suggest features to our Admin team..."
+                placeholder="Describe your experience with this wholesaler..."
                 className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 resize-none"
               />
             </div>
@@ -166,10 +200,10 @@ export function FeedbackModal({ open, onOpenChange }: FeedbackModalProps) {
               </Button>
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !recipientId}
                 className="w-full sm:w-1/2 rounded-xl font-extrabold bg-primary hover:bg-primary/90 text-primary-foreground"
               >
-                {loading ? 'Submitting...' : 'Submit Feedback'}
+                {loading ? 'Submitting...' : 'Submit Review'}
               </Button>
             </DialogFooter>
           </form>

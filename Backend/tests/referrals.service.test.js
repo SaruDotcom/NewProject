@@ -335,7 +335,7 @@ describe('ReferralService', () => {
         }),
       });
 
-      const populate2 = jest.fn().mockReturnValue({
+      const populate3 = jest.fn().mockReturnValue({
         sort: jest.fn().mockReturnValue({
           skip: jest.fn().mockReturnValue({
             limit: jest.fn().mockReturnValue({
@@ -343,6 +343,10 @@ describe('ReferralService', () => {
             }),
           }),
         }),
+      });
+
+      const populate2 = jest.fn().mockReturnValue({
+        populate: populate3,
       });
 
       const populate1 = jest.fn().mockReturnValue({
@@ -361,7 +365,14 @@ describe('ReferralService', () => {
         expect.objectContaining({
           wholesalerId: 'user123',
           isDeleted: { $ne: true },
-          categoryId: { $in: ['cat1'] },
+          $and: expect.arrayContaining([
+            expect.objectContaining({
+              $or: expect.arrayContaining([
+                { categoryId: { $in: ['cat1'] } },
+                { category: { $in: ['cat1'] } },
+              ]),
+            }),
+          ]),
         })
       );
       expect(result.products).toHaveLength(2);

@@ -7,7 +7,7 @@ const SupportManagementPage = createLazyRoute(() => import("@/components/support
 export const Route = createFileRoute("/support")({
   head: () => ({
     meta: [
-      { title: "Support Requests · VyaparOne Super Admin" },
+      { title: "Support Requests · ThokStore Super Admin" },
       {
         name: "description",
         content:

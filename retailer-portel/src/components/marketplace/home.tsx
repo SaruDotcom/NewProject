@@ -6,7 +6,6 @@ import {
   LocalShipping,
   Refresh,
   Verified,
-  Store,
   Category as CategoryIcon,
   Inventory2,
   WarningAmber,
@@ -15,7 +14,7 @@ import {
 } from "@mui/icons-material";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/state/store";
-import { ProductGrid, SectionHeading, WholesalerLogo } from "./primitives";
+import { ProductGrid, SectionHeading } from "./primitives";
 import { categoryImages } from "./storefront";
 import { WholesalerBannerCarousel } from "./WholesalerBannerCarousel";
 import { cn } from "@/lib/utils";
@@ -28,13 +27,11 @@ const trustSignals: Array<[typeof VerifiedUser, string, string]> = [
 ];
 
 export function HomePage() {
-  const { relationships, recentlyViewed, linkedWholesaler, products, categories, storefrontError } = useStore();
+  const { recentlyViewed, linkedWholesaler, products, categories, storefrontError } = useStore();
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("All");
 
   const activeStoreTheme = linkedWholesaler?.activeStoreTheme || "DEFAULT";
   const wholesalerBusinessName = linkedWholesaler?.businessName?.trim() || linkedWholesaler?.name?.trim() || "Wholesaler Store";
-  const wholesalerTagline = linkedWholesaler?.businessTagline?.trim() || "Verified Wholesale Partner Storefront";
-  const wholesalerLocation = linkedWholesaler?.location || "";
 
   // Filter products: strictly isolated to the linked wholesaler
   const wholesalerProducts = useMemo(() => {
@@ -42,9 +39,9 @@ export function HomePage() {
     const wsId = String(linkedWholesaler.id);
     return products.filter((p) => {
       const pWsId = String(p.wholesalerId || "");
-      return pWsId === wsId || relationships[p.wholesalerId] === "Connected";
+      return pWsId === wsId;
     });
-  }, [products, linkedWholesaler, relationships]);
+  }, [products, linkedWholesaler]);
 
   // Wholesaler categories
   const wholesalerCategories = useMemo(() => {
@@ -60,6 +57,19 @@ export function HomePage() {
       return pCat === targetCat || pCat.includes(targetCat);
     });
   }, [wholesalerProducts, selectedCategoryFilter]);
+
+  const displayedCategorySections = useMemo(() => {
+    const categoryNames = Array.from(
+      new Set(displayedProducts.map((product) => product.category.trim() || "Other products")),
+    );
+
+    return categoryNames.map((category) => ({
+      category,
+      products: displayedProducts.filter(
+        (product) => (product.category.trim() || "Other products") === category,
+      ),
+    }));
+  }, [displayedProducts]);
 
   // Recently viewed products strictly for this wholesaler
   const recentlyViewedProducts = useMemo(() => {
@@ -105,49 +115,9 @@ export function HomePage() {
         <WholesalerBannerCarousel />
         <div className="shell relative z-10 flex min-h-[440px] sm:min-h-[480px] lg:min-h-[520px] items-center py-10 sm:py-14">
           <div className="max-w-3xl text-primary-foreground text-center sm:text-left mx-auto sm:mx-0">
-            {/* Wholesaler Branding Pill */}
-            {linkedWholesaler && (
-              <div className="inline-flex items-center gap-3 rounded-2xl border border-primary-foreground/20 bg-ink/75 p-2 sm:p-2.5 backdrop-blur-md shadow-lg">
-                <WholesalerLogo
-                  src={linkedWholesaler.logo || ""}
-                  name={wholesalerBusinessName}
-                  className="size-11 sm:size-13 rounded-xl bg-white p-1 shadow-sm shrink-0"
-                />
-                <div className="text-left min-w-0 pr-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">
-                      Direct Wholesale Partner
-                    </span>
-                    <span className="inline-flex size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  </div>
-                  <span className="block truncate text-xs sm:text-sm font-black text-primary-foreground">
-                    {wholesalerBusinessName}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Prominent Business Name Heading */}
-            <h1 className="mt-5 text-3xl font-black leading-tight sm:text-5xl lg:text-6xl tracking-tight text-white drop-shadow-sm">
-              {wholesalerBusinessName}
+            <h1 className="text-3xl font-black leading-tight sm:text-5xl lg:text-6xl tracking-tight text-white drop-shadow-sm">
+              Welcome to {wholesalerBusinessName}
             </h1>
-
-            {/* Prominent Business Tagline directly underneath */}
-            {wholesalerTagline && (
-              <p className="mt-2.5 max-w-2xl text-base sm:text-xl font-bold leading-relaxed text-emerald-300 drop-shadow-xs">
-                {wholesalerTagline}
-              </p>
-            )}
-
-            {wholesalerLocation && (
-              <p className="mt-1 text-xs sm:text-sm font-medium text-primary-foreground/70">
-                Operating from {wholesalerLocation} • Fast Dispatch
-              </p>
-            )}
-
-            <p className="mt-4 max-w-xl text-xs sm:text-base leading-relaxed text-primary-foreground/80">
-              Access genuine trade pricing, bulk case rates, and verified dispatch directly from {wholesalerBusinessName}.
-            </p>
 
             <div className="mt-7 flex flex-col sm:flex-row items-stretch sm:items-center justify-center sm:justify-start gap-3.5">
               <Button asChild size="lg" className="rounded-xl min-h-[46px] font-extrabold shadow-lg bg-emerald-600 hover:bg-emerald-700 text-white">
@@ -318,7 +288,29 @@ export function HomePage() {
 
           {/* Product Grid or Professional Empty State */}
           {displayedProducts.length > 0 ? (
-            <ProductGrid products={displayedProducts} className="storefront-featured-products" />
+            <div className="space-y-10 sm:space-y-12">
+              {displayedCategorySections.map(({ category, products: categoryProducts }) => (
+                <section key={category} aria-label={`${category} products`}>
+                  <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-extrabold text-ink sm:text-xl">{category}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                        Related wholesale products · {categoryProducts.length} item{categoryProducts.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <Button asChild variant="ghost" size="sm" className="min-h-10 shrink-0 font-bold text-primary">
+                      <Link to="/products" search={category === "Other products" ? undefined : { category }}>
+                        View all <ChevronRight className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                  <ProductGrid
+                    products={categoryProducts.slice(0, 8)}
+                    className="storefront-featured-products grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5"
+                  />
+                </section>
+              ))}
+            </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-border/80 bg-card/80 p-12 text-center shadow-xs">
               <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">

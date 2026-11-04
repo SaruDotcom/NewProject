@@ -5,7 +5,7 @@ const WholesalerDetailPage = createLazyRoute(() => import("@/components/wholesal
 export const Route = createFileRoute("/wholesalers/$id")({
   head: () => ({
     meta: [
-      { title: "Wholesaler Detail · VyaparOne Super Admin" },
+      { title: "Wholesaler Detail · ThokStore Super Admin" },
       {
         name: "description",
         content:
