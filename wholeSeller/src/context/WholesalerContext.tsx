@@ -92,7 +92,7 @@ export interface WholesalerProfile {
   twoFactorEnabled: boolean;
   apiKey: string;
   subscriptionPlan: '' | 'MONTHLY' | 'ANNUAL';
-  subscriptionStatus: '' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'NO_SUBSCRIPTION' | 'UNKNOWN';
+  subscriptionStatus: '' | 'ACTIVE' | 'EXPIRED' | 'PENDING_APPROVAL' | 'CANCELLED' | 'NO_SUBSCRIPTION' | 'UNKNOWN';
   subscriptionRenewalDate: string;
   nextBillingDate: string;
   accountStatus: '' | 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
@@ -376,7 +376,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     try {
-      if (!silent) setIsLoading(true);
+      if (!silent && !isProfileLoaded) setIsLoading(true);
       const resources = getWholesalerPageResources(location.pathname);
 
       // 1. Get the profile on first load or when profile/kyc is needed
@@ -435,12 +435,41 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
+      const [catRes, prodRes, retRes, orderRes, returnsRes] = await Promise.all([
+        resources.has('categories')
+          ? queryClient.fetchQuery({
+              queryKey: wholesalerQueryKeys.resource(userId, 'categories'),
+              queryFn: () => api.getCategories(),
+            })
+          : null,
+        resources.has('products')
+          ? queryClient.fetchQuery({
+              queryKey: wholesalerQueryKeys.resource(userId, 'products'),
+              queryFn: () => api.getProducts(),
+            })
+          : null,
+        resources.has('retailers')
+          ? queryClient.fetchQuery({
+              queryKey: wholesalerQueryKeys.resource(userId, 'retailers'),
+              queryFn: () => api.getConnectedRetailers(),
+            })
+          : null,
+        resources.has('orders')
+          ? queryClient.fetchQuery({
+              queryKey: wholesalerQueryKeys.resource(userId, 'orders'),
+              queryFn: () => api.getOrders(),
+            })
+          : null,
+        resources.has('returns')
+          ? queryClient.fetchQuery({
+              queryKey: wholesalerQueryKeys.resource(userId, 'returns'),
+              queryFn: () => api.getReturns(),
+            })
+          : null,
+      ]);
+
       // 2. Get Categories
       if (resources.has('categories')) {
-      const catRes = await queryClient.fetchQuery({
-        queryKey: wholesalerQueryKeys.resource(userId, 'categories'),
-        queryFn: () => api.getCategories(),
-      });
       const categoryItems = Array.isArray(catRes?.data)
         ? catRes.data
         : Array.isArray(catRes?.data?.items)
@@ -458,10 +487,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // 3. Get Products
       if (resources.has('products')) {
-      const prodRes = await queryClient.fetchQuery({
-        queryKey: wholesalerQueryKeys.resource(userId, 'products'),
-        queryFn: () => api.getProducts(),
-      });
       if (prodRes?.data && Array.isArray(prodRes.data)) {
         const apiProds: Product[] = prodRes.data.map((p: any) => {
           const cost = Number(p.costPrice ?? p.wholesalePrice ?? p.price ?? 0);
@@ -508,10 +533,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // 4. Get Connected Retailers
       if (resources.has('retailers')) {
-      const retRes = await queryClient.fetchQuery({
-        queryKey: wholesalerQueryKeys.resource(userId, 'retailers'),
-        queryFn: () => api.getConnectedRetailers(),
-      });
       if (retRes?.data && Array.isArray(retRes.data)) {
         const apiRets: Retailer[] = retRes.data.map((r: any) => ({
           id: r._id || r.id,
@@ -546,10 +567,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // 5. Get Orders
       if (resources.has('orders')) {
-      const orderRes = await queryClient.fetchQuery({
-        queryKey: wholesalerQueryKeys.resource(userId, 'orders'),
-        queryFn: () => api.getOrders(),
-      });
       const orderItems = Array.isArray(orderRes?.data)
         ? orderRes.data
         : Array.isArray(orderRes?.data?.items)
@@ -603,10 +620,6 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // 6. Get Returns
       if (resources.has('returns')) {
-      const returnsRes = await queryClient.fetchQuery({
-        queryKey: wholesalerQueryKeys.resource(userId, 'returns'),
-        queryFn: () => api.getReturns(),
-      });
       if (returnsRes?.data && Array.isArray(returnsRes.data)) {
         setReturns(returnsRes.data.map((r: any) => ({
           id: r._id || r.id,
@@ -625,11 +638,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       }
 
-      try {
-        await loadNotifications();
-      } catch (err: any) {
-        console.warn('Notification load failed:', err.message);
-      }
+      void loadNotifications().catch((err: any) => console.warn('Notification load failed:', err.message));
     } catch (err: any) {
       console.warn('Sync Wholesaler API note:', err.message);
       if (String(err?.message || '').toLowerCase().includes('unauthorized') || String(err?.message || '').includes('401')) {
@@ -666,10 +675,19 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!isPublicAuthPage) {
       const userId = getWholesalerId();
       const resources = getWholesalerPageResources(location.pathname);
+      if (resources.size === 0) return;
+
       const needsInitialLoad = [...resources].some(
         (resource) => !queryClient.getQueryData(wholesalerQueryKeys.resource(userId, resource)),
       );
-      void refreshDataRef.current?.(!needsInitialLoad);
+      const isAnyStale = needsInitialLoad || [...resources].some((resource) => {
+        const state = queryClient.getQueryState(wholesalerQueryKeys.resource(userId, resource));
+        return !state || state.isInvalidated || state.status !== 'success' || (Date.now() - state.dataUpdatedAt > 60000);
+      });
+
+      if (isAnyStale) {
+        void refreshDataRef.current?.(!needsInitialLoad);
+      }
     }
   }, [location.pathname, queryClient]);
 
@@ -823,15 +841,20 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!profile.id || !getAuthToken()) return;
 
     try {
-      await queryClient.invalidateQueries({
-        queryKey: wholesalerQueryKeys.resource(profile.id, 'subscription'),
+      const queryKey = wholesalerQueryKeys.resource(profile.id, 'subscription');
+      const response = await queryClient.fetchQuery({
+        queryKey,
+        queryFn: () => api.getWholesalerSubscription(),
+        staleTime: 30_000,
       });
-      const response = await api.getWholesalerSubscription();
       const subscription = response.data.subscription;
+      const pendingApproval = response.data.payments?.some(
+        (payment) => payment.status === 'PAID' && payment.approvalStatus === 'PENDING',
+      );
       const renewalDate = subscription?.renewalDate || '';
       const renewalTime = renewalDate ? new Date(renewalDate).getTime() : 0;
       const status = !subscription
-        ? 'NO_SUBSCRIPTION'
+        ? pendingApproval ? 'PENDING_APPROVAL' : 'NO_SUBSCRIPTION'
         : subscription.status === 'ACTIVE' && renewalTime > Date.now()
           ? 'ACTIVE'
           : subscription.status === 'ACTIVE'
@@ -860,11 +883,13 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     void refreshSubscriptionStatus();
     const handleSubscriptionUpdate = () => {
-      void refreshSubscriptionStatus();
+      const queryKey = wholesalerQueryKeys.resource(profile.id, 'subscription');
+      void queryClient.invalidateQueries({ queryKey, refetchType: 'none' })
+        .then(() => refreshSubscriptionStatus());
     };
     window.addEventListener('wholesaler-subscription-updated', handleSubscriptionUpdate);
     return () => window.removeEventListener('wholesaler-subscription-updated', handleSubscriptionUpdate);
-  }, [location.pathname, profile.id, refreshSubscriptionStatus]);
+  }, [profile.id, queryClient, refreshSubscriptionStatus]);
 
   useEffect(() => {
     if (profile.subscriptionStatus !== 'ACTIVE' || !profile.subscriptionRenewalDate) return;

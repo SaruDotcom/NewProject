@@ -181,10 +181,11 @@ export default function ReportsPage() {
       return null;
     },
     enabled: Boolean(startDate && endDate),
+    staleTime: 60 * 1000,
     retry: 1,
   });
 
-  // Query Backend Orders
+  // Query Backend Orders (only if context orders are not yet present)
   const ordersQuery = useQuery({
     queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'orders'),
     queryFn: async () => {
@@ -203,6 +204,8 @@ export default function ReportsPage() {
         return [];
       }
     },
+    enabled: (!contextOrders || contextOrders.length === 0) && Boolean(profile.id),
+    staleTime: 60 * 1000,
     retry: 1,
   });
 

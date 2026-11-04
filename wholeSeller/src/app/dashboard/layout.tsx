@@ -1,55 +1,51 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useNavigate, Outlet } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { WholesalerProvider } from '@/context/WholesalerContext';
-import { clearAuthToken, getAuthToken } from '@/lib/api';
+import api, { ApiError, clearAuthToken, getAuthToken } from '@/lib/api';
+import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 import { SuperAdminHelpModal } from '@/components/layout/SuperAdminHelpModal';
 import { PhoneCall, Headphones, HelpCircle } from 'lucide-react';
 
 function DashboardGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<'checking' | 'allowed' | 'error'>('checking');
   const [retry, setRetry] = useState(0);
 
   const validateToken = useCallback(async (signal: AbortSignal) => {
     const token = getAuthToken();
     if (!token) {
-      navigate('/register', { replace: true });
-      return;
-    }
-
-    const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
-    if (!baseUrl) {
-      setStatus('error');
-      console.error('Cannot validate the saved login: VITE_API_BASE_URL is not configured.');
+      navigate('/login', { replace: true });
       return;
     }
 
     setStatus('checking');
     try {
-      const response = await fetch(`${baseUrl}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal,
+      const result = await queryClient.fetchQuery({
+        queryKey: wholesalerQueryKeys.resource(getWholesalerId(), 'profile'),
+        queryFn: () => api.getMe(signal),
+        staleTime: 0,
       });
-      if (!response.ok) {
-        clearAuthToken();
-        navigate('/register', { replace: true });
-        return;
-      }
-      const result = await response.json();
       if (!result?.success || !result?.data) {
         clearAuthToken();
-        navigate('/register', { replace: true });
+        navigate('/login', { replace: true });
         return;
       }
       setStatus('allowed');
     } catch (error) {
       if (signal.aborted) return;
       console.error('Unable to validate the saved login.', error);
+      if (error instanceof ApiError) {
+        clearAuthToken();
+        navigate('/login', { replace: true });
+        return;
+      }
       setStatus('error');
     }
-  }, [navigate]);
+  }, [navigate, queryClient]);
 
   useEffect(() => {
     const controller = new AbortController();

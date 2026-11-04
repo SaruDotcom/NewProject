@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ShoppingBag,
   Clock,
@@ -39,34 +39,36 @@ export default function OrdersPage() {
     setVisibleCount(50);
   }, [activeStatusTab, dateFilter, searchQuery]);
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesStatus = activeStatusTab === 'ALL' || order.status === activeStatusTab;
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = !query
-      || order.orderNumber.toLowerCase().includes(query)
-      || order.retailerName.toLowerCase().includes(query)
-      || Boolean(order.retailerBusinessName?.toLowerCase().includes(query))
-      || order.items.some((item) => item.productTitle.toLowerCase().includes(query));
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchesStatus = activeStatusTab === 'ALL' || order.status === activeStatusTab;
+      const query = searchQuery.trim().toLowerCase();
+      const matchesSearch = !query
+        || order.orderNumber.toLowerCase().includes(query)
+        || order.retailerName.toLowerCase().includes(query)
+        || Boolean(order.retailerBusinessName?.toLowerCase().includes(query))
+        || order.items.some((item) => item.productTitle.toLowerCase().includes(query));
 
-    let matchesDate = true;
-    if (dateFilter !== 'ALL' && order.createdAt) {
-      const orderDate = new Date(order.createdAt);
-      const now = new Date();
-      if (!Number.isNaN(orderDate.getTime())) {
-        if (dateFilter === 'TODAY') {
-          matchesDate = orderDate.toDateString() === now.toDateString();
-        } else if (dateFilter === 'WEEK') {
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          matchesDate = orderDate >= weekAgo;
-        } else if (dateFilter === 'MONTH') {
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          matchesDate = orderDate >= monthAgo;
+      let matchesDate = true;
+      if (dateFilter !== 'ALL' && order.createdAt) {
+        const orderDate = new Date(order.createdAt);
+        const now = new Date();
+        if (!Number.isNaN(orderDate.getTime())) {
+          if (dateFilter === 'TODAY') {
+            matchesDate = orderDate.toDateString() === now.toDateString();
+          } else if (dateFilter === 'WEEK') {
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            matchesDate = orderDate >= weekAgo;
+          } else if (dateFilter === 'MONTH') {
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            matchesDate = orderDate >= monthAgo;
+          }
         }
       }
-    }
 
-    return matchesStatus && matchesSearch && matchesDate;
-  });
+      return matchesStatus && matchesSearch && matchesDate;
+    });
+  }, [orders, activeStatusTab, searchQuery, dateFilter]);
 
   // Order Details Modal State
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);

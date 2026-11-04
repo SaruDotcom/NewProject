@@ -49,9 +49,10 @@ const shippingDir = path.join(env.UPLOAD_PATH, 'shipping');
 if (!fs.existsSync(shippingDir)) {
   fs.mkdirSync(shippingDir, { recursive: true });
 }
-app.use('/uploads/products', express.static(path.join(env.UPLOAD_PATH, 'products')));
-app.use('/uploads/payment-qr', express.static(path.join(env.UPLOAD_PATH, 'payment-qr')));
-app.use('/uploads/shipping', express.static(shippingDir));
+const staticCacheOptions = { maxAge: '7d', etag: true };
+app.use('/uploads/products', express.static(path.join(env.UPLOAD_PATH, 'products'), staticCacheOptions));
+app.use('/uploads/payment-qr', express.static(path.join(env.UPLOAD_PATH, 'payment-qr'), staticCacheOptions));
+app.use('/uploads/shipping', express.static(shippingDir, staticCacheOptions));
 
 // Serve MongoDB GridFS product images
 app.get('/product-images/:id', async (req, res) => {

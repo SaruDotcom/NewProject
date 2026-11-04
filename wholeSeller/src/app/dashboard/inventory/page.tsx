@@ -71,8 +71,23 @@ export default function InventoryPage() {
       }
     > = {};
 
-    // Filter valid orders (Exclude Cancelled orders)
+    // Pre-aggregate sales by productId in a single O(Orders * Items) pass
+    const salesByProductId = new Map<string, { unitsSold: number; fulfilledOrdersCount: number }>();
     const validOrders = orders.filter((o) => o.status !== 'CANCELLED');
+
+    validOrders.forEach((o) => {
+      const seenInOrder = new Set<string>();
+      (o.items || []).forEach((item) => {
+        const pId = String(item.productId);
+        const existing = salesByProductId.get(pId) || { unitsSold: 0, fulfilledOrdersCount: 0 };
+        existing.unitsSold += Number(item.quantity || 0);
+        if (!seenInOrder.has(pId)) {
+          existing.fulfilledOrdersCount += 1;
+          seenInOrder.add(pId);
+        }
+        salesByProductId.set(pId, existing);
+      });
+    });
 
     products.forEach((p) => {
       const cost = p.costPrice ?? 0;
@@ -80,21 +95,9 @@ export default function InventoryPage() {
       const marginUnit = selling - cost;
       const marginPercent = cost > 0 ? (marginUnit / cost) * 100 : (selling > 0 ? 100 : 0);
 
-      let unitsSold = 0;
-      let fulfilledOrdersCount = 0;
-
-      validOrders.forEach((o) => {
-        let containsProduct = false;
-        (o.items || []).forEach((item) => {
-          if (String(item.productId) === String(p.id)) {
-            unitsSold += Number(item.quantity || 0);
-            containsProduct = true;
-          }
-        });
-        if (containsProduct) {
-          fulfilledOrdersCount += 1;
-        }
-      });
+      const sales = salesByProductId.get(String(p.id)) || { unitsSold: 0, fulfilledOrdersCount: 0 };
+      const unitsSold = sales.unitsSold;
+      const fulfilledOrdersCount = sales.fulfilledOrdersCount;
 
       const revenueEarned = unitsSold * selling;
       const profitEarned = unitsSold * marginUnit;

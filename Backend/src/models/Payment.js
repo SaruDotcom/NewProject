@@ -80,6 +80,9 @@ paymentSchema.index(
   { transactionReferenceKey: 1 },
   { unique: true, partialFilterExpression: { transactionReferenceKey: { $type: 'string', $gt: '' } } }
 );
+paymentSchema.index({ wholesalerId: 1, isReport: 1, status: 1, paidAt: -1 });
+paymentSchema.index({ orderId: 1, isReport: 1, status: 1 });
+paymentSchema.index({ wholesalerId: 1, createdAt: -1 });
 
 const Payment = mongoose.model('Payment', paymentSchema);
 module.exports = Payment;

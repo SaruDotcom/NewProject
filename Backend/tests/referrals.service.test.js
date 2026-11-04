@@ -256,6 +256,43 @@ describe('ReferralService', () => {
     });
   });
 
+  describe('getAdminReferralLink', () => {
+    it('generates a unique code and returns only retailer-facing wholesaler details', async () => {
+      const profile = {
+        _id: '64b000000000000000000001',
+        userId: '64b000000000000000000002',
+        businessName: 'Retail Store Supply',
+        businessTagline: 'Wholesale goods for local shops',
+        businessLogoUrl: 'https://example.test/retailer-logo.png',
+        kycStatus: KYC_STATUS.APPROVED,
+        retailerSignupsEnabled: true,
+      };
+      WholesalerProfile.findById.mockResolvedValue(profile);
+      WholesalerProfile.findOneAndUpdate.mockImplementation(async (_filter, update) => {
+        profile.retailerReferralCode = update.$set.retailerReferralCode;
+        return { retailerReferralCode: profile.retailerReferralCode };
+      });
+      User.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ status: USER_STATUS.ACTIVE }),
+        }),
+      });
+
+      const result = await ReferralService.getAdminReferralLink(profile._id);
+
+      expect(result).toEqual({
+        code: expect.stringMatching(/^[A-Z0-9]{6}$/),
+        wholesalerId: '64b000000000000000000002',
+        businessName: 'Retail Store Supply',
+        businessTagline: 'Wholesale goods for local shops',
+        businessLogoUrl: 'https://example.test/retailer-logo.png',
+        kycStatus: KYC_STATUS.APPROVED,
+        accountStatus: USER_STATUS.ACTIVE,
+        signupsEnabled: true,
+      });
+    });
+  });
+
   describe('getPublicReferral', () => {
     it('returns wholesaler branding, categories, and banners', async () => {
       const mockProfile = {

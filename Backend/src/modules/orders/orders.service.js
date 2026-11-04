@@ -528,6 +528,7 @@ class OrderService {
       filter.orderNumber = new RegExp(query.search, 'i');
     }
 
+    const shouldFetchAdminFilters = user.role === ROLES.SUPER_ADMIN || user.role === ROLES.ADMIN;
     const [orders, total, wholesalers, retailers] = await Promise.all([
       Order.find(filter)
         .populate('retailerId', 'name email phone businessName')
@@ -537,8 +538,12 @@ class OrderService {
         .limit(limit)
         .lean(),
       Order.countDocuments(filter),
-      User.find({ role: ROLES.WHOLESALER, isDeleted: false }).select('name businessName').lean(),
-      User.find({ role: ROLES.RETAILER, isDeleted: false }).select('name businessName').lean(),
+      shouldFetchAdminFilters
+        ? User.find({ role: ROLES.WHOLESALER, isDeleted: false }).select('name businessName').lean()
+        : Promise.resolve([]),
+      shouldFetchAdminFilters
+        ? User.find({ role: ROLES.RETAILER, isDeleted: false }).select('name businessName').lean()
+        : Promise.resolve([]),
     ]);
 
     const formattedOrders = orders.map((o) => {

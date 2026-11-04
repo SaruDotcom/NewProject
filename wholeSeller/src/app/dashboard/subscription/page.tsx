@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
   CreditCard,
@@ -24,6 +25,7 @@ import api, {
   type WholesalerSubscription,
   type SubscriptionPaymentRecord,
 } from '@/lib/api';
+import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 
 type RazorpayResponse = {
   razorpay_order_id: string;
@@ -114,7 +116,8 @@ function calculateTaxBreakdown(totalAmount: number) {
 }
 
 export default function SubscriptionPage() {
-  const { profile, updateSubscription } = useWholesaler();
+  const { profile } = useWholesaler();
+  const queryClient = useQueryClient();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscription, setSubscription] = useState<WholesalerSubscription | null>(null);
   const [payments, setPayments] = useState<SubscriptionPaymentRecord[]>([]);
@@ -125,12 +128,24 @@ export default function SubscriptionPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const hasPendingApproval = payments.some(
+    (payment) => payment.status === 'PAID' && payment.approvalStatus === 'PENDING',
+  );
 
-  const refreshSubscription = useCallback(async () => {
-    setLoading(true);
+  const refreshSubscription = useCallback(async (force = false) => {
+    const queryKey = wholesalerQueryKeys.resource(profile.id || getWholesalerId(), 'subscription');
+    const cached = queryClient.getQueryData(queryKey);
+    if (!cached) setLoading(true);
     setError('');
     try {
-      const response = await api.getWholesalerSubscription();
+      if (force) {
+        await queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
+      }
+      const response = await queryClient.fetchQuery({
+        queryKey,
+        queryFn: () => api.getWholesalerSubscription(),
+        staleTime: 30_000,
+      });
       setPlans(response.data.plans || []);
       setSubscription(response.data.subscription);
       setPayments(response.data.payments || []);
@@ -140,7 +155,7 @@ export default function SubscriptionPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile.id, queryClient]);
 
   useEffect(() => {
     void refreshSubscription();
@@ -210,17 +225,13 @@ export default function SubscriptionPage() {
           try {
             const verified = await api.verifySubscriptionPayment(response);
             setSubscription(verified.data.subscription);
-            updateSubscription(
-              verified.data.subscription.billingPeriod === 'YEARLY' ? 'ANNUAL' : 'MONTHLY',
-              verified.data.subscription.renewalDate,
-            );
             window.dispatchEvent(new Event('wholesaler-subscription-updated'));
-            setSuccessMessage(`Subscription activated successfully! Welcome to the ${plan.name}.`);
+            setSuccessMessage(`Payment received for ${plan.name}. Your subscription will activate after Superadmin approval and KYC approval.`);
             setError('');
-            void refreshSubscription();
+            void refreshSubscription(true);
           } catch (verificationError) {
             setError(verificationError instanceof Error ? verificationError.message : 'Payment verification failed.');
-            void refreshSubscription();
+            void refreshSubscription(true);
           } finally {
             setSubmittingPlanId('');
           }
@@ -234,7 +245,7 @@ export default function SubscriptionPage() {
                   razorpayOrderId: order.id,
                   reason: 'Checkout window dismissed by user',
                 });
-                void refreshSubscription();
+                void refreshSubscription(true);
               } catch (cancelErr) {
                 console.warn('Could not record checkout dismissal:', cancelErr);
               }
@@ -289,17 +300,17 @@ export default function SubscriptionPage() {
             <span className="text-xs font-extrabold uppercase tracking-wide text-tradeflow-green">Billing & Membership</span>
             <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${paymentConfigured ? 'bg-tradeflow-green/10 text-tradeflow-green' : 'bg-amber-100 text-amber-800'}`}>
               {paymentConfigured ? <ShieldCheck className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-              {paymentConfigured ? 'Razorpay Configured' : 'Razorpay Setup Required'}
+              {paymentConfigured ? 'Razorpay Configured' : 'Razorpay Not Configured'}
             </span>
           </div>
           <h1 className="mt-1 text-2xl font-extrabold text-tradeflow-navy">Wholesaler Subscription Plans</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Subscription plans are optional. Your wholesaler portal remains available without a plan; choose one only if you want to subscribe.
+            An approved subscription and approved KYC are required to use wholesaler business features.
           </p>
         </div>
         <button
           type="button"
-          onClick={() => void refreshSubscription()}
+          onClick={() => void refreshSubscription(true)}
           className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition"
         >
           <RefreshCw className="h-3.5 w-3.5" /> Refresh Status
@@ -319,11 +330,17 @@ export default function SubscriptionPage() {
           <span>{error}</span>
         </div>
       )}
+      {hasPendingApproval && (
+        <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900 shadow-sm flex items-center gap-3">
+          <Clock className="h-5 w-5 shrink-0 text-amber-700" />
+          <span>Your payment is confirmed and awaiting Superadmin approval. Business features remain locked until both your subscription and KYC are approved.</span>
+        </div>
+      )}
       {!paymentConfigured && (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900 shadow-sm flex items-center gap-3">
           <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
           <div>
-            <p className="font-bold">Online Payment Gateway Pending</p>
+            <p className="font-bold">Razorpay payment setup is incomplete</p>
             <p className="text-xs text-amber-800 font-normal mt-0.5">
               Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the backend hosting environment using the matching Razorpay test or live credentials, then restart or redeploy the backend. Never add these secrets to frontend code.
             </p>
@@ -393,7 +410,7 @@ export default function SubscriptionPage() {
         <div>
           <h2 className="text-lg font-bold text-tradeflow-navy">Select a Subscription Plan</h2>
           <p className="text-xs text-gray-500">
-            Choose a plan only if you want to subscribe. Completed payments include automated GST invoices.
+            Choose a plan to request activation. A confirmed payment is reviewed by Superadmin before the plan becomes active.
           </p>
         </div>
 
@@ -479,7 +496,7 @@ export default function SubscriptionPage() {
                     <button
                       type="button"
                       onClick={() => handleStartCheckout(plan)}
-                      disabled={Boolean(submittingPlanId) || !paymentConfigured}
+                      disabled={Boolean(submittingPlanId) || !paymentConfigured || hasPendingApproval}
                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6D1D36] px-3 py-2.5 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#541529] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer active:scale-[0.99]"
                     >
                       {submittingPlanId === plan.id ? (
@@ -490,7 +507,7 @@ export default function SubscriptionPage() {
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4" />
-                          <span>{isCurrentPlan ? 'Renew Plan' : 'Choose Plan'}</span>
+                          <span>{hasPendingApproval ? 'Awaiting Approval' : isCurrentPlan ? 'Renew Plan' : 'Choose Plan'}</span>
                           <ArrowRight className="h-4 w-4" />
                         </>
                       )}
@@ -646,8 +663,12 @@ export default function SubscriptionPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-gray-700">
                   {payments.map((p) => {
+                    const approvalPending = p.status === 'PAID' && p.approvalStatus === 'PENDING';
+                    const statusLabel = approvalPending ? 'PENDING APPROVAL' : p.status;
                     const statusClass =
-                      p.status === 'PAID'
+                      approvalPending
+                        ? 'bg-amber-100 text-amber-800'
+                        : p.status === 'PAID'
                         ? 'bg-emerald-100 text-emerald-800'
                         : p.status === 'PENDING'
                         ? 'bg-amber-100 text-amber-800'
@@ -709,7 +730,7 @@ export default function SubscriptionPage() {
                             {p.status === 'PENDING' && <Clock className="h-3 w-3" />}
                             {p.status === 'FAILED' && <XCircle className="h-3 w-3" />}
                             {p.status === 'CANCELLED' && <X className="h-3 w-3" />}
-                            {p.status}
+                            {statusLabel}
                           </span>
                           {p.errorReason && (
                             <p className="text-[10px] text-red-600 mt-1 max-w-[180px] truncate" title={p.errorReason}>

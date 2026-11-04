@@ -19,7 +19,13 @@ module.exports = {
       plans: serializePlans(plans),
       subscribers: subscriberData.subscribers,
       planCounts: subscriberData.planCounts,
+      pendingApprovals: subscriberData.pendingApprovals,
     }, 'Subscription plans retrieved');
+  }),
+
+  approvePayment: asyncHandler(async (req, res) => {
+    const result = await SubscriptionService.approvePayment(req.params.paymentId, req.user._id);
+    return ApiResponse.success(res, result, 'Subscription payment approved');
   }),
 
   createPlan: asyncHandler(async (req, res) => {

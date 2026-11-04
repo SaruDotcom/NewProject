@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Ban, CheckCircle2, Download, FileText, Pencil, RefreshCw, Star, Trash2, XCircle } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, Copy, Download, ExternalLink, FileText, Pencil, RefreshCw, Share2, Star, Trash2, XCircle } from "lucide-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { apiDelete, apiGet, apiGetKycDocument, apiPatch } from "@/lib/api";
+import { api, apiDelete, apiGet, apiGetKycDocument, apiPatch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -37,6 +37,17 @@ const feedbackRating = (ticket) => {
 };
 const feedbackComment = (ticket) =>
     String(ticket.message || "").replace(/^\s*Rating:\s*[1-5]\/5\s*\n*/i, "").trim() || "—";
+const RETAILER_PRODUCTION_HOST = "new-project-cdq2.vercel.app";
+const RETAILER_PRODUCTION_URL = (() => {
+    try {
+        const configuredUrl = new URL(import.meta.env.VITE_RETAILER_URL || "");
+        return configuredUrl.protocol === "https:" && configuredUrl.hostname.toLowerCase() === RETAILER_PRODUCTION_HOST
+            ? configuredUrl.origin
+            : "";
+    } catch {
+        return "";
+    }
+})();
 
 export function WholesalerDetailPage() {
     const navigate = useNavigate();
@@ -56,6 +67,9 @@ export function WholesalerDetailPage() {
     const [saving, setSaving] = useState(false);
     const [editOpen, setEditOpen] = useState(false);
     const [editForm, setEditForm] = useState({});
+    const [referral, setReferral] = useState(null);
+    const [referralState, setReferralState] = useState("loading");
+    const [referralError, setReferralError] = useState("");
 
     useEffect(() => {
         let mounted = true;
@@ -123,6 +137,51 @@ export function WholesalerDetailPage() {
         return () => { mounted = false; };
     }, [id, refreshKey]);
 
+    useEffect(() => {
+        let mounted = true;
+        const testReferralLink = async () => {
+            setReferralState("loading");
+            setReferralError("");
+            setReferral(null);
+            try {
+                if (!RETAILER_PRODUCTION_URL) {
+                    throw new Error("The production Retailer URL is not configured. Referral links cannot be marked live.");
+                }
+                const referralResponse = await apiGet(`/admin/wholesalers/${id}/referral-link`);
+                if (!mounted) return;
+                setReferral(referralResponse);
+                const lookup = await api.get(`/referral/${encodeURIComponent(referralResponse.code)}`);
+                const wholesaler = lookup?.data?.wholesaler;
+                if (
+                    !wholesaler?.businessName ||
+                    typeof wholesaler.businessLogoUrl !== "string" ||
+                    typeof wholesaler.businessTagline !== "string" ||
+                    String(wholesaler.wholesalerId) !== String(referralResponse.wholesalerId)
+                ) {
+                    throw new Error("The Retailer site did not resolve this link to the expected wholesaler.");
+                }
+                const products = await api.get(`/referral/${encodeURIComponent(referralResponse.code)}/products?limit=1`);
+                if (!Array.isArray(products?.data)) {
+                    throw new Error("The Retailer product catalog could not be verified for this referral code.");
+                }
+                const hasMismatchedProduct = products.data.some((product) => {
+                    const productWholesalerId = product.wholesalerId?._id || product.wholesalerId;
+                    return String(productWholesalerId) !== String(referralResponse.wholesalerId);
+                });
+                if (hasMismatchedProduct) {
+                    throw new Error("The Retailer product catalog returned products for a different wholesaler.");
+                }
+                if (mounted) setReferralState("live");
+            } catch (linkError) {
+                if (!mounted) return;
+                setReferralState("error");
+                setReferralError(linkError.message || "Unable to verify this referral link.");
+            }
+        };
+        void testReferralLink();
+        return () => { mounted = false; };
+    }, [id, refreshKey]);
+
     if (loading) return (
         <div className="space-y-4">
             <Button variant="outline" onClick={() => navigate({ to: "/wholesalers" })}><ArrowLeft /> Back to Wholesalers</Button>
@@ -145,6 +204,36 @@ export function WholesalerDetailPage() {
     const documents = Array.isArray(kycApplication.documents) ? kycApplication.documents : [];
     const registeredAddress = kycApplication.registeredAddress || address;
     const pan = kycApplication.pan || profile.pan || profile.registrationDetails?.pan;
+    const referralUrl = referral
+        ? `${RETAILER_PRODUCTION_URL}/r/${encodeURIComponent(referral.code)}`
+        : "";
+
+    const copyReferralLink = async () => {
+        try {
+            await navigator.clipboard.writeText(referralUrl);
+            toast.success("Referral link copied.");
+        } catch (copyError) {
+            toast.error(copyError.message || "Unable to copy the referral link.");
+        }
+    };
+
+    const shareReferralLink = async () => {
+        if (!navigator.share) {
+            await copyReferralLink();
+            return;
+        }
+        try {
+            await navigator.share({
+                title: `${referral.businessName || "Wholesaler"} on Retailer`,
+                text: referral.businessTagline || `Shop wholesale products from ${referral.businessName || "this wholesaler"}.`,
+                url: referralUrl,
+            });
+        } catch (shareError) {
+            if (shareError.name !== "AbortError") {
+                toast.error(shareError.message || "Unable to share the referral link.");
+            }
+        }
+    };
 
     const openEditModal = () => {
         setEditForm({
@@ -312,7 +401,7 @@ export function WholesalerDetailPage() {
             </div>
             <Tabs defaultValue="overview">
                 <TabsList className="flex h-auto justify-start overflow-x-auto bg-transparent p-0">
-                    {[["overview", "Overview"], ["subscription", "Subscription"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
+                    {[["overview", "Overview"], ["referral", "Referral Link"], ["subscription", "Subscription"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
                 </TabsList>
                 <TabsContent value="overview" className="space-y-5">
                     <SectionCard
@@ -391,6 +480,53 @@ export function WholesalerDetailPage() {
                             <p><strong>State:</strong> {pickupAddress.state || "—"}</p>
                             <p><strong>Pincode:</strong> {pickupAddress.pincode || "—"}</p>
                         </div>
+                    </SectionCard>
+                </TabsContent>
+                <TabsContent value="referral">
+                    <SectionCard title="Retailer referral link" description="Share this production Retailer link to connect registrations with this wholesaler.">
+                        {referralState === "loading" ? (
+                            <div className="p-6 text-sm text-muted-foreground">Generating and testing the production referral link...</div>
+                        ) : (
+                            <div className="space-y-5 p-5">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {referral?.businessLogoUrl && <img src={referral.businessLogoUrl} alt="" className="size-14 rounded-xl border object-cover" />}
+                                    <div>
+                                        <p className="font-semibold">{referral?.businessName || "Wholesaler"}</p>
+                                        <p className="text-sm text-muted-foreground">{referral?.businessTagline || "No business tagline provided"}</p>
+                                    </div>
+                                    <StatusBadge status={referralState === "live" ? "ACTIVE" : "INACTIVE"} />
+                                </div>
+                                {referralUrl && (
+                                    <div className="rounded-lg border bg-muted/30 p-4">
+                                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production link</p>
+                                        <a
+                                            href={referralUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="break-all text-sm font-medium text-primary underline-offset-2 hover:underline"
+                                        >
+                                            {referralUrl}
+                                        </a>
+                                    </div>
+                                )}
+                                {referralState === "live" ? (
+                                    <p role="status" className="text-sm font-medium text-emerald-700">Live — Retailer referral lookup verified for {referral.businessName}.</p>
+                                ) : (
+                                    <p role="alert" className="text-sm text-destructive">{referralError || "This referral link is not live."}</p>
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                    <Button type="button" variant="outline" disabled={referralState !== "live"} onClick={() => void copyReferralLink()}>
+                                        <Copy className="mr-1.5 size-4" /> Copy Link
+                                    </Button>
+                                    <Button type="button" variant="outline" disabled={referralState !== "live"} asChild>
+                                        <a href={referralUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-1.5 size-4" /> Open Link</a>
+                                    </Button>
+                                    <Button type="button" disabled={referralState !== "live"} onClick={() => void shareReferralLink()}>
+                                        <Share2 className="mr-1.5 size-4" /> Share Link
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </SectionCard>
                 </TabsContent>
                 <TabsContent value="subscription" className="space-y-5">

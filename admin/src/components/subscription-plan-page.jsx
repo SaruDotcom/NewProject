@@ -18,6 +18,7 @@ function periodLabel(period) {
 export function SubscriptionPlanPage() {
   const [plans, setPlans] = useState([]);
   const [subscribers, setSubscribers] = useState([]);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
   const [activities, setActivities] = useState([]);
   const [planCounts, setPlanCounts] = useState({});
   const [featureDrafts, setFeatureDrafts] = useState({});
@@ -33,6 +34,7 @@ export function SubscriptionPlanPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [approvingPaymentId, setApprovingPaymentId] = useState("");
   const [error, setError] = useState("");
 
   const loadPlans = useCallback(async () => {
@@ -45,6 +47,7 @@ export function SubscriptionPlanPage() {
       ]);
       setPlans(result.plans || []);
       setSubscribers(result.subscribers || []);
+      setPendingApprovals(result.pendingApprovals || []);
       setActivities(Array.isArray(activityRows) ? activityRows : []);
       setPlanCounts(result.planCounts || {});
       setFeatureDrafts(Object.fromEntries((result.plans || []).flatMap((plan) => (
@@ -58,6 +61,20 @@ export function SubscriptionPlanPage() {
   }, []);
 
   useEffect(() => { void loadPlans(); }, [loadPlans]);
+
+  const approvePayment = async (payment) => {
+    setApprovingPaymentId(payment.id);
+    setError("");
+    try {
+      await apiPost(`${PLAN_ENDPOINT}/payments/${payment.id}/approve`, {});
+      toast.success("Subscription approved.");
+      await loadPlans();
+    } catch (approveError) {
+      setError(approveError.message || "Unable to approve subscription.");
+    } finally {
+      setApprovingPaymentId("");
+    }
+  };
 
   const replacePlan = (updatedPlan) => {
     setPlans((current) => current.map((plan) => plan.id === updatedPlan.id ? updatedPlan : plan));
@@ -307,6 +324,37 @@ export function SubscriptionPlanPage() {
         ))}
         {!plans.length && <p className="rounded-lg border p-6 text-sm text-muted-foreground">No plans are configured.</p>}
       </div>
+
+      <SectionCard title="Paid subscriptions awaiting approval" description="Business access starts after Superadmin approval and approved KYC.">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead><tr className="border-b text-xs uppercase text-muted-foreground"><th className="p-3">Business</th><th className="p-3">Owner</th><th className="p-3">Email</th><th className="p-3">Plan</th><th className="p-3">Paid</th><th className="p-3">KYC</th><th className="p-3">Action</th></tr></thead>
+            <tbody>
+              {pendingApprovals.map((payment) => (
+                <tr key={payment.id} className="border-b last:border-0">
+                  <td className="p-3 font-semibold">{payment.wholesaler?.businessName || "Not provided"}</td>
+                  <td className="p-3">{payment.user?.name || "Not provided"}</td>
+                  <td className="p-3">{payment.user?.email || "Not provided"}</td>
+                  <td className="p-3">{payment.planName}</td>
+                  <td className="p-3">₹{Number(payment.amount).toLocaleString("en-IN")}</td>
+                  <td className="p-3">{payment.kycStatus}</td>
+                  <td className="p-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={payment.kycStatus !== "APPROVED" || approvingPaymentId === payment.id}
+                      onClick={() => void approvePayment(payment)}
+                    >
+                      {approvingPaymentId === payment.id ? "Approving..." : payment.kycStatus === "APPROVED" ? "Approve" : "KYC required"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {!pendingApprovals.length && <tr><td colSpan="7" className="p-6 text-center text-muted-foreground">No paid subscriptions are awaiting approval.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
 
       <SectionCard title="Subscribed wholesalers" description={`${subscribers.length} recorded subscriptions`}>
         <div className="overflow-x-auto">

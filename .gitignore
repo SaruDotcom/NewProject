@@ -1,5 +1,6 @@
 **/.env*
 !**/.env.example
+!admin/.env.production
 **/node_modules/
 **/dist/
 **/build/

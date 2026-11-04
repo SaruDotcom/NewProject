@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -52,15 +52,15 @@ export default function OverviewPage() {
     queryKey: wholesalerQueryKeys.resource(profile.id || getWholesalerId(), 'financial-summary'),
     queryFn: async () => (await api.getFinancialSummary()).data,
     enabled: Boolean(profile.id || getWholesalerId() !== 'unknown'),
-    refetchInterval: 15000,
-    staleTime: 0,
+    refetchInterval: 60000,
+    staleTime: 60 * 1000,
   });
   const financialSummary = financialSummaryQuery.data;
   const thisMonthIncome = Number(financialSummary?.thisMonthIncome || 0);
   const completedSales = Number(financialSummary?.completedSales || 0);
   const pendingPayments = financialSummary?.pendingPayments || [];
   const salesSnapshot = financialSummary?.salesByDate || [];
-  const snapshotTotal = salesSnapshot.reduce((sum, item) => sum + Number(item.revenue || 0), 0);
+  const snapshotTotal = useMemo(() => salesSnapshot.reduce((sum, item) => sum + Number(item.revenue || 0), 0), [salesSnapshot]);
   const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(
     Boolean((location.state as { registrationSuccess?: boolean } | null)?.registrationSuccess),
   );
@@ -68,12 +68,12 @@ export default function OverviewPage() {
   // Metrics Calculations
   const totalProductsCount = products.length;
   const connectedRetailersCount = retailers.length;
-  const pendingOrdersCount = orders.filter(o => o.status === 'PENDING').length;
+  const pendingOrdersCount = useMemo(() => orders.filter((o) => o.status === 'PENDING').length, [orders]);
   // Trending Products (top products sorted by stock / popularity)
-  const trendingProducts = products.slice(0, 6);
+  const trendingProducts = useMemo(() => products.slice(0, 6), [products]);
 
   // Recent Activity Feed slices
-  const last5Orders = orders.slice(0, 5);
+  const last5Orders = useMemo(() => orders.slice(0, 5), [orders]);
 
   return (
     <div className="space-y-6">
@@ -125,7 +125,7 @@ export default function OverviewPage() {
 
       {showRegistrationSuccess && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
-          <span className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4" /> Registration successful. Complete KYC to activate business features. Subscription plans are optional.</span>
+          <span className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4" /> Registration successful. Complete KYC and get a subscription approved to activate business features.</span>
           <button type="button" onClick={() => setShowRegistrationSuccess(false)} aria-label="Dismiss registration confirmation" className="rounded p-1 hover:bg-emerald-100"><span aria-hidden="true">×</span></button>
         </div>
       )}

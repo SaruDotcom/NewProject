@@ -12,6 +12,7 @@ adminRoutes.use(authenticate, authorize(ROLES.SUPER_ADMIN));
 adminRoutes.get('/', controller.getAdminPlan);
 adminRoutes.post('/', controller.createPlan);
 adminRoutes.patch('/reorder', controller.reorderPlans);
+adminRoutes.post('/payments/:paymentId/approve', controller.approvePayment);
 adminRoutes.put('/:planId', controller.updatePlan);
 adminRoutes.delete('/:planId', controller.deletePlan);
 adminRoutes.post('/:planId/features', controller.addFeature);

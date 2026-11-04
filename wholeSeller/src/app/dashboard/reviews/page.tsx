@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquareText, Send, Star, Store } from 'lucide-react';
 import api, {
   type PartnerReview,
   type ReviewPartner,
   type SubmittedPartnerReview,
 } from '@/lib/api';
+import { useWholesaler } from '@/context/WholesalerContext';
+import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -29,45 +32,49 @@ function Rating({ value }: { value: number }) {
 }
 
 export default function ReviewsPage() {
-  const [partners, setPartners] = useState<ReviewPartner[]>([]);
-  const [receivedReviews, setReceivedReviews] = useState<PartnerReview[]>([]);
-  const [submittedReviews, setSubmittedReviews] = useState<SubmittedPartnerReview[]>([]);
+  const { profile } = useWholesaler();
+  const queryClient = useQueryClient();
+  const userId = profile.id || getWholesalerId();
+  const queryKey = wholesalerQueryKeys.resource(userId, 'reviews');
+
+  const reviewsQuery = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const [partnerResponse, receivedResponse, submittedResponse] = await Promise.all([
+        api.getReviewPartners(),
+        api.getReceivedReviews(),
+        api.getSubmittedReviews(),
+      ]);
+      return {
+        partners: partnerResponse.data || [],
+        receivedReviews: receivedResponse.data || [],
+        submittedReviews: submittedResponse.data || [],
+      };
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const [receivedReviewsState, setReceivedReviewsState] = useState<PartnerReview[] | null>(null);
+  const partners = reviewsQuery.data?.partners || [];
+  const receivedReviews = receivedReviewsState ?? (reviewsQuery.data?.receivedReviews || []);
+  const submittedReviews = reviewsQuery.data?.submittedReviews || [];
+
   const [recipientId, setRecipientId] = useState('');
   const [title, setTitle] = useState('');
   const [comment, setComment] = useState('');
   const [rating, setRating] = useState(5);
-  const [loading, setLoading] = useState(true);
+  const loading = reviewsQuery.isLoading && !reviewsQuery.data;
   const [submitting, setSubmitting] = useState(false);
   const [markingReadId, setMarkingReadId] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const unreadCount = receivedReviews.filter((review) => !review.isRead).length;
 
-  const loadReviews = useCallback(async () => {
-    const [partnerResponse, receivedResponse, submittedResponse] = await Promise.all([
-      api.getReviewPartners(),
-      api.getReceivedReviews(),
-      api.getSubmittedReviews(),
-    ]);
-    setPartners(partnerResponse.data);
-    setReceivedReviews(receivedResponse.data);
-    setSubmittedReviews(submittedResponse.data);
-    setRecipientId((selected) => selected || partnerResponse.data[0]?.id || '');
-  }, []);
-
   useEffect(() => {
-    let active = true;
-    loadReviews()
-      .catch((loadError: unknown) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load reviews.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [loadReviews]);
+    if (partners.length > 0 && !recipientId) {
+      setRecipientId(partners[0].id);
+    }
+  }, [partners, recipientId]);
 
   const submitReview = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,7 +87,7 @@ export default function ReviewsPage() {
       setTitle('');
       setComment('');
       setRating(5);
-      await loadReviews();
+      await queryClient.invalidateQueries({ queryKey });
       setSuccess('Your review was submitted and saved.');
     } catch (submitError: unknown) {
       setError(submitError instanceof Error ? submitError.message : 'Could not submit your review.');
@@ -94,7 +101,7 @@ export default function ReviewsPage() {
     setError('');
     try {
       await api.markReviewAsRead(reviewId);
-      setReceivedReviews((current) => current.map((review) => (
+      setReceivedReviewsState((current) => (current ?? receivedReviews).map((review) => (
         review.id === reviewId ? { ...review, isRead: true } : review
       )));
     } catch (requestError: unknown) {

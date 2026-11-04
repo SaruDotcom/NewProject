@@ -9,6 +9,7 @@ const { ROLES } = require('../../config/constants');
 router.use(authenticate, authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
 
 router.get('/', wholesalerController.listWholesalers);
+router.get('/:id/referral-link', wholesalerController.getReferralLink);
 router.get('/:id', wholesalerController.getWholesalerById);
 router.patch('/:id', wholesalerController.updateWholesaler);
 router.patch('/:id/block', authorize(ROLES.SUPER_ADMIN), wholesalerController.setBlocked);

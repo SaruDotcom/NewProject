@@ -309,11 +309,18 @@ class SubscriptionService {
 
   static async listSubscribers() {
     const now = new Date();
-    const subscriptions = await WholesalerSubscription.find()
-      .sort({ renewalDate: -1 })
-      .populate({ path: 'userId', select: 'name email phone' })
-      .populate({ path: 'wholesalerProfileId', select: 'businessName' })
-      .lean();
+    const [subscriptions, pendingPayments] = await Promise.all([
+      WholesalerSubscription.find()
+        .sort({ renewalDate: -1 })
+        .populate({ path: 'userId', select: 'name email phone' })
+        .populate({ path: 'wholesalerProfileId', select: 'businessName kycStatus' })
+        .lean(),
+      SubscriptionPayment.find({ status: 'PAID', approvalStatus: 'PENDING' })
+        .sort({ verifiedAt: 1, createdAt: 1 })
+        .populate({ path: 'userId', select: 'name email phone' })
+        .populate({ path: 'wholesalerProfileId', select: 'businessName kycStatus' })
+        .lean(),
+    ]);
     const counts = new Map();
     subscriptions.forEach((subscription) => {
       const planId = String(subscription.planId);
@@ -329,6 +336,12 @@ class SubscriptionService {
         status: subscription.renewalDate <= now ? 'EXPIRED' : subscription.status,
         wholesaler: subscription.wholesalerProfileId,
         user: subscription.userId,
+      })),
+      pendingApprovals: pendingPayments.map((payment) => ({
+        ...this.serializePayment(payment),
+        wholesaler: payment.wholesalerProfileId,
+        user: payment.userId,
+        kycStatus: payment.wholesalerProfileId?.kycStatus || 'UNKNOWN',
       })),
       planCounts,
     };
@@ -397,11 +410,13 @@ class SubscriptionService {
       amountPaise: payment.amountPaise,
       currency: payment.currency || 'INR',
       status: payment.status,
+      approvalStatus: payment.approvalStatus || 'APPROVED',
       razorpayOrderId: payment.razorpayOrderId,
       razorpayPaymentId: payment.razorpayPaymentId || '',
       paymentMethod: payment.paymentMethod || '',
       errorReason: payment.errorReason || '',
       verifiedAt: payment.verifiedAt || null,
+      approvedAt: payment.approvedAt || null,
       createdAt: payment.createdAt,
     };
   }
@@ -416,6 +431,14 @@ class SubscriptionService {
   static async createOrder(userId, planId) {
     if (!configured()) return { configured: false };
     if (!planId) throw new BadRequestError('A subscription plan is required');
+    const pendingApproval = await SubscriptionPayment.exists({
+      userId,
+      status: 'PAID',
+      approvalStatus: 'PENDING',
+    });
+    if (pendingApproval) {
+      throw new ConflictError('A paid subscription is already awaiting Superadmin approval');
+    }
     await this.ensurePlanCatalog();
     const [plan, profile] = await Promise.all([
       this.getPlan(planId),
@@ -485,7 +508,9 @@ class SubscriptionService {
     if (purchase.status === 'PAID' && purchase.razorpayPaymentId === paymentId) {
       return WholesalerSubscription.findOne({ userId });
     }
-    if (purchase.status !== 'PENDING') throw new ConflictError('Subscription order has already been processed');
+    if (!['PENDING', 'FAILED', 'CANCELLED'].includes(purchase.status)) {
+      throw new ConflictError('Subscription order has already been processed');
+    }
     const paymentResponse = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64')}`,
@@ -507,44 +532,108 @@ class SubscriptionService {
     const paymentMethod = payment.method || 'card';
 
     const paymentUpdate = await SubscriptionPayment.findOneAndUpdate(
-      { _id: purchase._id, status: 'PENDING' },
+      { _id: purchase._id, status: { $in: ['PENDING', 'FAILED', 'CANCELLED'] } },
       {
         $set: {
           status: 'PAID',
+          approvalStatus: 'PENDING',
           razorpayPaymentId: paymentId,
           paymentMethod,
           verifiedAt: new Date(),
+          errorReason: '',
         },
       },
       { new: true },
     );
-    if (!paymentUpdate) throw new ConflictError('Subscription order has already been processed');
+    if (!paymentUpdate) {
+      const currentPayment = await SubscriptionPayment.findById(purchase._id);
+      if (currentPayment?.status === 'PAID' && currentPayment.razorpayPaymentId === paymentId) {
+        return WholesalerSubscription.findOne({ userId });
+      }
+      throw new ConflictError('Subscription order has already been processed');
+    }
+
+    return WholesalerSubscription.findOne({ userId });
+  }
+
+  static async approvePayment(paymentId, adminId) {
+    const payment = await SubscriptionPayment.findById(paymentId);
+    if (!payment) throw new NotFoundError('Subscription payment not found');
+    if (payment.status !== 'PAID') throw new ConflictError('Only verified subscription payments can be approved');
+    if (payment.approvalStatus === 'APPROVED') {
+      return {
+        payment: this.serializePayment(payment),
+        subscription: await WholesalerSubscription.findOne({ userId: payment.userId }),
+      };
+    }
+
+    const profile = await WholesalerProfile.findOne({ userId: payment.userId, isDeleted: false })
+      .select('_id kycStatus');
+    if (!profile) throw new NotFoundError('Wholesaler profile not found');
+    if (String(profile.kycStatus || '').trim().toUpperCase() !== 'APPROVED') {
+      throw new ConflictError('Wholesaler KYC must be approved before approving a subscription');
+    }
 
     const now = new Date();
-    const current = await WholesalerSubscription.findOne({ userId });
-    const startsAt = current?.status === 'ACTIVE' && current.renewalDate > now ? current.renewalDate : now;
-    const renewalDate = addCalendarPeriod(startsAt, purchase.billingPeriod || 'MONTHLY');
-    const subscription = await WholesalerSubscription.findOneAndUpdate(
-      { userId },
-      {
+    let subscription = await WholesalerSubscription.findOne({ userId: payment.userId });
+    if (subscription?.razorpayPaymentId !== payment.razorpayPaymentId) {
+      const continuesActiveTerm = subscription?.status === 'ACTIVE' && subscription.renewalDate > now;
+      const startsAt = continuesActiveTerm ? subscription.renewalDate : now;
+      const renewalDate = addCalendarPeriod(startsAt, payment.billingPeriod || 'MONTHLY');
+      const update = {
         $set: {
           wholesalerProfileId: profile._id,
-          planId: purchase.planId,
-          planName: purchase.planName,
-          billingPeriod: purchase.billingPeriod || 'MONTHLY',
-          amount: purchase.amount,
+          planId: payment.planId,
+          planName: payment.planName,
+          billingPeriod: payment.billingPeriod || 'MONTHLY',
+          amount: payment.amount,
           currency: 'INR',
-          paymentMethod,
+          paymentMethod: payment.paymentMethod || '',
           status: 'ACTIVE',
-          startedAt: current?.status === 'ACTIVE' && current.renewalDate > now ? current.startedAt : now,
+          startedAt: continuesActiveTerm ? subscription.startedAt : now,
           renewalDate,
-          razorpayOrderId: orderId,
-          razorpayPaymentId: paymentId,
+          razorpayOrderId: payment.razorpayOrderId,
+          razorpayPaymentId: payment.razorpayPaymentId,
         },
-      },
-      { new: true, upsert: true, runValidators: true },
+      };
+
+      try {
+        subscription = subscription
+          ? await WholesalerSubscription.findOneAndUpdate(
+            { _id: subscription._id, razorpayPaymentId: subscription.razorpayPaymentId },
+            update,
+            { new: true, runValidators: true },
+          )
+          : await WholesalerSubscription.findOneAndUpdate(
+            { userId: payment.userId },
+            update,
+            { new: true, upsert: true, runValidators: true },
+          );
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+      }
+
+      if (!subscription) {
+        subscription = await WholesalerSubscription.findOne({ userId: payment.userId });
+        if (subscription?.razorpayPaymentId !== payment.razorpayPaymentId) {
+          throw new ConflictError('Subscription approval is already being processed');
+        }
+      }
+    }
+
+    const approvedPayment = await SubscriptionPayment.findOneAndUpdate(
+      { _id: payment._id, status: 'PAID', approvalStatus: 'PENDING' },
+      { $set: { approvalStatus: 'APPROVED', approvedAt: now, approvedBy: adminId } },
+      { new: true },
     );
-    return subscription;
+    if (!approvedPayment) {
+      const currentPayment = await SubscriptionPayment.findById(payment._id);
+      if (currentPayment?.approvalStatus !== 'APPROVED') {
+        throw new ConflictError('Subscription approval is already being processed');
+      }
+      return { payment: this.serializePayment(currentPayment), subscription };
+    }
+    return { payment: this.serializePayment(approvedPayment), subscription };
   }
 
   static async recordPaymentFailure(userId, payload) {
@@ -552,14 +641,20 @@ class SubscriptionService {
     if (!razorpayOrderId) throw new BadRequestError('Razorpay order ID is required');
     const purchase = await SubscriptionPayment.findOne({ razorpayOrderId, userId });
     if (!purchase) throw new NotFoundError('Subscription order not found');
-    if (purchase.status === 'PAID') return purchase;
-
-    purchase.status = 'FAILED';
-    if (razorpayPaymentId) purchase.razorpayPaymentId = razorpayPaymentId;
-    if (paymentMethod) purchase.paymentMethod = paymentMethod;
-    if (errorReason) purchase.errorReason = errorReason;
-    await purchase.save();
-    return this.serializePayment(purchase);
+    if (purchase.status === 'PAID') return this.serializePayment(purchase);
+    const failed = await SubscriptionPayment.findOneAndUpdate(
+      { _id: purchase._id, status: { $in: ['PENDING', 'CANCELLED'] } },
+      {
+        $set: {
+          status: 'FAILED',
+          ...(razorpayPaymentId ? { razorpayPaymentId } : {}),
+          ...(paymentMethod ? { paymentMethod } : {}),
+          ...(errorReason ? { errorReason } : {}),
+        },
+      },
+      { new: true },
+    );
+    return this.serializePayment(failed || await SubscriptionPayment.findById(purchase._id));
   }
 
   static async recordPaymentCancellation(userId, payload) {
@@ -567,14 +662,17 @@ class SubscriptionService {
     if (!razorpayOrderId) throw new BadRequestError('Razorpay order ID is required');
     const purchase = await SubscriptionPayment.findOne({ razorpayOrderId, userId });
     if (!purchase) throw new NotFoundError('Subscription order not found');
-    if (purchase.status === 'PAID') return purchase;
+    if (purchase.status === 'PAID') return this.serializePayment(purchase);
 
     if (purchase.status === 'PENDING') {
-      purchase.status = 'CANCELLED';
-      if (reason) purchase.errorReason = reason;
-      await purchase.save();
+      const cancelled = await SubscriptionPayment.findOneAndUpdate(
+        { _id: purchase._id, status: 'PENDING' },
+        { $set: { status: 'CANCELLED', ...(reason ? { errorReason: reason } : {}) } },
+        { new: true },
+      );
+      if (cancelled) return this.serializePayment(cancelled);
     }
-    return this.serializePayment(purchase);
+    return this.serializePayment(await SubscriptionPayment.findById(purchase._id));
   }
 }
 

@@ -99,6 +99,24 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(JSON.stringify(response.body)).not.toMatch(/Private Owner Name|private-owner@example\.test|9876543210|gstin|kyc/i);
   });
 
+  test('Super Admin can retrieve a wholesaler production referral code', async () => {
+    const response = await request(app)
+      .get(`/api/v1/admin/wholesalers/${wholesalerProfile._id}/referral-link`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      code: referralCode,
+      wholesalerId: String(wholesaler._id),
+      businessName: 'Safe Business Name',
+      businessTagline: 'Quality wholesale, delivered',
+      businessLogoUrl: 'https://example.test/logo.png',
+      kycStatus: KYC_STATUS.APPROVED,
+      accountStatus: USER_STATUS.ACTIVE,
+      signupsEnabled: true,
+    });
+  });
+
   test('each public referral code returns only active products and categories from its wholesaler', async () => {
     const secondWholesaler = await User.create({
       name: 'Second Wholesaler',

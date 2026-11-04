@@ -100,12 +100,33 @@ function parseExportSections(sections) {
 }
 
 class WholesalerReportsService {
+  static _lastBackfillMap = new Map();
+  static _maxBackfillCacheEntries = 1000;
+
   /**
    * Backfill missing costPriceAtOrder on old orders from current Product.costPrice
    */
   static async backfillCostPrices(wholesalerObjectId) {
     try {
-      const products = await Product.find({ wholesalerId: wholesalerObjectId, isDeleted: false }).select('_id costPrice');
+      const key = String(wholesalerObjectId);
+      const now = Date.now();
+      const lastRun = this._lastBackfillMap.get(key) || 0;
+      if (now - lastRun < 60 * 60 * 1000) {
+        this._lastBackfillMap.delete(key);
+        this._lastBackfillMap.set(key, lastRun);
+        return; // Run at most once per hour per wholesaler
+      }
+
+      for (const [cachedKey, cachedAt] of this._lastBackfillMap) {
+        if (now - cachedAt >= 60 * 60 * 1000) this._lastBackfillMap.delete(cachedKey);
+      }
+      if (this._lastBackfillMap.size >= this._maxBackfillCacheEntries) {
+        const oldestKey = this._lastBackfillMap.keys().next().value;
+        if (oldestKey) this._lastBackfillMap.delete(oldestKey);
+      }
+      this._lastBackfillMap.set(key, now);
+
+      const products = await Product.find({ wholesalerId: wholesalerObjectId, isDeleted: false }).select('_id costPrice').lean();
       const costMap = new Map();
       products.forEach((p) => costMap.set(String(p._id), p.costPrice || 0));
 

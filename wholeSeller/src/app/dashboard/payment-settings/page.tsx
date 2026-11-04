@@ -25,16 +25,14 @@ export default function PaymentSettingsPage() {
     queryKey,
     queryFn: async () => (await api.getPaymentSettings()).data as PaymentSettings,
     enabled: Boolean(profile.id),
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 30_000,
   });
   const reportsQuery = useQuery({
     queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'payment-reports'),
     queryFn: async () => (await api.getPaymentReports()).data || [],
     enabled: Boolean(profile.id),
-    staleTime: 0,
-    gcTime: 0,
-    refetchInterval: 15000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
   const [upiId, setUpiId] = useState('');
   const [accountName, setAccountName] = useState('');

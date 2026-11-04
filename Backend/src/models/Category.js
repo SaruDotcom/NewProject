@@ -113,6 +113,8 @@ categorySchema.pre('validate', async function (next) {
 
 categorySchema.index({ parentId: 1, sortOrder: 1 });
 categorySchema.index({ parentCategoryId: 1, level: 1 });
+categorySchema.index({ isDeleted: 1, wholesalerId: 1, sortOrder: 1, name: 1 });
+categorySchema.index({ isDeleted: 1, parentId: 1, sortOrder: 1 });
 
 const Category = mongoose.model('Category', categorySchema);
 module.exports = Category;

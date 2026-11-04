@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -23,7 +23,7 @@ import {
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Product, Category, WholesaleTier, CustomAttribute } from '@/lib/types';
 import { getCategoryAttributeSchema, CategoryAttributeDef } from '@/lib/categoryAttributes';
-import BulkProductUpload from '@/components/products/BulkProductUpload';
+const BulkProductUpload = React.lazy(() => import('@/components/products/BulkProductUpload'));
 import { ProductImage } from '@/components/products/ProductImage';
 import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 import api from '@/lib/api';
@@ -272,27 +272,36 @@ export default function ProductsPage() {
   const [pricingTiers, setPricingTiers] = useState<WholesaleTier[]>([]);
 
   // Filter products by search and selected category filter
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return products.filter((p) => {
+      const matchesSearch = !q || p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+      const matchesCategory = selectedCategory === 'ALL' || p.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategory]);
 
-  const selectedParentCategory = categories.find(
-    (c) =>
-      (!c.parentId || c.parentId === null || c.parentId === '') &&
-      (c.name.toLowerCase() === (categoryName || '').toLowerCase() || String(c.id) === String(categoryName))
-  );
+  const selectedParentCategory = useMemo(() => (
+    categories.find(
+      (c) =>
+        (!c.parentId || c.parentId === null || c.parentId === '') &&
+        (c.name.toLowerCase() === (categoryName || '').toLowerCase() || String(c.id) === String(categoryName))
+    )
+  ), [categories, categoryName]);
 
   // Level 2 Subcategories (Direct children of Main Category)
-  const availableLevel2Categories = selectedParentCategory
-    ? categories.filter((c) => String(c.parentId) === String(selectedParentCategory.id))
-    : [];
+  const availableLevel2Categories = useMemo(() => (
+    selectedParentCategory
+      ? categories.filter((c) => String(c.parentId) === String(selectedParentCategory.id))
+      : []
+  ), [categories, selectedParentCategory]);
 
   // Level 3 Sub-subcategories (Direct children of Level 2 Subcategory)
-  const availableLevel3Categories = level2CategoryId
-    ? categories.filter((c) => String(c.parentId) === String(level2CategoryId))
-    : [];
+  const availableLevel3Categories = useMemo(() => (
+    level2CategoryId
+      ? categories.filter((c) => String(c.parentId) === String(level2CategoryId))
+      : []
+  ), [categories, level2CategoryId]);
   const selectedFormSubcategory = categories.find((category) => String(category.id) === String(subcategoryId));
   const currentAttributeSchema = getCategoryAttributeSchema(categoryName, selectedFormSubcategory?.name);
 
@@ -810,11 +819,13 @@ export default function ProductsPage() {
         </div>
       )}
 
-      <BulkProductUpload
-        canImport={canCreateProducts}
-        isProfileLoaded={isProfileLoaded}
-        onImported={() => refreshData(true)}
-      />
+      <React.Suspense fallback={<div className="h-20 animate-pulse rounded-2xl bg-tradeflow-gray-50 border border-tradeflow-gray-200" />}>
+        <BulkProductUpload
+          canImport={canCreateProducts}
+          isProfileLoaded={isProfileLoaded}
+          onImported={() => refreshData(true)}
+        />
+      </React.Suspense>
 
       {/* Filter Bar */}
       <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">

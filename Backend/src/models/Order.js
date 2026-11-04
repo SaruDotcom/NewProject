@@ -223,6 +223,8 @@ orderSchema.index({ wholesalerId: 1, createdAt: -1 });
 orderSchema.index({ orderStatus: 1, createdAt: -1 });
 orderSchema.index({ wholesalerId: 1, createdAt: -1, orderStatus: 1 });
 orderSchema.index({ wholesalerId: 1, orderStatus: 1, createdAt: -1 });
+orderSchema.index({ wholesalerId: 1, isDemo: 1, createdAt: -1 });
+orderSchema.index({ wholesalerId: 1, isCreditOrder: 1, creditPaymentStatus: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 module.exports = Order;

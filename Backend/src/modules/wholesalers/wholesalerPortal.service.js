@@ -356,6 +356,7 @@ class WholesalerPortalService {
         wholesalerId: userId,
         orderStatus: { $nin: [ORDER_STATUS.CANCELLED, ORDER_STATUS.RETURNED, ORDER_STATUS.REFUNDED] },
       })
+        .select('orderNumber grandTotal isCreditOrder creditPaidAmount directPaidPaise creditPaymentStatus paymentMethod createdAt retailerId')
         .populate('retailerId', 'name businessName')
         .sort({ createdAt: -1 })
         .lean(),

@@ -104,7 +104,9 @@ WALLET_SETTLEMENT_DAYS=7
 
 Generate the encryption key with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and store it as a secret in `Backend/.env`. Keep the same key available for decryption; changing it requires re-encrypting saved retailer identity numbers.
 
-The Super Admin-managed wholesaler plan catalog is initialized with Monthly Plan (₹300/month), Annual Pro Plan (₹3,000/year), and the existing Wholesaler Plan (₹499/month). Super Admins can add, edit, deactivate, reorder, and delete plans and features. Plan and price details are snapshotted when an order is created, so catalog changes do not alter an existing subscription. Razorpay credentials are required to create and verify subscription payments; without them, the wholesaler portal displays “Online payment is not configured”.
+The Super Admin-managed wholesaler plan catalog is initialized with Monthly Plan (₹300/month), Annual Pro Plan (₹3,000/year), and the existing Wholesaler Plan (₹499/month). Super Admins can add, edit, deactivate, reorder, and delete plans and features. Plan and price details are snapshotted when an order is created, so catalog changes do not alter an existing subscription. Razorpay credentials are required to create and verify subscription payments; without them, the wholesaler portal explains that online payment is not configured.
+
+A captured subscription payment remains pending until a Super Admin approves it from **Subscriptions**. Approval requires the wholesaler's KYC to be approved; restricted wholesaler business operations require both approved KYC and an active, unexpired subscription. Use Razorpay test-mode credentials in development and configure the production key ID and secret only as backend hosting environment secrets.
 
 ### Retailer UPI payments and credit
 

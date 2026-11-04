@@ -1,4 +1,5 @@
 const WholesalerService = require('./wholesalers.service');
+const ReferralService = require('../referrals/referrals.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -15,6 +16,11 @@ class WholesalerController {
   getWholesalerById = asyncHandler(async (req, res) => {
     const data = await WholesalerService.getWholesalerById(req.params.id);
     return ApiResponse.success(res, data, 'Wholesaler profile retrieved successfully');
+  });
+
+  getReferralLink = asyncHandler(async (req, res) => {
+    const referral = await ReferralService.getAdminReferralLink(req.params.id);
+    return ApiResponse.success(res, referral, 'Wholesaler referral link retrieved');
   });
 
   updateWholesaler = asyncHandler(async (req, res) => {

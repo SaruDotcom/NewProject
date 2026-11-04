@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   FolderTree,
   Plus,
@@ -312,16 +312,39 @@ export default function CategoriesPage() {
     }
   };
 
-  // Calculate Product count for any category node (direct + descendant assignments)
-  const getCategoryProductCount = (category: Category): number => {
-    const descendantIds = getAllDescendantCategoryIds(category.id, categories);
-    return products.filter(
-      (p) =>
-        p.categoryId === category.id ||
-        p.category === category.name ||
-        (p.subcategoryId && (p.subcategoryId === category.id || descendantIds.has(p.subcategoryId)))
-    ).length;
-  };
+  // Precompute descendant IDs for all categories once
+  const descendantMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    categories.forEach((cat) => {
+      map.set(cat.id, getAllDescendantCategoryIds(cat.id, categories));
+    });
+    return map;
+  }, [categories]);
+
+  // Precompute product counts per category once with O(C * P) instead of re-running in JSX
+  const categoryProductCountMap = useMemo(() => {
+    const counts = new Map<string, number>();
+    categories.forEach((cat) => {
+      const descendantIds = descendantMap.get(cat.id) || new Set<string>();
+      let count = 0;
+      products.forEach((p) => {
+        if (
+          p.categoryId === cat.id ||
+          p.category === cat.name ||
+          (p.subcategoryId && (p.subcategoryId === cat.id || descendantIds.has(p.subcategoryId)))
+        ) {
+          count += 1;
+        }
+      });
+      counts.set(cat.id, count);
+    });
+    return counts;
+  }, [categories, products, descendantMap]);
+
+  // Fast O(1) lookup
+  const getCategoryProductCount = useCallback((category: Category): number => {
+    return categoryProductCountMap.get(category.id) ?? 0;
+  }, [categoryProductCountMap]);
 
   // Summary Metrics
   const rootCategories = useMemo(() => categories.filter((c) => !c.parentId), [categories]);

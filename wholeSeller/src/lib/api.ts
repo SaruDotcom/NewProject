@@ -6,21 +6,35 @@ export function resolveProductImageUrl(imagePath?: string | null): string | null
   const value = imagePath?.trim();
   if (!value) return null;
   if (/^(blob|data):/i.test(value)) return value;
-  if (/^https?:\/\//i.test(value)) {
-    if (!BASE_URL) return value;
 
-    const imageUrl = new URL(value);
-    const apiOrigin = new URL(BASE_URL);
-    if (imageUrl.protocol === 'http:' && apiOrigin.protocol === 'https:' && imageUrl.host === apiOrigin.host) {
-      imageUrl.protocol = 'https:';
+  // Optimize Cloudinary URLs with automatic modern formats (WebP/AVIF) and quality compression
+  let normalized = value;
+  if (normalized.includes('res.cloudinary.com') && normalized.includes('/upload/')) {
+    if (!normalized.includes('/f_auto') && !normalized.includes(',f_auto')) {
+      normalized = normalized.replace('/upload/', '/upload/f_auto,q_auto/');
     }
-    return imageUrl.toString();
   }
-  if (!BASE_URL) return value;
 
-  // API base URLs normally end in /api or /api/v1. Images are served from the
-  // backend origin, not from that API mount point.
-  return new URL(value, `${new URL(BASE_URL).origin}/`).toString();
+  if (/^https?:\/\//i.test(normalized)) {
+    if (!BASE_URL) return normalized;
+    try {
+      const imageUrl = new URL(normalized);
+      const apiOrigin = new URL(BASE_URL);
+      if (imageUrl.protocol === 'http:' && apiOrigin.protocol === 'https:' && imageUrl.host === apiOrigin.host) {
+        imageUrl.protocol = 'https:';
+      }
+      return imageUrl.toString();
+    } catch {
+      return normalized;
+    }
+  }
+  if (!BASE_URL) return normalized;
+
+  try {
+    return new URL(normalized, `${new URL(BASE_URL).origin}/`).toString();
+  } catch {
+    return normalized;
+  }
 }
 
 export function isLegacyLocalProductImageUrl(_imagePath?: string | null): boolean {
@@ -257,11 +271,13 @@ export interface SubscriptionPaymentRecord {
   amountPaise: number;
   currency: string;
   status: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED';
+  approvalStatus?: 'PENDING' | 'APPROVED';
   razorpayOrderId: string;
   razorpayPaymentId?: string;
   paymentMethod?: string;
   errorReason?: string;
   verifiedAt?: string | null;
+  approvedAt?: string | null;
   createdAt: string;
 }
 
@@ -557,8 +573,8 @@ export const api = {
       { method: 'GET' },
     ),
 
-  getMe: () =>
-    request<{ success: boolean; data: any }>('/auth/me', { method: 'GET' }),
+  getMe: (signal?: AbortSignal) =>
+    request<{ success: boolean; data: any }>('/auth/me', { method: 'GET', signal }),
 
   updateStoreTheme: (activeStoreTheme: WholesalerStoreTheme) =>
     request<{ success: boolean; data: { user: any; profile: any } }>('/wholesaler/profile', {
@@ -677,7 +693,7 @@ export const api = {
     razorpay_payment_id: string;
     razorpay_signature: string;
   }) =>
-    request<{ success: boolean; data: { subscription: WholesalerSubscription } }>(
+    request<{ success: boolean; data: { subscription: WholesalerSubscription | null } }>(
       '/wholesaler/subscription/verify',
       { method: 'POST', body: JSON.stringify(payload) },
     ),

@@ -1,10 +1,10 @@
 const { assertWholesalerBusinessActivated } = require('../src/services/wholesaler-access.service');
 const { requireActiveWholesaler } = require('../src/middleware/wholesalerAccess');
-const { WholesalerProfile, WholesalerSubscription } = require('../src/models');
+const { WholesalerProfile, WholesalerSubscription, SubscriptionPayment } = require('../src/models');
 const { KYC_STATUS, ROLES } = require('../src/config/constants');
 const KycService = require('../src/modules/kyc/kyc.service');
 
-describe('KYC and Subscription Access Control & Optional Bank Details', () => {
+describe('KYC and Subscription Access Control', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -29,8 +29,9 @@ describe('KYC and Subscription Access Control & Optional Bank Details', () => {
   });
 
   describe('Combination 2: KYC approved + no subscription', () => {
-    test('allows business access without a subscription', async () => {
+    test('blocks business access until an approved subscription exists', async () => {
       const subscriptionLookup = jest.spyOn(WholesalerSubscription, 'findOne');
+      jest.spyOn(SubscriptionPayment, 'exists').mockResolvedValue(null);
       jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
@@ -41,9 +42,12 @@ describe('KYC and Subscription Access Control & Optional Bank Details', () => {
         }),
       });
 
-      await expect(assertWholesalerBusinessActivated('user-nosub-2'))
-        .resolves.toMatchObject({ profile: { kycStatus: KYC_STATUS.APPROVED }, subscription: null });
-      expect(subscriptionLookup).not.toHaveBeenCalled();
+      subscriptionLookup.mockResolvedValue(null);
+      await expect(assertWholesalerBusinessActivated('user-nosub-2')).rejects.toMatchObject({
+        code: 'SUBSCRIPTION_REQUIRED',
+        statusCode: 403,
+      });
+      expect(subscriptionLookup).toHaveBeenCalledWith({ userId: 'user-nosub-2' });
     });
   });
 
@@ -69,13 +73,14 @@ describe('KYC and Subscription Access Control & Optional Bank Details', () => {
   });
 
   describe('Combination 4: KYC approved + expired subscription', () => {
-    test('allows business access and leaves expired subscription unchanged', async () => {
+    test('blocks business access and persists the expired status', async () => {
       const expiredSubscription = {
-        status: 'EXPIRED',
+        status: 'ACTIVE',
+        renewalDate: new Date(Date.now() - 86400000),
         save: jest.fn(),
       };
-      const subscriptionLookup = jest.spyOn(WholesalerSubscription, 'findOne')
-        .mockResolvedValue(expiredSubscription);
+      jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue(expiredSubscription);
+      jest.spyOn(SubscriptionPayment, 'exists').mockResolvedValue(null);
       jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
@@ -85,17 +90,19 @@ describe('KYC and Subscription Access Control & Optional Bank Details', () => {
           }),
         }),
       });
-      await expect(assertWholesalerBusinessActivated('user-expired-4'))
-        .resolves.toMatchObject({ profile: { kycStatus: KYC_STATUS.APPROVED }, subscription: null });
-      expect(subscriptionLookup).not.toHaveBeenCalled();
-      expect(expiredSubscription.save).not.toHaveBeenCalled();
+      await expect(assertWholesalerBusinessActivated('user-expired-4')).rejects.toMatchObject({
+        code: 'SUBSCRIPTION_EXPIRED',
+        statusCode: 403,
+      });
+      expect(expiredSubscription.status).toBe('EXPIRED');
+      expect(expiredSubscription.save).toHaveBeenCalled();
     });
   });
 
   describe('Combination 5: KYC approved + active subscription', () => {
-    test('allows full business access without checking a subscription', async () => {
+    test('allows full business access with an active subscription', async () => {
       const subscriptionLookup = jest.spyOn(WholesalerSubscription, 'findOne')
-        .mockResolvedValue({ status: 'ACTIVE' });
+        .mockResolvedValue({ status: 'ACTIVE', renewalDate: new Date(Date.now() + 86400000) });
       const mockProfile = {
         userId: 'user-active-5',
         kycStatus: KYC_STATUS.APPROVED,
@@ -109,11 +116,13 @@ describe('KYC and Subscription Access Control & Optional Bank Details', () => {
       const result = await assertWholesalerBusinessActivated('user-active-5');
       expect(result).toBeDefined();
       expect(result.profile.kycStatus).toBe(KYC_STATUS.APPROVED);
-      expect(result.subscription).toBeNull();
-      expect(subscriptionLookup).not.toHaveBeenCalled();
+      expect(result.subscription.status).toBe('ACTIVE');
+      expect(subscriptionLookup).toHaveBeenCalledWith({ userId: 'user-active-5' });
     });
 
-    test('requireActiveWholesaler allows approved KYC without a subscription', async () => {
+    test('requireActiveWholesaler allows approved KYC with an active subscription', async () => {
+      jest.spyOn(WholesalerSubscription, 'findOne')
+        .mockResolvedValue({ status: 'ACTIVE', renewalDate: new Date(Date.now() + 86400000) });
       jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
@@ -129,6 +138,25 @@ describe('KYC and Subscription Access Control & Optional Bank Details', () => {
 
       await requireActiveWholesaler(req, res, next);
       expect(next).toHaveBeenCalledWith();
+    });
+
+    test('blocks business access while a paid subscription awaits approval', async () => {
+      jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue(null);
+      jest.spyOn(SubscriptionPayment, 'exists').mockResolvedValue({ _id: 'payment-1' });
+      jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            userId: 'user-review-5',
+            kycStatus: KYC_STATUS.APPROVED,
+            isDeleted: false,
+          }),
+        }),
+      });
+
+      await expect(assertWholesalerBusinessActivated('user-review-5')).rejects.toMatchObject({
+        code: 'SUBSCRIPTION_PENDING_APPROVAL',
+        statusCode: 403,
+      });
     });
 
     test('requireActiveWholesaler bypasses Super Admin and Admin roles unconditionally', async () => {

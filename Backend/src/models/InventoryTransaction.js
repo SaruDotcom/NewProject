@@ -65,6 +65,8 @@ const inventoryTransactionSchema = new mongoose.Schema(
 );
 
 inventoryTransactionSchema.index({ productId: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ wholesalerId: 1, createdAt: -1 });
+inventoryTransactionSchema.index({ wholesalerId: 1, productId: 1, createdAt: -1 });
 
 const InventoryTransaction = mongoose.model('InventoryTransaction', inventoryTransactionSchema);
 module.exports = InventoryTransaction;

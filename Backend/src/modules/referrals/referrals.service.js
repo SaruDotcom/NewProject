@@ -149,6 +149,30 @@ class ReferralService {
     };
   }
 
+  static async getAdminReferralLink(wholesalerId) {
+    let profile = null;
+    if (/^[a-f\d]{24}$/i.test(String(wholesalerId))) {
+      profile = await WholesalerProfile.findById(wholesalerId);
+    }
+    if (!profile) {
+      profile = await WholesalerProfile.findOne({ userId: wholesalerId });
+    }
+    if (!profile || profile.isDeleted) throw new NotFoundError('Wholesaler not found');
+
+    const code = await this.ensureCode(profile);
+    const user = await User.findById(profile.userId).select('status').lean();
+    return {
+      code,
+      wholesalerId: String(profile.userId),
+      businessName: profile.businessName || '',
+      businessTagline: profile.businessTagline || '',
+      businessLogoUrl: profile.businessLogoUrl || '',
+      kycStatus: profile.kycStatus || '',
+      accountStatus: user?.status || 'UNAVAILABLE',
+      signupsEnabled: profile.retailerSignupsEnabled !== false,
+    };
+  }
+
   static async regenerateCode(wholesalerUser) {
     const profile = await this.findApprovedWholesaler(wholesalerUser);
     for (let attempt = 0; attempt < 5; attempt += 1) {

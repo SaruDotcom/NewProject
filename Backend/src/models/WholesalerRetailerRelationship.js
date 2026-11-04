@@ -104,6 +104,8 @@ wholesalerRetailerRelationshipSchema.index(
 // General compound index for fast lookups
 wholesalerRetailerRelationshipSchema.index({ wholesalerId: 1, retailerId: 1 });
 wholesalerRetailerRelationshipSchema.index({ wholesalerId: 1, status: 1 });
+wholesalerRetailerRelationshipSchema.index({ wholesalerId: 1, createdAt: -1 });
+wholesalerRetailerRelationshipSchema.index({ wholesalerId: 1, joinedAt: -1 });
 
 const WholesalerRetailerRelationship = mongoose.model(
   'WholesalerRetailerRelationship',

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -26,7 +27,8 @@ import {
 import { useWholesaler } from '@/context/WholesalerContext';
 import BusinessLogo from '@/components/BusinessLogo';
 import ThokStoreBrand from '@/components/ThokStoreBrand';
-import api, { clearAuthToken, type WholesalerSubscription } from '@/lib/api';
+import api, { clearAuthToken } from '@/lib/api';
+import { wholesalerQueryKeys } from '@/lib/query-client';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -60,25 +62,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
   const pathname = location.pathname;
   const navigate = useNavigate();
   const { profile } = useWholesaler();
-  const [subscription, setSubscription] = useState<WholesalerSubscription | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const loadSubscription = async () => {
-      try {
-        const response = await api.getWholesalerSubscription();
-        if (active) setSubscription(response.data.subscription);
-      } catch (error) {
-        console.warn('Unable to load subscription details for the sidebar.', error);
-      }
-    };
-    void loadSubscription();
-    window.addEventListener('wholesaler-subscription-updated', loadSubscription);
-    return () => {
-      active = false;
-      window.removeEventListener('wholesaler-subscription-updated', loadSubscription);
-    };
-  }, []);
+  const subscriptionQuery = useQuery({
+    queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'subscription'),
+    queryFn: () => api.getWholesalerSubscription(),
+    enabled: Boolean(profile.id),
+    staleTime: 30_000,
+  });
+  const subscription = subscriptionQuery.data?.data.subscription || null;
 
   const handleLogout = () => {
     clearAuthToken();

@@ -348,6 +348,9 @@ productSchema.pre('save', function (next) {
 
 productSchema.index({ wholesalerId: 1, sku: 1 }, { unique: true });
 productSchema.index({ wholesalerId: 1, status: 1 });
+productSchema.index({ wholesalerId: 1, isDeleted: 1, createdAt: -1 });
+productSchema.index({ wholesalerId: 1, isDeleted: 1, isDemo: 1, createdAt: -1 });
+productSchema.index({ wholesalerId: 1, categoryId: 1, isDeleted: 1 });
 productSchema.index({ name: 'text', description: 'text', sku: 'text', brand: 'text' });
 
 const Product = mongoose.model('Product', productSchema);
