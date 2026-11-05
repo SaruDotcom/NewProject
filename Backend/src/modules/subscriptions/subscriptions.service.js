@@ -10,10 +10,12 @@ const env = require('../../config/env');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../utils/errors');
 
 const CATALOG_KEY = 'WHOLESALER';
-const CATALOG_VERSION = 2;
+const CATALOG_VERSION = 3;
 const CANONICAL_PLAN_KEYS = [
   'WHOLESALER_MONTHLY',
   'WHOLESALER_ANNUAL',
+  'WHOLESALER_MEDIUM_MONTHLY',
+  'WHOLESALER_MEDIUM_YEARLY',
   'WHOLESALER_499',
   'WHOLESALER_PRO_YEARLY',
 ];
@@ -44,13 +46,35 @@ const DEFAULT_PLANS = [
   {
     key: 'WHOLESALER_ANNUAL',
     name: 'Basic Yearly',
-    price: 2499,
+    price: 1499,
     billingPeriod: 'YEARLY',
     description: 'Core tools for your wholesale business, billed yearly.',
     taxNote: 'Taxes may apply.',
     isActive: true,
     order: 1,
     recommended: false,
+  },
+  {
+    key: 'WHOLESALER_MEDIUM_MONTHLY',
+    name: 'Medium Monthly',
+    price: 399,
+    billingPeriod: 'MONTHLY',
+    description: 'More room to grow your wholesale business, billed monthly.',
+    taxNote: 'Taxes may apply.',
+    isActive: true,
+    order: 2,
+    recommended: true,
+  },
+  {
+    key: 'WHOLESALER_MEDIUM_YEARLY',
+    name: 'Medium Yearly',
+    price: 2499,
+    billingPeriod: 'YEARLY',
+    description: 'More room to grow your wholesale business, billed yearly.',
+    taxNote: 'Taxes may apply.',
+    isActive: true,
+    order: 3,
+    recommended: true,
   },
   {
     key: 'WHOLESALER_499',
@@ -60,18 +84,18 @@ const DEFAULT_PLANS = [
     description: 'Advanced tools for your wholesale business, billed monthly.',
     taxNote: 'Taxes may apply.',
     isActive: true,
-    order: 2,
-    recommended: true,
+    order: 4,
+    recommended: false,
   },
   {
     key: 'WHOLESALER_PRO_YEARLY',
     name: 'Pro Yearly',
-    price: 4999,
+    price: 4499,
     billingPeriod: 'YEARLY',
     description: 'Advanced tools for your wholesale business, billed yearly.',
     taxNote: 'Taxes may apply.',
     isActive: true,
-    order: 3,
+    order: 5,
     recommended: false,
   },
 ].map((plan) => ({
@@ -138,6 +162,10 @@ class SubscriptionService {
         await SubscriptionPlan.findOne({ key: plan.key });
       }
     }));
+    await SubscriptionPlan.updateMany(
+      { key: { $regex: '^WHOLESALER_', $nin: CANONICAL_PLAN_KEYS } },
+      { $set: { isActive: false } },
+    );
     await SubscriptionPlanCatalog.updateOne(
       { key: CATALOG_KEY },
       { $set: { initialized: true, version: CATALOG_VERSION } },
@@ -220,7 +248,7 @@ class SubscriptionService {
         (updates.billingPeriod !== undefined && updates.billingPeriod !== existing.billingPeriod) ||
         updates.isActive === false)
     ) {
-      throw new BadRequestError('The four standard wholesaler plans and their prices cannot be changed');
+      throw new BadRequestError('The six standard wholesaler plans and their prices cannot be changed');
     }
     const plan = await SubscriptionPlan.findByIdAndUpdate(
       planId,
@@ -234,7 +262,7 @@ class SubscriptionService {
   static async deletePlan(planId) {
     const existing = await this.getPlan(planId);
     if (CANONICAL_PLAN_KEYS.includes(existing.key)) {
-      throw new BadRequestError('The four standard wholesaler plans cannot be deleted');
+      throw new BadRequestError('The six standard wholesaler plans cannot be deleted');
     }
     const plan = await SubscriptionPlan.findByIdAndDelete(planId);
     if (!plan) throw new NotFoundError('Subscription plan not found');
@@ -374,6 +402,7 @@ class SubscriptionService {
   static serializePlan(plan) {
     return {
       id: String(plan._id),
+      key: plan.key,
       name: plan.name,
       price: plan.price,
       billingPeriod: plan.billingPeriod,
@@ -446,7 +475,7 @@ class SubscriptionService {
     ]);
     if (!profile) throw new NotFoundError('Wholesaler profile not found');
     if (!CANONICAL_PLAN_KEYS.includes(plan.key)) {
-      throw new BadRequestError('Choose one of the four standard wholesaler subscription plans');
+      throw new BadRequestError('Choose one of the six standard wholesaler subscription plans');
     }
     if (!plan.isActive) throw new ConflictError('Online subscriptions are currently unavailable');
     const amount = Math.round(plan.price * 100);
@@ -466,6 +495,9 @@ class SubscriptionService {
     const order = await gatewayResponse.json();
     if (!gatewayResponse.ok) {
       throw new BadRequestError(order.error?.description || 'Unable to create a Razorpay order', 'PAYMENT_ORDER_FAILED');
+    }
+    if (Number(order.amount) !== amount || order.currency !== 'INR') {
+      throw new BadRequestError('Razorpay order does not match the selected subscription price', 'PAYMENT_ORDER_MISMATCH');
     }
     await SubscriptionPayment.create({
       userId,

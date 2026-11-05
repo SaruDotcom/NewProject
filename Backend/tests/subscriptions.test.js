@@ -69,6 +69,115 @@ describe('Wholesaler subscriptions', () => {
     });
   });
 
+  test.each([
+    ['Basic Monthly', 'WHOLESALER_MONTHLY', 299, 'MONTHLY'],
+    ['Basic Yearly', 'WHOLESALER_ANNUAL', 1499, 'YEARLY'],
+    ['Medium Monthly', 'WHOLESALER_MEDIUM_MONTHLY', 399, 'MONTHLY'],
+    ['Medium Yearly', 'WHOLESALER_MEDIUM_YEARLY', 2499, 'YEARLY'],
+    ['Pro Monthly', 'WHOLESALER_499', 499, 'MONTHLY'],
+    ['Pro Yearly', 'WHOLESALER_PRO_YEARLY', 4499, 'YEARLY'],
+  ])('charges and verifies the exact amount for %s', async (name, key, price, billingPeriod) => {
+    const plan = {
+      _id: `plan-${key}`,
+      key,
+      name,
+      price,
+      billingPeriod,
+      isActive: true,
+      order: 0,
+      recommended: false,
+      features: [],
+    };
+    const amountPaise = price * 100;
+    const orderId = `order-${key}`;
+    const paymentId = `payment-${key}`;
+    const purchase = {
+      _id: `purchase-${key}`,
+      planId: plan._id,
+      planName: plan.name,
+      billingPeriod,
+      amount: price,
+      amountPaise,
+      status: 'PENDING',
+      razorpayOrderId: orderId,
+    };
+    jest.spyOn(SubscriptionService, 'ensurePlanCatalog').mockResolvedValue();
+    jest.spyOn(SubscriptionService, 'getPlan').mockResolvedValue(plan);
+    jest.spyOn(SubscriptionPayment, 'exists').mockResolvedValue(null);
+    jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
+      select: jest.fn().mockResolvedValue({ _id: 'profile-1' }),
+    });
+    const savedPurchase = jest.spyOn(SubscriptionPayment, 'create').mockResolvedValue(purchase);
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: orderId, amount: amountPaise, currency: 'INR' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          order_id: orderId,
+          amount: amountPaise,
+          currency: 'INR',
+          status: 'captured',
+        }),
+      });
+
+    const createdOrder = await SubscriptionService.createOrder('user-1', plan._id);
+
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).amount).toBe(amountPaise);
+    expect(savedPurchase).toHaveBeenCalledWith(expect.objectContaining({
+      planId: plan._id,
+      planName: name,
+      billingPeriod,
+      amount: price,
+      amountPaise,
+    }));
+    expect(createdOrder.order).toMatchObject({ id: orderId, amount: amountPaise });
+
+    jest.spyOn(SubscriptionPayment, 'findOne').mockResolvedValue(purchase);
+    jest.spyOn(SubscriptionPayment, 'findOneAndUpdate').mockResolvedValue({ ...purchase, status: 'PAID' });
+    jest.spyOn(WholesalerSubscription, 'findOne').mockResolvedValue(null);
+    const signature = crypto.createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+      .update(`${orderId}|${paymentId}`)
+      .digest('hex');
+    await expect(SubscriptionService.verifyPayment('user-1', {
+      razorpay_order_id: orderId,
+      razorpay_payment_id: paymentId,
+      razorpay_signature: signature,
+    })).resolves.toBeNull();
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      `https://api.razorpay.com/v1/payments/${paymentId}`,
+      expect.any(Object),
+    );
+  });
+
+  test('rejects a Razorpay order whose returned amount differs from the selected plan', async () => {
+    jest.spyOn(SubscriptionService, 'ensurePlanCatalog').mockResolvedValue();
+    jest.spyOn(SubscriptionService, 'getPlan').mockResolvedValue({
+      _id: 'plan-basic-monthly',
+      key: 'WHOLESALER_MONTHLY',
+      name: 'Basic Monthly',
+      price: 299,
+      billingPeriod: 'MONTHLY',
+      isActive: true,
+      features: [],
+    });
+    jest.spyOn(SubscriptionPayment, 'exists').mockResolvedValue(null);
+    jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
+      select: jest.fn().mockResolvedValue({ _id: 'profile-1' }),
+    });
+    const savePayment = jest.spyOn(SubscriptionPayment, 'create');
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'order-price-mismatch', amount: 100, currency: 'INR' }),
+    });
+
+    await expect(SubscriptionService.createOrder('user-1', 'plan-basic-monthly'))
+      .rejects.toMatchObject({ code: 'PAYMENT_ORDER_MISMATCH' });
+    expect(savePayment).not.toHaveBeenCalled();
+  });
+
   test('records captured payments as awaiting Superadmin approval', async () => {
     const orderId = 'order-verified';
     const paymentId = 'payment-captured';

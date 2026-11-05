@@ -212,6 +212,7 @@ export interface BulkProductUploadRow {
 
 export interface SubscriptionPlan {
   id: string;
+  key: string;
   name: string;
   price: number;
   billingPeriod: 'MONTHLY' | 'YEARLY';

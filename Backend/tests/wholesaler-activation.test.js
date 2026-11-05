@@ -33,15 +33,16 @@ describe('Wholesaler business activation', () => {
       .rejects.toMatchObject({ code: 'KYC_PENDING' });
   });
 
-  test('migrates the existing subscription catalog to the four exact standard plans', async () => {
+  test('migrates the existing subscription catalog to the six exact standard plans', async () => {
     jest.spyOn(SubscriptionPlanCatalog, 'findOne').mockResolvedValue({ initialized: true, version: 1 });
     jest.spyOn(SubscriptionPlanCatalog, 'findOneAndUpdate').mockResolvedValue({ initialized: true, version: 1 });
     const upsertPlan = jest.spyOn(SubscriptionPlan, 'findOneAndUpdate').mockResolvedValue({});
+    const retireOldPlans = jest.spyOn(SubscriptionPlan, 'updateMany').mockResolvedValue({});
     const updateCatalog = jest.spyOn(SubscriptionPlanCatalog, 'updateOne').mockResolvedValue({});
 
     await SubscriptionService.ensurePlanCatalog();
 
-    expect(upsertPlan).toHaveBeenCalledTimes(4);
+    expect(upsertPlan).toHaveBeenCalledTimes(6);
     expect(upsertPlan).toHaveBeenCalledWith(
       { key: 'WHOLESALER_MONTHLY' },
       expect.objectContaining({
@@ -52,7 +53,21 @@ describe('Wholesaler business activation', () => {
     expect(upsertPlan).toHaveBeenCalledWith(
       { key: 'WHOLESALER_ANNUAL' },
       expect.objectContaining({
-        $set: expect.objectContaining({ name: 'Basic Yearly', price: 2499, billingPeriod: 'YEARLY' }),
+        $set: expect.objectContaining({ name: 'Basic Yearly', price: 1499, billingPeriod: 'YEARLY' }),
+      }),
+      expect.any(Object),
+    );
+    expect(upsertPlan).toHaveBeenCalledWith(
+      { key: 'WHOLESALER_MEDIUM_MONTHLY' },
+      expect.objectContaining({
+        $set: expect.objectContaining({ name: 'Medium Monthly', price: 399, billingPeriod: 'MONTHLY' }),
+      }),
+      expect.any(Object),
+    );
+    expect(upsertPlan).toHaveBeenCalledWith(
+      { key: 'WHOLESALER_MEDIUM_YEARLY' },
+      expect.objectContaining({
+        $set: expect.objectContaining({ name: 'Medium Yearly', price: 2499, billingPeriod: 'YEARLY' }),
       }),
       expect.any(Object),
     );
@@ -66,13 +81,24 @@ describe('Wholesaler business activation', () => {
     expect(upsertPlan).toHaveBeenCalledWith(
       { key: 'WHOLESALER_PRO_YEARLY' },
       expect.objectContaining({
-        $set: expect.objectContaining({ name: 'Pro Yearly', price: 4999, billingPeriod: 'YEARLY' }),
+        $set: expect.objectContaining({ name: 'Pro Yearly', price: 4499, billingPeriod: 'YEARLY' }),
       }),
       expect.any(Object),
     );
+    expect(retireOldPlans).toHaveBeenCalledWith(
+      { key: { $regex: '^WHOLESALER_', $nin: [
+        'WHOLESALER_MONTHLY',
+        'WHOLESALER_ANNUAL',
+        'WHOLESALER_MEDIUM_MONTHLY',
+        'WHOLESALER_MEDIUM_YEARLY',
+        'WHOLESALER_499',
+        'WHOLESALER_PRO_YEARLY',
+      ] } },
+      { $set: { isActive: false } },
+    );
     expect(updateCatalog).toHaveBeenCalledWith(
       { key: 'WHOLESALER' },
-      { $set: { initialized: true, version: 2 } },
+      { $set: { initialized: true, version: 3 } },
     );
   });
 });

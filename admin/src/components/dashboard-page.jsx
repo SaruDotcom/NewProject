@@ -103,9 +103,11 @@ export function DashboardPage() {
   );
   const subscriptionPlans = [
     { key: "WHOLESALER_MONTHLY", name: "Basic Monthly", price: "₹299", duration: "1 Month" },
-    { key: "WHOLESALER_ANNUAL", name: "Basic Yearly", price: "₹2,499", duration: "1 Year" },
+    { key: "WHOLESALER_ANNUAL", name: "Basic Yearly", price: "₹1,499", duration: "1 Year" },
+    { key: "WHOLESALER_MEDIUM_MONTHLY", name: "Medium Monthly", price: "₹399", duration: "1 Month" },
+    { key: "WHOLESALER_MEDIUM_YEARLY", name: "Medium Yearly", price: "₹2,499", duration: "1 Year" },
     { key: "WHOLESALER_499", name: "Pro Monthly", price: "₹499", duration: "1 Month" },
-    { key: "WHOLESALER_PRO_YEARLY", name: "Pro Yearly", price: "₹4,999", duration: "1 Year" },
+    { key: "WHOLESALER_PRO_YEARLY", name: "Pro Yearly", price: "₹4,499", duration: "1 Year" },
   ];
 
   const chartError = chartsError

@@ -354,7 +354,7 @@ export function AdminShell({ children }) {
                 "aria-label": "Open navigation menu",
                 children: _jsx(Menu, {}),
               }),
-              _jsxs("div", {
+              _jsx("div", {
                 className: "flex shrink-0 items-center gap-2 sm:hidden",
                 children: _jsx(BrandLogo, { className: "w-32" }),
               }),

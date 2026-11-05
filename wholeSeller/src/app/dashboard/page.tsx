@@ -94,7 +94,7 @@ export default function OverviewPage() {
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-            Welcome to {BRAND_NAME}
+            Welcome to {profile.businessName || BRAND_NAME}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
             Track products, stock, retailers, and orders.

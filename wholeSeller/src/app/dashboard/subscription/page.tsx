@@ -44,6 +44,12 @@ declare global {
   }
 }
 
+const SUBSCRIPTION_TIERS = [
+  { name: 'Basic', monthlyKey: 'WHOLESALER_MONTHLY', yearlyKey: 'WHOLESALER_ANNUAL' },
+  { name: 'Medium', monthlyKey: 'WHOLESALER_MEDIUM_MONTHLY', yearlyKey: 'WHOLESALER_MEDIUM_YEARLY' },
+  { name: 'Pro', monthlyKey: 'WHOLESALER_499', yearlyKey: 'WHOLESALER_PRO_YEARLY' },
+] as const;
+
 function loadRazorpay(): Promise<void> {
   if (window.Razorpay) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -119,6 +125,7 @@ export default function SubscriptionPage() {
   const { profile } = useWholesaler();
   const queryClient = useQueryClient();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [billingPeriod, setBillingPeriod] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const [subscription, setSubscription] = useState<WholesalerSubscription | null>(null);
   const [payments, setPayments] = useState<SubscriptionPaymentRecord[]>([]);
   const [paymentConfigured, setPaymentConfigured] = useState(true);
@@ -186,6 +193,23 @@ export default function SubscriptionPage() {
         setError('Online payment is not configured on the platform. Please contact platform support.');
         setSubmittingPlanId('');
         return;
+      }
+
+      const authoritativePlan = orderResponse.data.plan;
+      const orderAmount = orderResponse.data.order.amount;
+      if (!authoritativePlan || authoritativePlan.id !== plan.id) {
+        throw new Error('Unable to verify the selected subscription price. Refresh plans and try again.');
+      }
+      if (
+        authoritativePlan.price !== plan.price ||
+        authoritativePlan.billingPeriod !== plan.billingPeriod ||
+        orderAmount !== Math.round(authoritativePlan.price * 100) ||
+        orderResponse.data.order.currency !== 'INR'
+      ) {
+        setPlans((currentPlans) => currentPlans.map((currentPlan) => (
+          currentPlan.id === authoritativePlan.id ? authoritativePlan : currentPlan
+        )));
+        throw new Error('This plan price has changed. Review the updated amount and try again.');
       }
 
       await loadRazorpay();
@@ -281,6 +305,12 @@ export default function SubscriptionPage() {
 
   const isSubscriptionActive = subscription?.status === 'ACTIVE' && new Date(subscription.renewalDate) > new Date();
   const daysLeft = isSubscriptionActive ? getDaysRemaining(subscription?.renewalDate) : 0;
+  const displayedPlans = SUBSCRIPTION_TIERS.map((tier) => ({
+    ...tier,
+    plan: plans.find((plan) => plan.key === (
+      billingPeriod === 'MONTHLY' ? tier.monthlyKey : tier.yearlyKey
+    )),
+  }));
 
   if (loading) {
     return (
@@ -413,6 +443,23 @@ export default function SubscriptionPage() {
             Choose a plan to request activation. A confirmed payment is reviewed by Superadmin before the plan becomes active.
           </p>
         </div>
+        <div className="inline-flex rounded-xl border border-[#E8D8C8] bg-[#FBF5EA] p-1" role="group" aria-label="Billing period">
+          {(['MONTHLY', 'YEARLY'] as const).map((period) => (
+            <button
+              key={period}
+              type="button"
+              onClick={() => setBillingPeriod(period)}
+              aria-pressed={billingPeriod === period}
+              className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
+                billingPeriod === period
+                  ? 'bg-[#6D1D36] text-white shadow-sm'
+                  : 'text-[#6D514C] hover:bg-white/70'
+              }`}
+            >
+              {period === 'MONTHLY' ? 'Monthly' : 'Yearly'}
+            </button>
+          ))}
+        </div>
 
         {!plans.length && (
           <div role="status" className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
@@ -420,14 +467,21 @@ export default function SubscriptionPage() {
           </div>
         )}
 
-        <div className="grid items-stretch gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-          {plans.map((plan) => {
+        <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {displayedPlans.map(({ name, plan }) => {
+            if (!plan) {
+              return (
+                <article key={name} className="flex min-h-64 items-center justify-center rounded-2xl border border-tradeflow-gray-200 bg-white p-6 text-center text-sm text-gray-500 shadow-sm">
+                  {name} is temporarily unavailable for {billingPeriod.toLowerCase()} billing.
+                </article>
+              );
+            }
             const isCurrentPlan = Boolean(subscription && String(subscription.planId) === plan.id);
             const currentPlanActive = isCurrentPlan && isSubscriptionActive;
 
             return (
               <article
-                key={plan.id}
+                key={name}
                 className={`relative flex flex-col justify-between overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:shadow-md ${
                   plan.recommended
                     ? 'border-[#7A233D] ring-2 ring-[#7A233D]/10'
@@ -438,7 +492,7 @@ export default function SubscriptionPage() {
                   {/* Plan Title & Badge */}
                   <div className="flex min-h-14 items-start justify-between gap-2">
                     <div>
-                      <h3 className="text-base font-black text-[#5D1D32]">{plan.name}</h3>
+                      <h3 className="text-base font-black text-[#5D1D32]">{name}</h3>
                       <p className="mt-1 text-xs leading-5 text-gray-500">{plan.description}</p>
                     </div>
                     {plan.recommended && (

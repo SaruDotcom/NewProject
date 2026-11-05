@@ -19,9 +19,11 @@ describe('Admin dashboard subscription counts', () => {
   test('counts current purchasers by plan and active wholesaler account status', async () => {
     const planDefinitions = [
       { key: 'WHOLESALER_MONTHLY', name: 'Basic Monthly', price: 299 },
-      { key: 'WHOLESALER_ANNUAL', name: 'Basic Yearly', price: 2499 },
+      { key: 'WHOLESALER_ANNUAL', name: 'Basic Yearly', price: 1499 },
+      { key: 'WHOLESALER_MEDIUM_MONTHLY', name: 'Medium Monthly', price: 399 },
+      { key: 'WHOLESALER_MEDIUM_YEARLY', name: 'Medium Yearly', price: 2499 },
       { key: 'WHOLESALER_499', name: 'Pro Monthly', price: 499 },
-      { key: 'WHOLESALER_PRO_YEARLY', name: 'Pro Yearly', price: 4999 },
+      { key: 'WHOLESALER_PRO_YEARLY', name: 'Pro Yearly', price: 4499 },
     ];
     const plans = await SubscriptionPlan.create(planDefinitions);
     const passwordHash = await User.hashPassword('Test1234');
@@ -79,8 +81,10 @@ describe('Admin dashboard subscription counts', () => {
     expect(initialStats.subscriptionPlanCounts).toEqual({
       WHOLESALER_MONTHLY: 1,
       WHOLESALER_ANNUAL: 1,
-      WHOLESALER_499: 1,
-      WHOLESALER_PRO_YEARLY: 1,
+      WHOLESALER_MEDIUM_MONTHLY: 1,
+      WHOLESALER_MEDIUM_YEARLY: 1,
+      WHOLESALER_499: 0,
+      WHOLESALER_PRO_YEARLY: 0,
     });
 
     expiredSubscription.status = 'ACTIVE';
@@ -91,9 +95,9 @@ describe('Admin dashboard subscription counts', () => {
     expect(renewedStats.subscriptionUsers).toBe(5);
     expect(renewedStats.subscriptionPlanCounts.WHOLESALER_MONTHLY).toBe(2);
 
-    subscriptions[0].planId = plans[2]._id;
-    subscriptions[0].planName = plans[2].name;
-    subscriptions[0].amount = plans[2].price;
+    subscriptions[0].planId = plans[4]._id;
+    subscriptions[0].planName = plans[4].name;
+    subscriptions[0].amount = plans[4].price;
     await subscriptions[0].save();
 
     const updatedStats = await AdminService.getDashboardStats();
@@ -101,8 +105,10 @@ describe('Admin dashboard subscription counts', () => {
     expect(updatedStats.subscriptionPlanCounts).toEqual({
       WHOLESALER_MONTHLY: 1,
       WHOLESALER_ANNUAL: 1,
-      WHOLESALER_499: 2,
-      WHOLESALER_PRO_YEARLY: 1,
+      WHOLESALER_MEDIUM_MONTHLY: 1,
+      WHOLESALER_MEDIUM_YEARLY: 1,
+      WHOLESALER_499: 1,
+      WHOLESALER_PRO_YEARLY: 0,
     });
   });
 
