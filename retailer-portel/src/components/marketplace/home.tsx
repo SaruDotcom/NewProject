@@ -80,7 +80,7 @@ export function HomePage() {
       {/* 1. Dynamic Wholesaler Hero & Branding Banner */}
       <section className="storefront-hero relative min-h-[440px] sm:min-h-[480px] lg:min-h-[520px] overflow-hidden bg-ink">
         <WholesalerBannerCarousel />
-        <div className="shell relative z-10 flex min-h-[440px] sm:min-h-[480px] lg:min-h-[620px] items-center py-10 sm:py-14">
+        <div className="shell relative z-10 flex min-h-[440px] sm:min-h-[480px] lg:min-h-[600px] items-center py-10 sm:py-14">
           <div className="max-w-3xl text-primary-foreground text-center sm:text-left mx-auto sm:mx-0">
             <p className="inline-flex rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/90 backdrop-blur">
               Your trusted wholesale storefront
