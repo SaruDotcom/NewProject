@@ -292,8 +292,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return {
           isAllowed: false,
           reason: 'KYC_PENDING' as const,
-          message: 'Your KYC is under review',
-          actionText: 'View KYC Status',
+          message: 'Complete Your KYC',
+          actionText: 'Complete Your KYC',
           actionLink: '/dashboard/kyc',
         };
       }
@@ -309,8 +309,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return {
         isAllowed: false,
         reason: 'KYC_REQUIRED' as const,
-        message: 'Complete KYC to continue',
-        actionText: 'Complete KYC',
+        message: 'Complete Your KYC',
+        actionText: 'Complete Your KYC',
         actionLink: '/dashboard/kyc',
       };
     }

@@ -3,13 +3,13 @@ import { tradeflowMuiTokens } from "@/theme/tokens";
 
 export const muiTheme = createTheme({
   palette: {
-    primary: { main: tradeflowMuiTokens.green, contrastText: tradeflowMuiTokens.navy },
+    primary: { main: tradeflowMuiTokens.green, contrastText: tradeflowMuiTokens.white },
     secondary: { main: tradeflowMuiTokens.gray100, contrastText: tradeflowMuiTokens.navy },
     error: { main: tradeflowMuiTokens.danger },
     background: { default: tradeflowMuiTokens.page, paper: tradeflowMuiTokens.white },
     text: { primary: tradeflowMuiTokens.navy, secondary: tradeflowMuiTokens.gray500 },
   },
-  shape: { borderRadius: 7 },
+  shape: { borderRadius: 12 },
   typography: {
     fontFamily: '"Inter", sans-serif',
     button: { textTransform: "none", fontWeight: 700 },

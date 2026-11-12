@@ -13,9 +13,10 @@ export const money = (n: number) =>
 export function TradeFlowMark({ className = "size-9" }: { className?: string }) {
   return (
     <svg viewBox="0 0 512 512" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="512" height="512" rx="112" fill="#12304A" />
-      <rect x="120" y="144" width="272" height="64" rx="16" fill="#20A66A" />
-      <rect x="216" y="192" width="80" height="176" rx="16" fill="#20A66A"/>
+      <rect width="512" height="512" rx="112" fill="#3B1727" />
+      <rect x="92" y="154" width="328" height="58" rx="18" fill="#D9A441" />
+      <rect x="218" y="202" width="76" height="190" rx="18" fill="#D9A441" />
+      <rect x="112" y="408" width="288" height="18" rx="9" fill="#F7EDEF" />
     </svg>
   );
 }
@@ -38,7 +39,7 @@ export function WholesalerLogo({
     <div
       role="img"
       aria-label={`${name} logo`}
-      className={cn("grid shrink-0 place-items-center overflow-hidden rounded-xl bg-[#E9F7F0] font-heading font-black text-[#20A66A]", className)}
+      className={cn("grid shrink-0 place-items-center overflow-hidden rounded-xl bg-[#F7EDEF] font-heading font-black text-[#721F3D]", className)}
     >
       {src && !failed ? (
         <img
@@ -126,7 +127,9 @@ export function ProductCard({
 }) {
   const { wishlist, toggleWishlist, addToCart, addRecentlyViewed } = useStore();
   const isWishlisted = wishlist.includes(product.id);
-  const discount = Math.round((1 - product.price / product.mrp) * 100);
+  const discount = product.mrp > product.price && product.mrp > 0
+    ? Math.round((1 - product.price / product.mrp) * 100)
+    : 0;
 
   const getProductImage = () => {
     if (product.imageUrl) return product.imageUrl;
@@ -241,13 +244,13 @@ export function ProductCard({
 
   // Grid Card: Amazon & Myntra Clean Minimal Design
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border/70 bg-card shadow-[0_8px_24px_rgba(59,23,39,0.06)] transition-all duration-300 hover:-translate-y-1 hover:border-[#D9A441]/70 hover:shadow-[0_18px_36px_rgba(59,23,39,0.14)]">
       {/* Product Image Area */}
       <Link
         to="/products/$productId"
         params={{ productId: product.id }}
         onClick={() => addRecentlyViewed(product.id)}
-        className="relative block aspect-square w-full overflow-hidden bg-gradient-to-br from-slate-50 to-white p-3 sm:p-4 flex items-center justify-center cursor-pointer"
+        className="relative block aspect-square w-full overflow-hidden bg-gradient-to-br from-[#FAF6F0] to-[#F3ECE3] p-3 sm:p-4 flex items-center justify-center cursor-pointer"
       >
         {productImg ? (
           <ProductImage
@@ -285,13 +288,13 @@ export function ProductCard({
       <button
         type="button"
         aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-        className="absolute right-2.5 top-2.5 z-20 size-8.5 rounded-full border border-border/80 bg-background/90 backdrop-blur-xs flex items-center justify-center text-muted-foreground hover:text-rose-600 hover:border-rose-300 shadow-2xs transition-all cursor-pointer active:scale-90"
+        className="absolute right-2.5 top-2.5 z-20 size-9 rounded-full border border-border/80 bg-background/95 backdrop-blur-xs flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/40 shadow-sm transition-all cursor-pointer active:scale-90"
         onClick={(e) => {
           e.stopPropagation();
           toggleWishlist(product.id);
         }}
       >
-        <Favorite className={cn("size-4 transition-colors", isWishlisted ? "fill-rose-600 text-rose-600" : "text-muted-foreground")} />
+        <Favorite className={cn("size-4 transition-colors", isWishlisted ? "fill-primary text-primary" : "text-muted-foreground")} />
       </button>
 
       {/* Product Details (Clean & Minimal) */}
@@ -304,7 +307,7 @@ export function ProductCard({
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="block h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-primary"
+          className="block min-h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-primary"
           title={product.name}
         >
           {product.name}
@@ -319,7 +322,7 @@ export function ProductCard({
 
         {/* Selling Price */}
         <div className="mt-2 flex min-h-7 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <strong className="text-sm sm:text-lg font-black text-ink">{money(product.price)}</strong>
+          <strong className="text-sm font-extrabold text-primary sm:text-lg">{money(product.price)}</strong>
           {discount > 0 && <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>}
           {discount > 0 && <span className="text-[11px] font-bold text-emerald-700">{discount}% off</span>}
         </div>
@@ -346,7 +349,7 @@ export function ProductCard({
           <Button
             disabled={product.stock <= 0}
             size="sm"
-            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg font-semibold text-[11px] sm:text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs !gap-1 sm:!gap-1.5 transition-all active:scale-95 !px-1.5 sm:!px-2 cursor-pointer"
+            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg font-semibold text-[11px] sm:text-xs bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs !gap-1 sm:!gap-1.5 transition-all active:scale-95 !px-1.5 sm:!px-2 cursor-pointer"
             onClick={() => addToCart(product.id)}
           >
             <ShoppingCart className="!size-3.5 shrink-0" />
@@ -388,8 +391,9 @@ export function ProductGrid({
 }
 
 export function WholesalerCard({ wholesaler, premium = false }: { wholesaler: Wholesaler; premium?: boolean }) {
-  const { relationships } = useStore();
+  const { relationships, products } = useStore();
   const isConnected = relationships[wholesaler.id] === "Connected";
+  const productCount = products.filter((product) => product.wholesalerId === wholesaler.id).length;
   if (!premium)
     return (
       <article className="group flex h-full flex-col border bg-card p-5 interactive rounded-2xl">
@@ -399,31 +403,30 @@ export function WholesalerCard({ wholesaler, premium = false }: { wholesaler: Wh
           {wholesaler.verified && <Verified className="size-5 text-primary" />}
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
+          {wholesaler.rating > 0 && <span className="flex items-center gap-1">
             <Star className="size-3.5 fill-warning text-warning" />
             <b className="text-foreground">{wholesaler.rating}</b> retailer rating
-          </span>
-          <span className="flex items-center gap-1">
+          </span>}
+          {wholesaler.location && <span className="flex items-center gap-1">
             <LocationOn className="size-3.5" />
             {wholesaler.location}
-          </span>
+          </span>}
         </div>
-        <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{wholesaler.about}</p>
-        <div className="mt-5 grid grid-cols-2 gap-2 border-y py-4 text-xs">
-          <span className="flex items-center gap-2">
+        {wholesaler.about && <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{wholesaler.about}</p>}
+        {(productCount > 0 || wholesaler.delivery) && <div className="mt-5 grid grid-cols-2 gap-2 border-y py-4 text-xs">
+          {productCount > 0 && <span className="flex items-center gap-2">
             <Inventory2 className="size-4 text-primary" />
             <span>
-              <b className="block text-foreground">{wholesaler.products}+</b>Products
+              <b className="block text-foreground">{productCount}</b>Products
             </span>
-          </span>
-          <span className="flex items-center gap-2">
+          </span>}
+          {wholesaler.delivery && <span className="flex items-center gap-2">
             <LocalShipping className="size-4 text-primary" />
             <span>
-              <b className="block text-foreground">Reliable</b>
               {wholesaler.delivery}
             </span>
-          </span>
-        </div>
+          </span>}
+        </div>}
         <div className="mt-auto flex gap-2 pt-5">
           <Button asChild variant="outline" className="flex-1 rounded-xl">
             <Link to="/wholesalers/$wholesalerId" params={{ wholesalerId: wholesaler.id }}>
@@ -454,34 +457,33 @@ export function WholesalerCard({ wholesaler, premium = false }: { wholesaler: Wh
             {wholesaler.name}
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-1 font-bold text-warning-foreground">
+            {wholesaler.rating > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-1 font-bold text-warning-foreground">
               <Star className="size-3 fill-warning text-warning" />
               {wholesaler.rating}
-            </span>
-            <span className="flex items-center gap-1 text-muted-foreground">
+            </span>}
+            {wholesaler.location && <span className="flex items-center gap-1 text-muted-foreground">
               <LocationOn className="size-3.5" />
               {wholesaler.location}
-            </span>
+            </span>}
           </div>
         </div>
       </div>
-      <p className="mt-5 line-clamp-2 text-sm leading-6 text-foreground/75">{wholesaler.about}</p>
-      <div className="mt-5 grid grid-cols-2 rounded-xl bg-canvas p-3 text-xs">
-        <span className="flex items-center gap-2 border-r border-border pr-3">
+      {wholesaler.about && <p className="mt-5 line-clamp-2 text-sm leading-6 text-foreground/75">{wholesaler.about}</p>}
+      {(productCount > 0 || wholesaler.delivery) && <div className="mt-5 grid grid-cols-2 rounded-xl bg-canvas p-3 text-xs">
+        {productCount > 0 && <span className="flex items-center gap-2 border-r border-border pr-3">
           <Inventory2 className="size-4 text-primary" />
           <span>
-            <b className="block text-sm text-ink">{wholesaler.products}+</b>
+            <b className="block text-sm text-ink">{productCount}</b>
             <span className="text-muted-foreground">Products</span>
           </span>
-        </span>
-        <span className="flex items-center gap-2 pl-3">
+        </span>}
+        {wholesaler.delivery && <span className="flex items-center gap-2 pl-3">
           <LocalShipping className="size-4 text-primary" />
           <span>
-            <b className="block text-sm text-ink">Reliable</b>
             <span className="text-muted-foreground">{wholesaler.delivery}</span>
           </span>
-        </span>
-      </div>
+        </span>}
+      </div>}
       <div className="mt-auto flex items-center gap-2 pt-6">
         <Button asChild variant="outline" className="flex-1 rounded-xl border-primary/35 text-primary transition-colors hover:bg-primary hover:text-primary-foreground">
           <Link to="/wholesalers/$wholesalerId" params={{ wholesalerId: wholesaler.id }}>

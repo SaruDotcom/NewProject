@@ -10,6 +10,7 @@ const {
   Category,
   Product,
   Cart,
+  Coupon,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const AuthService = require('../src/modules/auth/auth.service');
@@ -80,6 +81,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       activeStoreTheme: 'DEFAULT',
       businessLogoUrl: 'https://example.test/logo.png',
       banners: [],
+      coupons: [],
     });
     expect(Object.keys(response.body.data.wholesaler).sort()).toEqual([
       '_id',
@@ -92,11 +94,139 @@ describe('Wholesaler referral-only retailer registration', () => {
       'categories',
       'categoryDetails',
       'city',
+      'coupons',
       'id',
       'logo',
       'wholesalerId',
     ]);
     expect(JSON.stringify(response.body)).not.toMatch(/Private Owner Name|private-owner@example\.test|9876543210|gstin|kyc/i);
+  });
+
+  test('public referral storefront includes only active public coupon fields and remains browseable when sign-ups pause', async () => {
+    const coupon = await Coupon.create({
+      wholesalerId: wholesaler._id,
+      code: 'WELCOME10',
+      title: 'Welcome savings',
+      description: 'Save on your first restock',
+      discountType: 'PERCENTAGE',
+      discountValue: 10,
+      minOrderValue: 500,
+      maxDiscountCap: 250,
+      applicableFor: 'RETAILER_ORDER',
+    });
+    await Coupon.create({
+      wholesalerId: wholesaler._id,
+      code: 'OLDDEAL',
+      title: 'Expired offer',
+      discountValue: 15,
+      validUntil: new Date(Date.now() - 60_000),
+    });
+    await Coupon.create({
+      wholesalerId: null,
+      code: 'PLATFORM10',
+      title: 'Platform offer',
+      discountValue: 10,
+      applicableFor: 'ALL',
+    });
+
+    wholesalerProfile.retailerSignupsEnabled = false;
+    await wholesalerProfile.save();
+
+    const referralResponse = await request(app).get(`/api/v1/referral/${referralCode}`);
+    const productsResponse = await request(app).get(`/api/v1/referral/${referralCode}/products`);
+    const registrationResponse = await request(app).post('/api/v1/auth/register').send({
+      name: 'New Retailer',
+      email: 'new-retailer@example.test',
+      phone: '9123456789',
+      password: 'Password@123',
+      referralCode,
+    });
+
+    expect(referralResponse.status).toBe(200);
+    expect(productsResponse.status).toBe(200);
+    expect(referralResponse.body.data.wholesaler.coupons.map((entry) => entry.code).sort()).toEqual([
+      'PLATFORM10',
+      'WELCOME10',
+    ]);
+    expect(referralResponse.body.data.wholesaler.coupons).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        _id: String(coupon._id),
+        code: 'WELCOME10',
+        title: 'Welcome savings',
+        discountValue: 10,
+        wholesalerId: String(wholesaler._id),
+        isAvailable: true,
+      }),
+      expect.objectContaining({
+        code: 'PLATFORM10',
+        wholesalerId: null,
+      }),
+    ]));
+    expect(JSON.stringify(referralResponse.body)).not.toMatch(/usageCount|perRetailerUsage|OLDDEAL/);
+    expect(registrationResponse.status).toBe(403);
+  });
+
+  test('retailer checkout APIs reject unauthenticated visitors', async () => {
+    const checkoutPayload = {
+      wholesalerId: String(wholesaler._id),
+      items: [],
+      shippingAddress: {
+        addressLine1: '1 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+      },
+    };
+    const response = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .send(checkoutPayload);
+    const quoteResponse = await request(app)
+      .post('/api/v1/retailer/checkout/quote')
+      .send(checkoutPayload);
+
+    expect(response.status).toBe(401);
+    expect(quoteResponse.status).toBe(401);
+  });
+
+  test('checkout rejects a wholesaler different from the retailer relationship', async () => {
+    const retailer = await User.create({
+      name: 'Connected Retailer',
+      email: 'connected-retailer@example.test',
+      phone: '9123456780',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.RETAILER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerRetailerRelationship.create({
+      wholesalerId: wholesaler._id,
+      retailerId: retailer._id,
+      referralCode,
+      status: 'ACTIVE',
+    });
+    const token = AuthService.generateTokens(retailer).accessToken;
+    const checkoutPayload = {
+      wholesalerId: String(new User()._id),
+      items: [{ productId: String(new Product()._id), quantity: 1 }],
+      idempotencyKey: 'wrong-wholesaler-checkout',
+      shippingAddress: {
+        addressLine1: '1 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+      },
+    };
+
+    const quoteResponse = await request(app)
+      .post('/api/v1/retailer/checkout/quote')
+      .set('Authorization', `Bearer ${token}`)
+      .send(checkoutPayload);
+    const orderResponse = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${token}`)
+      .send(checkoutPayload);
+
+    expect(quoteResponse.status).toBe(403);
+    expect(orderResponse.status).toBe(403);
+    expect(quoteResponse.body.code).toBe('WHOLESALER_MISMATCH');
+    expect(orderResponse.body.code).toBe('WHOLESALER_MISMATCH');
   });
 
   test('Super Admin can retrieve a wholesaler production referral code', async () => {
@@ -641,12 +771,12 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(createdEmptyLoginId.loginId).toMatch(/^RET[A-Z0-9_-]{4,20}$/);
   });
 
-  test('invalid, paused, unapproved, or suspended wholesaler referrals cannot be looked up', async () => {
+  test('paused referrals remain browseable while unapproved or suspended referrals cannot be looked up', async () => {
     const route = () => request(app).get(`/api/v1/referral/${referralCode}`);
 
     wholesalerProfile.retailerSignupsEnabled = false;
     await wholesalerProfile.save();
-    expect((await route()).status).toBe(403);
+    expect((await route()).status).toBe(200);
 
     wholesalerProfile.retailerSignupsEnabled = true;
     wholesalerProfile.kycStatus = KYC_STATUS.DRAFT;
@@ -696,7 +826,7 @@ describe('Wholesaler referral-only retailer registration', () => {
       .send({ enabled: false });
     expect(paused.status).toBe(200);
     expect(paused.body.data.signupsEnabled).toBe(false);
-    expect((await request(app).get(`/api/v1/referral/${regenerated.body.data.code}`)).status).toBe(403);
+    expect((await request(app).get(`/api/v1/referral/${regenerated.body.data.code}`)).status).toBe(200);
 
     const resumed = await request(app)
       .patch('/api/v1/wholesaler/referral')

@@ -23,6 +23,7 @@ import {
 } from "@/lib/referral-attribution";
 
 const GUEST_CART_KEY = "nexora_retailer_guest_cart";
+const GUEST_WISHLIST_KEY = "nexora_retailer_guest_wishlist";
 
 function readLocalCart(): CartLine[] {
   if (typeof window === "undefined") return [];
@@ -45,6 +46,29 @@ function saveLocalCart(cart: CartLine[]) {
     localStorage.setItem(GUEST_CART_KEY, JSON.stringify(cart));
   } catch {
     // ignore
+  }
+}
+
+function readLocalWishlist(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(GUEST_WISHLIST_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((item): item is string => typeof item === "string" && item.length > 0))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalWishlist(wishlist: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(GUEST_WISHLIST_KEY, JSON.stringify(wishlist));
+  } catch (error) {
+    console.warn("Could not save guest wishlist", error);
   }
 }
 
@@ -107,6 +131,21 @@ export type BannerSlide = {
   order?: number;
 };
 
+export type StoreCoupon = {
+  _id?: string;
+  code: string;
+  title: string;
+  description?: string;
+  discountType: string;
+  discountValue: number;
+  minOrderValue?: number;
+  maxDiscountCap?: number;
+  validFrom?: string;
+  validUntil?: string | null;
+  wholesalerId?: string | null;
+  isAvailable?: boolean;
+};
+
 export type Wholesaler = {
   id: string;
   name: string;
@@ -118,6 +157,7 @@ export type Wholesaler = {
   products: number;
   categories: string[];
   delivery: string;
+  minOrderValue?: number;
   relationship: Relationship;
   about: string;
   ownerName?: string;
@@ -129,6 +169,7 @@ export type Wholesaler = {
   unavailableMessage?: string;
   activeStoreTheme?: "DEFAULT" | "ROYAL" | "FESTIVE" | "MINIMAL";
   banners?: BannerSlide[];
+  coupons?: StoreCoupon[];
 };
 
 export type OrderItem = {
@@ -250,7 +291,7 @@ export type Store = {
   removeCart: (id: string) => void;
   toggleWishlist: (id: string) => void;
   saveProfile: (profile: RetailerProfile) => Promise<void>;
-  placeOrder: (paymentMethod?: string, couponCode?: string, expectedQuoteHash?: string) => Promise<boolean>;
+  placeOrder: (paymentMethod?: string, couponCode?: string, expectedQuoteHash?: string, wholesalerId?: string, idempotencyKey?: string) => Promise<boolean>;
   markRead: () => void;
   addRecentlyViewed: (id: string) => void;
   refreshOrders: () => Promise<void>;
@@ -317,7 +358,7 @@ function cleanImageUrl(img: any): string {
 }
 
 export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string, string>): Product {
-  let categoryName = "Grocery & Staples";
+  let categoryName = "Uncategorized";
   const categoryObject =
     (typeof item.category === "object" && item.category !== null ? item.category : null) ||
     (typeof item.categoryId === "object" && item.categoryId !== null ? item.categoryId : null);
@@ -337,7 +378,7 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     } else if (categoryMap && categoryMap.has(rawCat.toLowerCase())) {
       categoryName = categoryMap.get(rawCat.toLowerCase())!;
     } else if (/^[0-9a-fA-F]{24}$/.test(rawCat)) {
-      categoryName = "General";
+      categoryName = "Uncategorized";
     } else {
       categoryName = rawCat;
     }
@@ -351,7 +392,7 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
   const product: Product = {
     id: item._id || item.id || `product-${index}`,
     name: item.name || item.title || "Untitled product",
-    brand: item.brand || "Verified brand",
+    brand: item.brand || "",
     category: categoryName,
     wholesalerId: typeof item.wholesalerId === "object" && item.wholesalerId !== null
       ? String(item.wholesalerId._id || item.wholesalerId.id || "")
@@ -359,15 +400,14 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     price: Number(item.wholesalePrice ?? item.price ?? item.retailerPrice ?? item.mrp ?? 0),
     mrp: Number(item.mrp ?? item.wholesalePrice ?? item.price ?? 0),
     moq: Number(item.moq ?? item.minOrderQty ?? 1),
-    unit: item.unit || 'piece',
+    unit: item.unit,
     stock: Number(item.stock ?? item.quantity ?? 0),
-    rating: 4.7,
+    rating: 0,
     image: index % 6,
-    description: item.description || "Trade-ready product available from your connected wholesaler.",
+    description: item.description || "",
     specs: {
-      Unit: item.unit || "piece",
-      Dispatch: "Within 24 hours",
-      MOQ: String(item.moq ?? item.minOrderQty ?? 1),
+      ...(item.unit ? { Unit: item.unit } : {}),
+      ...(item.moq ?? item.minOrderQty ? { MOQ: String(item.moq ?? item.minOrderQty) } : {}),
     },
   };
 
@@ -443,14 +483,15 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
     name: businessName,
     initials: toInitials(businessName || "WH"),
     logo: item.businessLogoUrl || item.logo || "",
-    verified: true,
-    rating: Number(item.rating || 4.8),
-    location: item.address?.["city"] || item.address?.["state"] || (item as any).city || "India",
+    verified: item.verified === true || item.isVerified === true || item.verificationStatus === "VERIFIED",
+    rating: Number(item.rating ?? 0),
+    location: item.address?.["city"] || item.address?.["state"] || item.city || "",
     products: 0,
-    categories: Array.isArray((item as any).categories) ? (item as any).categories : [],
-    delivery: "1-2 day dispatch",
+    categories: Array.isArray(item.categories) ? item.categories : [],
+    delivery: item.delivery || "",
+    ...(typeof item.minOrderValue === "number" ? { minOrderValue: item.minOrderValue } : {}),
     relationship: "Connected",
-    about: item.description || "Verified wholesaler connected to your retail account.",
+    about: item.description || "",
     description: item.description || "",
     businessName,
     businessTagline: item.businessTagline || "",
@@ -459,6 +500,26 @@ function mapWholesaler(item: ApiWholesaler | null | undefined): Wholesaler | nul
     unavailableMessage: item.unavailableMessage || "",
     activeStoreTheme: item.activeStoreTheme || "DEFAULT",
     banners,
+    coupons: Array.isArray(item.coupons)
+      ? item.coupons.map((coupon) => ({
+          _id: String(coupon._id || coupon.id || ""),
+          code: String(coupon.code || ""),
+          title: String(coupon.title || ""),
+          description: String(coupon.description || ""),
+          discountType: String(coupon.discountType || "PERCENTAGE"),
+          discountValue: Number(coupon.discountValue || 0),
+          minOrderValue: Number(coupon.minOrderValue || 0),
+          maxDiscountCap: Number(coupon.maxDiscountCap || 0),
+          ...(coupon.validFrom ? { validFrom: coupon.validFrom } : {}),
+          ...(coupon.validUntil ? { validUntil: coupon.validUntil } : {}),
+          wholesalerId: coupon.wholesalerId
+            ? String(typeof coupon.wholesalerId === "object"
+              ? coupon.wholesalerId._id || coupon.wholesalerId.id || ""
+              : coupon.wholesalerId)
+            : null,
+          isAvailable: coupon.isAvailable !== false,
+        }))
+      : [],
   };
 
   if (item.name) result.ownerName = item.name;
@@ -679,7 +740,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const guestCartSyncRef = useRef<Promise<{ guestCart: CartLine[]; unsyncedGuestCart: CartLine[] }> | null>(null);
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   const uniqueCartCount = cart.length;
-  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>(() => readLocalWishlist());
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
   const [dashboard, setDashboard] = useState<Record<string, unknown> | null>(null);
@@ -702,6 +763,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
     }
     let requestedReferralWholesaler: ApiWholesaler | null = null;
+    let requestedReferralProducts: ApiProduct[] = [];
     if (token && activeReferral) {
       try {
         const response = await api.getReferral(activeReferral.code);
@@ -709,6 +771,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!requestedReferralWholesaler?.businessName?.trim()) {
           throw new Error("This invitation link is invalid or has no business name. Please ask your wholesaler for an updated link.");
         }
+        const productsResponse = await api.getReferralProducts(activeReferral.code, { limit: 200 });
+        requestedReferralProducts = Array.isArray(productsResponse?.data)
+          ? productsResponse.data
+          : Array.isArray((productsResponse as any)?.data?.products)
+            ? (productsResponse as any).data.products
+            : [];
       } catch (error) {
         setProducts([]);
         setCategories([]);
@@ -734,6 +802,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const localCart = readLocalCart();
       setCart(localCart);
       cartRef.current = localCart;
+      const localWishlist = readLocalWishlist();
+      setWishlist(localWishlist);
 
       // Check if user came with a referral attribution
       if (urlAttribution) saveReferralAttribution(urlAttribution);
@@ -849,44 +919,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...(staleTime !== undefined && { staleTime }),
         });
 
-      if (requestedReferralWholesaler && activeReferral) {
-        const currentWholesalerRes = await fetchUserData(
-          "wholesaler",
-          () => api.getConnectedWholesaler(),
-          60_000,
-        );
-        const currentWholesaler = mapWholesaler(
-          (currentWholesalerRes as { data?: ApiWholesaler } | null)?.data ?? null,
-        );
-        const requestedWholesalerId = String(
-          requestedReferralWholesaler.id || requestedReferralWholesaler._id || "",
-        );
-        if (requestedWholesalerId && requestedWholesalerId !== String(currentWholesaler?.id || "")) {
-          try {
-            await api.switchWholesalerByReferral(activeReferral.code);
-          } catch (error) {
-            setProducts([]);
-            setCategories([]);
-            setLinkedWholesaler(null);
-            setRelationships({});
-            setStorefrontReferralCode("");
-            setStorefrontError(
-              error instanceof Error
-                ? error.message
-                : "Could not connect your account to the invited wholesaler.",
-            );
-            if (shouldShowLoading) setIsLoading(false);
-            return;
-          }
-          for (const resource of ["wholesaler", "products", "categories", "cart", "dashboard"]) {
-            queryClient.removeQueries({
-              queryKey: retailerQueryKeys.resource(userId, resource),
-            });
-          }
-        }
-      }
-
-      // Sync guest cart items only after the invite has switched the active supplier.
+      // Sync guest cart items only when the authenticated account can access their catalog.
       let guestCartSync = guestCartSyncRef.current;
       if (!guestCartSync) {
         guestCartSync = (async () => {
@@ -907,6 +940,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const { guestCart, unsyncedGuestCart } = await guestCartSync;
       if (guestCartSyncRef.current === guestCartSync) guestCartSyncRef.current = null;
+      const guestWishlist = readLocalWishlist();
+      const unsyncedGuestWishlist: string[] = [];
+      for (const productId of guestWishlist) {
+        try {
+          await api.addToWishlist(productId);
+        } catch (error) {
+          unsyncedGuestWishlist.push(productId);
+          console.warn("Could not sync a guest wishlist item; preserving it locally.", error);
+        }
+      }
+      saveLocalWishlist(unsyncedGuestWishlist);
 
       const pathname = window.location.pathname.replace(/\/+$/, "") || "/";
       const loadDashboard = pathname === "/dashboard";
@@ -945,10 +989,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ]);
 
       const connectedWholesalerData = mapWholesaler((wholesalerRes as { data?: ApiWholesaler } | null)?.data ?? null);
+      const referralWholesalerData = mapWholesaler(requestedReferralWholesaler);
+      const storefrontWholesalerData = referralWholesalerData || connectedWholesalerData;
       if (loadDashboard) {
         setDashboard((dashboardRes as { data?: Record<string, unknown> } | null)?.data ?? null);
       }
-      setLinkedWholesaler(connectedWholesalerData);
+      setLinkedWholesaler(storefrontWholesalerData);
       setStorefrontReferralCode(activeReferral?.code || "");
       if (connectedWholesalerData) {
         setRelationships({ [connectedWholesalerData.id]: "Connected" });
@@ -956,9 +1002,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setRelationships({});
       }
 
-      const nextCategories = Array.isArray((categoriesRes as { data?: ApiCategory[] })?.data)
-        ? ((categoriesRes as { data?: ApiCategory[] }).data || []).map(mapCategory)
-        : [];
+      const referralCategoryDetails = requestedReferralWholesaler?.categoryDetails;
+      const nextCategories = activeReferral && Array.isArray(referralCategoryDetails)
+        ? referralCategoryDetails.map(mapCategory)
+        : Array.isArray((categoriesRes as { data?: ApiCategory[] })?.data)
+          ? ((categoriesRes as { data?: ApiCategory[] }).data || []).map(mapCategory)
+          : [];
       if (loadCategories) setCategories(nextCategories);
 
       const categoryMap = new Map<string, string>();
@@ -969,21 +1018,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         categoryMap.set(c.name.toLowerCase(), c.name);
       });
 
-      const nextProducts = Array.isArray((productsRes as { data?: ApiProduct[] })?.data)
-        ? ((productsRes as { data?: ApiProduct[] }).data || []).map((item, index) => {
+      const sourceProducts = activeReferral
+        ? requestedReferralProducts
+        : Array.isArray((productsRes as { data?: ApiProduct[] })?.data)
+          ? (productsRes as { data?: ApiProduct[] }).data || []
+          : [];
+      const storefrontWholesalerId = String(referralWholesalerData?.id || connectedWholesalerData?.id || "");
+      const nextProducts = sourceProducts
+        .filter((item) => {
+          const rawWholesalerId = item.wholesalerId;
+          const productWholesalerId = typeof rawWholesalerId === "object" && rawWholesalerId !== null
+            ? rawWholesalerId._id || rawWholesalerId.id
+            : rawWholesalerId;
+          return !storefrontWholesalerId || !productWholesalerId || String(productWholesalerId) === storefrontWholesalerId;
+        })
+        .map((item, index) => {
             const product = mapProduct(item, index, categoryMap);
             return {
               ...product,
-              wholesalerId: product.wholesalerId === "connected-wholesaler" ? connectedWholesalerData?.id || "" : product.wholesalerId,
+              wholesalerId: product.wholesalerId === "connected-wholesaler" ? storefrontWholesalerId : product.wholesalerId,
             };
           })
-        : [];
       if (loadProducts) setProducts(nextProducts);
 
       if (loadCart) {
         if (cartRes) {
           const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } }).data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
-          const mappedCart = cartItems.map((item) => ({ productId: String(item.productId), quantity: Number(item.quantity || 0), color: item.color }));
+          const mappedCart = cartItems.map((item) => ({
+            productId: String(item.productId),
+            quantity: Number(item.quantity || 0),
+            ...(item.color ? { color: item.color } : {}),
+          }));
           for (const line of unsyncedGuestCart) {
             const existing = mappedCart.find(
               (item) => item.productId === line.productId && String(item.color || "") === String(line.color || ""),
@@ -1010,7 +1075,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       if (loadWishlist) {
         const wishlistItems = ((wishlistRes as { data?: Array<{ _id?: string; productId?: string }> } | null)?.data || []) as Array<{ _id?: string; productId?: string }>;
-        setWishlist(wishlistItems.map((item) => String(item.productId || item._id || "")));
+        const serverWishlist = wishlistItems.map((item) => String(item.productId || item._id || ""));
+        const mergedWishlist = [...new Set([...serverWishlist, ...unsyncedGuestWishlist])];
+        setWishlist(mergedWishlist);
+        saveLocalWishlist(unsyncedGuestWishlist);
       }
 
       if (loadOrders) {
@@ -1344,7 +1412,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveLocalCart(nextCart);
       const updatedTotalCount = nextCart.reduce((sum, item) => sum + item.quantity, 0);
       setCart(nextCart);
-      setAddedToCartProduct({ product, quantity, color });
+      setAddedToCartProduct({ product, quantity, ...(color ? { color } : {}) });
       toast.success(
         `${product.name}${color ? ` (${color})` : ''} added to cart! Cart (${updatedTotalCount})`,
         {
@@ -1353,7 +1421,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       );
     };
 
-    if (token) {
+    if (token && relationships[product.wholesalerId] === "Connected") {
       try {
         await api.addToCart(id, quantity, color);
         invalidateUserData("cart");
@@ -1370,8 +1438,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } else {
       applyCartUpdateAndToast();
+      if (token) {
+        toast.info("This item is saved in this browser. Checkout requires an active connection with its wholesaler.");
+      }
     }
-  }, [invalidateUserData, products]);
+  }, [invalidateUserData, products, relationships]);
 
   const setQuantity = useCallback(async (id: string, q: number) => {
     const product = products.find((item) => item.id === id);
@@ -1420,20 +1491,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const toggleWishlist = useCallback(async (id: string) => {
     const isWished = wishlist.includes(id);
+    const product = products.find((item) => item.id === id);
+    const canSyncWithAccount = Boolean(
+      getAuthToken() &&
+      product &&
+      relationships[product.wholesalerId] === "Connected",
+    );
+    if (!canSyncWithAccount) {
+      const nextWishlist = isWished
+        ? wishlist.filter((item) => item !== id)
+        : [...wishlist, id];
+      setWishlist(nextWishlist);
+      saveLocalWishlist(nextWishlist);
+      return;
+    }
     try {
       if (isWished) {
         await api.removeFromWishlist(id);
         invalidateUserData("wishlist");
         setWishlist((current) => current.filter((item) => item !== id));
+        saveLocalWishlist(readLocalWishlist().filter((productId) => productId !== id));
       } else {
         await api.addToWishlist(id);
         invalidateUserData("wishlist");
-        setWishlist((current) => [...current, id]);
+        setWishlist((current) => [...new Set([...current, id])]);
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to update wishlist");
     }
-  }, [invalidateUserData, wishlist]);
+  }, [invalidateUserData, products, relationships, wishlist]);
 
   const saveProfile = useCallback(async (profileInput: RetailerProfile) => {
     setProfile(profileInput);
@@ -1458,7 +1544,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast.success("Retailer profile saved");
   }, [invalidateUserData, syncSession]);
 
-  const placeOrder = useCallback(async (paymentMethod = "UPI", couponCode?: string, expectedQuoteHash?: string) => {
+  const placeOrder = useCallback(async (paymentMethod = "UPI", couponCode?: string, expectedQuoteHash?: string, wholesalerId?: string, idempotencyKey?: string) => {
     if (!cart.length) {
       throw new Error("Your cart is empty");
     }
@@ -1478,10 +1564,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       await api.checkout({
         items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        ...(wholesalerId ? { wholesalerId } : {}),
         shippingAddress,
         paymentMethod,
         ...(couponCode ? { couponCode } : {}),
         ...(expectedQuoteHash ? { expectedQuoteHash } : {}),
+        ...(idempotencyKey ? { idempotencyKey } : {}),
       });
 
       setCart([]);

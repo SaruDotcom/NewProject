@@ -195,7 +195,7 @@ export default function SecurityPage() {
                 {profile.kycStatus === 'APPROVED' ? (
                   <span>Your account is active and verified. Catalog and product management are unlocked.</span>
                 ) : profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW' ? (
-                  <span className="text-amber-800">Your account is active. KYC verification is currently under review.</span>
+                  <span className="text-amber-800">Complete Your KYC. Please complete your KYC verification to activate your business management features.</span>
                 ) : profile.kycStatus === 'REJECTED' || profile.kycStatus === 'RESUBMISSION_REQUIRED' ? (
                   <span className="text-red-700">Your account is active. KYC requires correction and resubmission.</span>
                 ) : (

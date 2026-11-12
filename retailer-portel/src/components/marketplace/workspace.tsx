@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { type RetailerProfile } from "@/state/store";
 import { useStore, getApiOrderItems, getCategoryHierarchy, mapOrder } from "@/state/store";
-import { ApiError, api } from "@/api/api";
+import { ApiError, api, setAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { retailerQueryKeys } from "@/lib/query-client";
 import {
@@ -1415,7 +1415,19 @@ export function CartPage() {
           <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1.85fr)_minmax(320px,1fr)] lg:gap-10">
             <section className="space-y-8">
               {Object.entries(groups).map(([wholesalerId, lines]) => {
-                const wholesaler = linkedWholesaler || { id: wholesalerId, initials: "WS", name: "Connected wholesaler", verified: true, delivery: "Direct fulfillment" };
+                const wholesaler = linkedWholesaler || {
+                  id: wholesalerId,
+                  initials: "WS",
+                  name: "Connected wholesaler",
+                  verified: false,
+                  rating: 0,
+                  location: "",
+                  products: 0,
+                  categories: [],
+                  delivery: "",
+                  relationship: "Connected" as const,
+                  about: "",
+                };
                 const groupTotal = lines.reduce((sum, line) => {
                   const product = products.find((item) => item.id === line.productId);
                   return sum + (product ? product.price * line.quantity : 0);
@@ -1516,7 +1528,7 @@ export function CartPage() {
 }
 
 export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string }) {
-  const { currentUser, cart, retailerProfile, placeOrder, products, refreshData, linkedWholesaler } = useStore();
+  const { currentUser, cart, retailerProfile, products, refreshData, linkedWholesaler, relationships } = useStore();
   const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [placed, setPlaced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1540,6 +1552,9 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     if (cartProduct?.wholesalerId) return String(cartProduct.wholesalerId);
     return "";
   }, [linkedWholesaler, products, cart]);
+  const hasActiveWholesalerConnection = Boolean(
+    currentWholesalerId && relationships[currentWholesalerId] === "Connected",
+  );
 
   const creditQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
@@ -1635,7 +1650,15 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   }, [paymentMode, paymentOptions?.qrPaymentsEnabled, Boolean(activeQrImage)]);
 
   // Available Coupons & Offers State
-  const [couponCodeInput, setCouponCodeInput] = useState(initialCoupon);
+  const [couponCodeInput, setCouponCodeInput] = useState(() => {
+    if (initialCoupon) return initialCoupon;
+    try {
+      return sessionStorage.getItem("retailer-checkout-coupon") || "";
+    } catch (error) {
+      console.warn("Could not restore the saved checkout coupon.", error);
+      return "";
+    }
+  });
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -1644,7 +1667,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   const initialCouponAttempted = useRef("");
 
   useEffect(() => {
-    setCouponCodeInput(initialCoupon);
+    if (initialCoupon) setCouponCodeInput(initialCoupon);
   }, [initialCoupon]);
 
   const couponsQuery = useQuery({
@@ -1677,6 +1700,11 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
         setAppliedCoupon(res.data.coupon);
         setDiscountAmount(res.data.discountAmount);
         setCouponCodeInput(res.data.coupon.code);
+        try {
+          sessionStorage.setItem("retailer-checkout-coupon", res.data.coupon.code);
+        } catch (error) {
+          console.warn("Could not persist the applied checkout coupon.", error);
+        }
         toast.success(`Coupon '${res.data.coupon.code}' applied! Saved ${money(res.data.discountAmount)}`);
       }
     } catch (err: any) {
@@ -1699,6 +1727,11 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     setDiscountAmount(0);
     setCouponCodeInput("");
     setCouponError(null);
+    try {
+      sessionStorage.removeItem("retailer-checkout-coupon");
+    } catch (error) {
+      console.warn("Could not clear the saved checkout coupon.", error);
+    }
     if (prevCode) {
       toast.info(`Coupon '${prevCode}' removed`);
     }
@@ -1750,12 +1783,14 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     queryKey: retailerQueryKeys.resource(
       currentUser?.id || "unknown",
       "checkout-quote",
+      currentWholesalerId,
       checkoutItems,
       appliedCoupon?.code || "",
       paymentMode
     ),
     queryFn: async () => (await api.quoteCheckout({
       items: checkoutItems,
+      ...(currentWholesalerId ? { wholesalerId: currentWholesalerId } : {}),
       shippingAddress: checkoutShippingAddress,
       paymentMethod: paymentMode,
       couponCode: appliedCoupon?.code || undefined,
@@ -1822,6 +1857,10 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   };
 
   const handlePlaceOrder = async () => {
+    if (!hasActiveWholesalerConnection) {
+      toast.error("Your account is not connected to this wholesaler. Your cart is preserved; contact the wholesaler to connect before ordering.");
+      return;
+    }
     if (!agreedToTerms) {
       toast.error("Please agree to the Wholesaler Trade Terms & Privacy Policy.");
       return;
@@ -1837,18 +1876,28 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     setSubmitting(true);
     try {
       if (paymentMode === "CREDIT") {
-        await placeOrder("CREDIT", appliedCoupon?.code, quote?.quoteHash);
+        await api.checkout({
+          items: checkoutItems,
+          wholesalerId: currentWholesalerId,
+          shippingAddress: checkoutShippingAddress,
+          paymentMethod: "CREDIT",
+          couponCode: appliedCoupon?.code,
+          ...(quote?.quoteHash ? { expectedQuoteHash: quote.quoteHash } : {}),
+          idempotencyKey: getCheckoutIdempotencyKey(),
+        });
         await refreshData(true);
+        clearCheckoutIdempotencyKey();
         setPlaced(true);
         toast.success("Credit order placed successfully.");
       } else {
         const idempotencyKey = getCheckoutIdempotencyKey();
         const checkoutResponse = await api.checkout({
           items: checkoutItems,
+          wholesalerId: currentWholesalerId,
           shippingAddress: checkoutShippingAddress,
           paymentMethod: paymentMode,
           couponCode: appliedCoupon?.code,
-          expectedQuoteHash: quote?.quoteHash,
+          ...(quote?.quoteHash ? { expectedQuoteHash: quote.quoteHash } : {}),
           idempotencyKey,
         });
         await refreshData(true);
@@ -2043,6 +2092,11 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     <main className="shell py-10">
       <h1 className="text-3xl font-extrabold text-ink">Checkout</h1>
       <p className="mt-1 text-sm text-muted-foreground">Select delivery address and payment method.</p>
+      {!hasActiveWholesalerConnection && (
+        <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Your account is not connected to this wholesaler. Your cart is preserved; contact the wholesaler to connect before ordering.
+        </p>
+      )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_380px]">
         <section className="space-y-6">
@@ -2564,7 +2618,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
               className="w-full rounded-xl font-extrabold"
               size="lg"
               onClick={handlePlaceOrder}
-              disabled={submitting || quoteQuery.isLoading || quoteQuery.isError || !quote || (paymentMode === "UPI" ? !hasDirectUpi : !isCreditEligible)}
+              disabled={!hasActiveWholesalerConnection || submitting || quoteQuery.isLoading || quoteQuery.isError || !quote || (paymentMode === "UPI" ? !hasDirectUpi : !isCreditEligible)}
             >
               {submitting ? "Processing..." : "Place Order"}
             </Button>
@@ -3187,7 +3241,7 @@ export function AuthPage({
   mode: "login" | "register" | "forgot";
   redirect?: string;
 }) {
-  const { login, isLoggedIn } = useStore();
+  const { login, isLoggedIn, refreshData } = useStore();
   const navigate = useNavigate();
 
   const queryRedirect = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("redirect") : null;
@@ -3395,7 +3449,7 @@ export function AuthPage({
           return;
         }
 
-        await api.register({
+        const registration = await api.register({
           name: name.trim(),
           businessName: businessName.trim(),
           businessType: businessType.trim(),
@@ -3424,15 +3478,21 @@ export function AuthPage({
           ...(referralAttribution?.firstLandingAt && { firstLandingAt: referralAttribution.firstLandingAt }),
         });
 
+        const token = registration?.data?.token || registration?.data?.accessToken;
+        if (!token) {
+          throw new Error("Registration completed without an authentication token. Please sign in to continue.");
+        }
+        setAuthToken(token);
+        await refreshData();
         markRetailerRegistrationComplete();
         try {
-          sessionStorage.setItem(AUTH_IDENTIFIER_KEY, email.trim());
+          sessionStorage.removeItem(AUTH_IDENTIFIER_KEY);
           sessionStorage.removeItem(AUTH_REDIRECT_KEY);
         } catch (error) {
-          console.warn("Could not save the retailer login identifier", error);
+          console.warn("Could not clear the saved authentication state", error);
         }
-        toast.success("Registration Successful! Please login to continue.");
-        navigate({ to: "/login", search: { redirect: targetRedirect } });
+        toast.success("Registration successful.");
+        navigate({ to: targetRedirect });
       }
     } catch (err: unknown) {
       const errorCode = getApiErrorCode(err);
@@ -4189,12 +4249,17 @@ export function CouponsPage() {
     },
     enabled: Boolean(currentUser?.id),
   });
-  const coupons = couponsQuery.data ?? [];
-  const activeCoupons = coupons.filter((coupon) => {
+  const accountCoupons = couponsQuery.data ?? [];
+  const publicCoupons = linkedWholesaler?.coupons ?? [];
+  const activeCoupons = [...publicCoupons, ...accountCoupons].filter((coupon, index, all) => {
     const couponWholesalerId = coupon.wholesalerId?._id || coupon.wholesalerId?.id || coupon.wholesalerId;
-    return coupon.isAvailable && linkedWholesaler?.id && String(couponWholesalerId) === String(linkedWholesaler.id);
+    const belongsToStore = !couponWholesalerId || (
+      linkedWholesaler?.id && String(couponWholesalerId) === String(linkedWholesaler.id)
+    );
+    return coupon.isAvailable !== false && belongsToStore &&
+      all.findIndex((candidate) => candidate.code === coupon.code) === index;
   });
-  const loading = couponsQuery.isLoading;
+  const loading = Boolean(currentUser?.id && couponsQuery.isLoading);
   const [search, setSearch] = useState("");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 

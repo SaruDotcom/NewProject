@@ -51,6 +51,7 @@ const addressObjectSchema = Joi.object({
 });
 
 const checkoutSchema = Joi.object({
+  wholesalerId: Joi.string().pattern(objectIdPattern).optional(),
   items: Joi.array()
     .items(
       Joi.object({

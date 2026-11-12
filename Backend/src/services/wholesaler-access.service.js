@@ -37,7 +37,7 @@ const assertWholesalerBusinessActivated = async (wholesalerId) => {
 
   if (kycStatus !== KYC_STATUS.APPROVED) {
     if (kycStatus === KYC_STATUS.SUBMITTED || kycStatus === 'UNDER_REVIEW' || kycStatus === 'PENDING') {
-      throw new ForbiddenError('Your KYC is under review', 'KYC_PENDING');
+      throw new ForbiddenError('Complete your KYC', 'KYC_PENDING');
     }
     if (kycStatus === KYC_STATUS.REJECTED || kycStatus === 'RESUBMISSION_REQUIRED' || kycStatus === 'RESUBMIT_REQUESTED') {
       throw new ForbiddenError(

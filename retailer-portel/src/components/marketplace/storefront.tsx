@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@/lib/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Inventory, CheckCircle, HeadsetMic, CurrencyRupee, Business, Handshake, ShoppingCart, Favorite, FlashOn } from "@mui/icons-material";
+import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Business, Handshake, ShoppingCart, Favorite, FlashOn } from "@mui/icons-material";
 import { ProductCard, ProductGrid, ProductVisual, SectionHeading, StatusBadge, WholesalerCard, WholesalerLogo, money } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -506,7 +506,7 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
             <ProductGrid
               products={shown.slice(0, visibleCount)}
               list={list}
-              className="grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-5"
+              className="grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-3 sm:gap-5"
             />
           ) : (
             <div className="border border-dashed bg-card p-10 text-center rounded-2xl">
@@ -555,6 +555,7 @@ export function ProductDetailPage({ productId }: { productId: string }) {
     staleTime: 30_000,
   });
   const product = catalogProduct ?? productQuery.data ?? undefined;
+  const productMoq = product?.moq;
   const w = linkedWholesaler;
   
   useEffect(() => {
@@ -565,8 +566,8 @@ export function ProductDetailPage({ productId }: { productId: string }) {
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [colorError, setColorError] = useState(false);
   useEffect(() => {
-    if (product) setQuantity(product.moq);
-  }, [product?.id, product?.moq]);
+    if (productMoq !== undefined) setQuantity(productMoq);
+  }, [productMoq]);
   useEffect(() => {
     setSelectedColor('');
     setColorError(false);
@@ -596,7 +597,9 @@ export function ProductDetailPage({ productId }: { productId: string }) {
       </main>
     );
     
-  const saving = Math.max(0, Math.round((1 - product.price / product.mrp) * 100));
+  const saving = product.mrp > product.price && product.mrp > 0
+    ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
+    : 0;
   const orderValue = product.price * quantity;
   const sizeChartRows = product.sizeChart?.measurements || [];
   const sizeChartColumns = [...new Set(sizeChartRows.flatMap((row) => Object.keys(row.measurements || {})))];
@@ -618,13 +621,14 @@ export function ProductDetailPage({ productId }: { productId: string }) {
   const selectedVariant = product.colorVariants?.find(
     (variant) => variant.color.toLowerCase() === selectedColor.toLowerCase()
   );
-  const galleryImages = useMemo(() => {
-    if (selectedVariant && selectedVariant.images && selectedVariant.images.length > 0) {
-      return selectedVariant.images;
-    }
-    const list = product.images && product.images.length > 0 ? product.images : (product.imageUrl ? [product.imageUrl] : []);
-    return list;
-  }, [selectedVariant, product.images, product.imageUrl]);
+  const galleryImages =
+    selectedVariant?.images?.length
+      ? selectedVariant.images
+      : product.images?.length
+        ? product.images
+        : product.imageUrl
+          ? [product.imageUrl]
+          : [];
 
   const activeSku = selectedVariant?.sku || product.specs?.SKU || product.specs?.sku || '';
 
@@ -672,10 +676,11 @@ export function ProductDetailPage({ productId }: { productId: string }) {
           {/* Header Info: Brand, Category, Title, Rating, Stock */}
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 px-2.5 py-0.5 text-xs font-black uppercase tracking-wider">
-                <Verified className="size-3.5 text-emerald-600" />
-                {product.brand}
-              </span>
+              {product.brand && (
+                <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-primary">
+                  {product.brand}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground font-medium">in {product.category}</span>
               <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-muted/60 text-foreground border border-border/60">
                 <span className={cn("size-2 rounded-full", product.stock > 10 ? "bg-emerald-600 animate-pulse" : product.stock > 0 ? "bg-amber-500" : "bg-rose-500")} />
@@ -688,12 +693,13 @@ export function ProductDetailPage({ productId }: { productId: string }) {
             </h1>
 
             <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1 font-bold text-ink">
-                <Star className="size-3.5 fill-warning text-warning" />
-                {product.rating}
-              </span>
-              <span>·</span>
-              <span>Verified Wholesaler Catalog</span>
+              {product.rating > 0 && (
+                <span className="flex items-center gap-1 font-bold text-ink">
+                  <Star className="size-3.5 fill-warning text-warning" />
+                  {product.rating}
+                </span>
+              )}
+              <span>{w.verified ? "Verified wholesaler catalog" : "Supplier catalog"}</span>
               {activeSku && (
                 <>
                   <span>·</span>
@@ -707,8 +713,14 @@ export function ProductDetailPage({ productId }: { productId: string }) {
           <div className="rounded-xl border border-border/70 bg-card p-4 shadow-2xs">
             <div className="flex flex-wrap items-baseline gap-3">
               <strong className="text-3xl font-black text-ink">{money(product.price)}</strong>
-              <span className="text-xs font-semibold text-muted-foreground">per unit</span>
-              <span className="text-sm text-muted-foreground line-through">MRP {money(product.mrp)}</span>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {product.unit ? `per ${product.unit}` : "listed price"}
+              </span>
+              {saving > 0 && (
+                <span className="text-sm text-muted-foreground line-through">
+                  MRP {money(product.mrp)}
+                </span>
+              )}
               {saving > 0 && (
                 <Badge className="bg-emerald-600 text-white font-extrabold text-xs px-2 py-0.5 shadow-2xs">
                   Save {saving}%
@@ -716,7 +728,7 @@ export function ProductDetailPage({ productId }: { productId: string }) {
               )}
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Wholesale trade price inclusive of applicable taxes. Issued by {w.businessName || w.name}.
+              Price listed by {w.businessName || w.name}.
             </p>
 
             {/* Wholesale Pricing Tiers - Compact horizontal strip */}
@@ -883,19 +895,19 @@ export function ProductDetailPage({ productId }: { productId: string }) {
               </button>
             </div>
 
-            {/* Row 3: Compact Key Trust Badges */}
+            {/* Order information */}
             <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-border/70 text-center text-xs">
               <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
                 <Inventory2 className="size-3.5 text-emerald-600" />
-                <span>MOQ: <b>{product.moq}</b></span>
+                <span>MOQ: <b>{product.moq} {product.unit || "units"}</b></span>
               </div>
               <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
-                <Schedule className="size-3.5 text-emerald-600" />
-                <span>Dispatch: <b>24 Hours</b></span>
+                <Store className="size-3.5 text-emerald-600" />
+                <span>Stock: <b>{product.stock}</b></span>
               </div>
               <div className="flex items-center justify-center gap-1.5 text-muted-foreground">
                 <VerifiedUser className="size-3.5 text-emerald-600" />
-                <span>Trade Assurance</span>
+                <span>{w.verified ? "Verified supplier" : "Supplier listed"}</span>
               </div>
             </div>
           </div>
@@ -910,11 +922,13 @@ export function ProductDetailPage({ productId }: { productId: string }) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 font-bold text-ink text-sm truncate">
                     <span>{w.businessName || w.name}</span>
-                    <Verified className="size-3.5 text-primary shrink-0" />
+                    {w.verified && <Verified className="size-3.5 shrink-0 text-primary" />}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {w.rating} ★ · {w.location} · {w.delivery}
-                  </p>
+                  {(w.rating > 0 || w.location || w.delivery) && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[w.rating > 0 ? `${w.rating} ★` : "", w.location, w.delivery].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                 </div>
               </div>
               <StatusBadge status="Connected" />
@@ -925,7 +939,8 @@ export function ProductDetailPage({ productId }: { productId: string }) {
       <section className="mt-14 grid gap-10 lg:grid-cols-[1fr_360px]">
         <div>
           <h2 className="section-title">Product information</h2>
-          <p className="mt-4 leading-7 text-muted-foreground">{product.description}</p>
+          {product.description && <p className="mt-4 leading-7 text-muted-foreground">{product.description}</p>}
+          {(Object.keys(product.specs).length > 0 || product.sizes?.length || product.colors?.length || product.categoryAttributes || product.additionalOptions?.length) && (
           <div className="mt-6 divide-y border bg-card rounded-xl overflow-hidden">
             {Object.entries(product.specs).map(([k, v]) => (
               <div key={k} className="grid grid-cols-2 gap-4 p-4 text-sm hover:bg-muted/30">
@@ -958,6 +973,7 @@ export function ProductDetailPage({ productId }: { productId: string }) {
               </div>
             ))}
           </div>
+          )}
           {sizeChartRows.length > 0 && sizeChartColumns.length > 0 && (
             <div className="mt-6 overflow-hidden rounded-xl border bg-card">
               <div className="border-b bg-muted/40 px-4 py-3">
@@ -987,25 +1003,33 @@ export function ProductDetailPage({ productId }: { productId: string }) {
             </div>
           )}
         </div>
-        <aside className="border bg-card p-6 rounded-2xl h-fit">
-          <h2 className="text-xl font-bold text-ink">Trade assurance</h2>
-          <div className="mt-5 space-y-5">
-            {[
-              [VerifiedUser, "Verified source", "Business credentials checked"],
-              [Inventory, "Quality ready", "Retail-ready packaging"],
-              [LocalShipping, "Reliable fulfilment", w.delivery],
-              [HeadsetMic, "Retailer support", "Order assistance available"],
-            ].map(([Icon, title, body]) => (
-              <div key={String(title)} className="flex gap-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-success/10 text-success">
-                  <Icon className="size-4" />
-                </span>
-                <div>
-                  <b className="text-sm">{String(title)}</b>
-                  <p className="mt-1 text-xs text-muted-foreground">{String(body)}</p>
-                </div>
+        <aside className="h-fit rounded-2xl border bg-card p-6">
+          <h2 className="text-xl font-bold text-ink">Supplier details</h2>
+          <div className="mt-5 space-y-4">
+            <div>
+              <span className="text-xs text-muted-foreground">Business</span>
+              <p className="mt-1 font-bold text-ink">{w.businessName || w.name}</p>
+            </div>
+            {w.location && (
+              <div>
+                <span className="text-xs text-muted-foreground">Location</span>
+                <p className="mt-1 font-semibold text-ink">{w.location}</p>
               </div>
-            ))}
+            )}
+            {w.rating > 0 && (
+              <div>
+                <span className="text-xs text-muted-foreground">Retailer rating</span>
+                <p className="mt-1 flex items-center gap-1 font-semibold text-ink">
+                  <Star className="size-4 fill-warning text-warning" /> {w.rating}
+                </p>
+              </div>
+            )}
+            {w.delivery && (
+              <div>
+                <span className="text-xs text-muted-foreground">Dispatch information</span>
+                <p className="mt-1 font-semibold text-ink">{w.delivery}</p>
+              </div>
+            )}
           </div>
         </aside>
       </section>
@@ -1178,23 +1202,22 @@ export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }
                     {w.name}
                   </h1>
                   {w.verified && (
-                    <Verified className="size-6 text-warning" title="Verified Trade Wholesaler" />
+                    <Verified className="size-6 text-warning" titleAccess="Verified Trade Wholesaler" />
                   )}
                 </div>
-                <p className="mt-2.5 flex flex-wrap items-center gap-4 text-sm text-primary-foreground/80">
-                  <span className="flex items-center gap-1">
+                {(w.location || w.rating > 0 || w.businessTagline) && (
+                  <p className="mt-2.5 flex flex-wrap items-center gap-4 text-sm text-primary-foreground/80">
+                  {w.location && <span className="flex items-center gap-1">
                     <LocationOn className="size-4 text-primary" />
                     {w.location}
-                  </span>
-                  <span className="flex items-center gap-1">
+                  </span>}
+                  {w.rating > 0 && <span className="flex items-center gap-1">
                     <Star className="size-4 fill-warning text-warning" />
-                    {w.rating} from 286 retailers
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Schedule className="size-4 text-primary-foreground/70" />
-                    Usually responds within 4 hours
-                  </span>
+                    {w.rating} retailer rating
+                  </span>}
+                  {w.businessTagline && <span>{w.businessTagline}</span>}
                 </p>
+                )}
               </div>
             </div>
 
@@ -1208,69 +1231,27 @@ export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }
             </div>
           </div>
 
-          {/* 4 Stat Cards in Header */}
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
             <div className="rounded-xl border border-primary-foreground/15 bg-primary-foreground/[0.06] backdrop-blur-xs p-4 transition-colors hover:bg-primary-foreground/[0.1]">
-              <strong className="block text-2xl font-black text-primary-foreground">{w.products}+</strong>
-              <span className="text-xs font-semibold text-primary-foreground/70">Products Available</span>
+              <strong className="block text-2xl font-black text-primary-foreground">{visibleProducts.length}</strong>
+              <span className="text-xs font-semibold text-primary-foreground/70">Catalog products</span>
             </div>
             <div className="rounded-xl border border-primary-foreground/15 bg-primary-foreground/[0.06] backdrop-blur-xs p-4 transition-colors hover:bg-primary-foreground/[0.1]">
-              <strong className="block text-2xl font-black text-primary-foreground">{w.rating}/5</strong>
-              <span className="text-xs font-semibold text-primary-foreground/70">Retailer Rating</span>
+              <strong className="block text-2xl font-black text-primary-foreground">{productCategories.length}</strong>
+              <span className="text-xs font-semibold text-primary-foreground/70">Product categories</span>
             </div>
-            <div className="rounded-xl border border-primary-foreground/15 bg-primary-foreground/[0.06] backdrop-blur-xs p-4 transition-colors hover:bg-primary-foreground/[0.1]">
-              <strong className="block text-2xl font-black text-primary-foreground">98%</strong>
-              <span className="text-xs font-semibold text-primary-foreground/70">On-time Dispatch</span>
-            </div>
-            <div className="rounded-xl border border-primary-foreground/15 bg-primary-foreground/[0.06] backdrop-blur-xs p-4 transition-colors hover:bg-primary-foreground/[0.1]">
-              <strong className="block text-2xl font-black text-primary-foreground">18 yrs</strong>
-              <span className="text-xs font-semibold text-primary-foreground/70">Trade Experience</span>
-            </div>
+            {w.minOrderValue != null && w.minOrderValue > 0 && (
+              <div className="rounded-xl border border-primary-foreground/15 bg-primary-foreground/[0.06] p-4 transition-colors hover:bg-primary-foreground/[0.1]">
+                <strong className="block text-2xl font-black text-primary-foreground">{money(w.minOrderValue)}</strong>
+                <span className="text-xs font-semibold text-primary-foreground/70">Minimum order</span>
+              </div>
+            )}
           </div>
         </div>
       </section>
 
       {/* Main Body */}
       <div className="shell py-10 sm:py-12">
-        {/* 3 Trust Badges */}
-        <section className="grid gap-5 border-b border-border/60 pb-10 md:grid-cols-3">
-          <div className="group flex items-start gap-3.5 rounded-xl border border-border/50 bg-card p-4 shadow-2xs transition-all duration-200 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-xs">
-            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-brand-soft text-primary transition-transform duration-200 group-hover:scale-105">
-              <VerifiedUser className="size-5" />
-            </span>
-            <div>
-              <b className="block font-bold text-ink">Verified trade partner</b>
-              <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                Business credentials and catalogue reviewed
-              </p>
-            </div>
-          </div>
-
-          <div className="group flex items-start gap-3.5 rounded-xl border border-border/50 bg-card p-4 shadow-2xs transition-all duration-200 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-xs">
-            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-brand-soft text-primary transition-transform duration-200 group-hover:scale-105">
-              <LocalShipping className="size-5" />
-            </span>
-            <div>
-              <b className="block font-bold text-ink">Delivery promise</b>
-              <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                {w.delivery}
-              </p>
-            </div>
-          </div>
-
-          <div className="group flex items-start gap-3.5 rounded-xl border border-border/50 bg-card p-4 shadow-2xs transition-all duration-200 hover:border-primary/30 hover:bg-primary/[0.02] hover:shadow-xs">
-            <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-brand-soft text-primary transition-transform duration-200 group-hover:scale-105">
-              <HeadsetMic className="size-5" />
-            </span>
-            <div>
-              <b className="block font-bold text-ink">Retailer support</b>
-              <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                Dedicated help for orders and claims
-              </p>
-            </div>
-          </div>
-        </section>
-
         {/* Content & Sidebar Grid */}
         <div className="mt-10 grid gap-10 lg:grid-cols-[1fr_320px]">
           {/* Main Wholesale Catalogue Column */}
@@ -1318,54 +1299,38 @@ export function WholesalerProfilePage({ wholesalerId }: { wholesalerId: string }
                 <Business className="size-5 text-primary" />
                 <h2 className="font-extrabold text-ink text-base">Business profile</h2>
               </div>
-              <p className="mt-3.5 text-xs leading-relaxed text-muted-foreground">
-                {w.about}
-              </p>
+              {w.about && <p className="mt-3.5 text-xs leading-relaxed text-muted-foreground">{w.about}</p>}
               <dl className="mt-5 divide-y border-t border-border/60 text-xs">
-                <div className="flex justify-between gap-4 py-3">
-                  <dt className="text-muted-foreground">Established</dt>
-                  <dd className="font-bold text-ink">2008</dd>
-                </div>
-                <div className="flex justify-between gap-4 py-3">
-                  <dt className="text-muted-foreground">Service area</dt>
-                  <dd className="text-right font-bold text-ink">North & West India</dd>
-                </div>
-                <div className="flex justify-between gap-4 py-3">
-                  <dt className="text-muted-foreground">Minimum order</dt>
-                  <dd className="font-bold text-ink">₹5,000</dd>
-                </div>
-                <div className="flex justify-between gap-4 py-3">
-                  <dt className="text-muted-foreground">Payment terms</dt>
-                  <dd className="font-bold text-ink">7–15 days</dd>
-                </div>
+                {w.businessCategory && (
+                  <div className="flex justify-between gap-4 py-3">
+                    <dt className="text-muted-foreground">Business category</dt>
+                    <dd className="text-right font-bold text-ink">{w.businessCategory}</dd>
+                  </div>
+                )}
+                {w.location && (
+                  <div className="flex justify-between gap-4 py-3">
+                    <dt className="text-muted-foreground">Location</dt>
+                    <dd className="text-right font-bold text-ink">{w.location}</dd>
+                  </div>
+                )}
+                {w.minOrderValue != null && w.minOrderValue > 0 && (
+                  <div className="flex justify-between gap-4 py-3">
+                    <dt className="text-muted-foreground">Minimum order</dt>
+                    <dd className="font-bold text-ink">{money(w.minOrderValue)}</dd>
+                  </div>
+                )}
               </dl>
             </div>
 
-            {/* Retailer Feedback Card */}
-            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <h2 className="font-extrabold text-ink text-base">Retailer feedback</h2>
+            {w.rating > 0 && (
+              <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="font-extrabold text-ink text-base">Retailer rating</h2>
               <div className="mt-4 flex items-end gap-3">
                 <span className="text-4xl font-black text-ink">{w.rating}</span>
-                <div>
-                  <div className="text-warning text-sm">★★★★★</div>
-                  <p className="text-xs text-muted-foreground font-medium">286 verified reviews</p>
-                </div>
+                <Star className="mb-1 size-5 fill-warning text-warning" />
               </div>
-              <blockquote className="mt-4 rounded-r-lg border-l-3 border-primary bg-primary/[0.03] p-3 text-xs leading-relaxed text-muted-foreground">
-                “Reliable stock, transparent pricing and clear communication on every order.”
-              </blockquote>
-            </div>
-
-            {/* Trade Terms Card */}
-            <div className="rounded-2xl border border-primary/20 bg-brand-soft/40 p-6 shadow-sm">
-              <div className="flex items-center gap-2">
-                <CurrencyRupee className="size-5 text-primary" />
-                <h2 className="font-extrabold text-ink text-base">Trade terms</h2>
               </div>
-              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                Invoices include applicable taxes. MOQ and payment terms can vary by product.
-              </p>
-            </div>
+            )}
           </aside>
         </div>
       </div>
@@ -1511,32 +1476,30 @@ export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }
                     )}
                   </div>
 
-                  <p className="mt-2 text-sm text-primary-foreground/80 max-w-2xl leading-relaxed">
-                    {w.about}
-                  </p>
+                  {w.about && (
+                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-primary-foreground/80">
+                      {w.about}
+                    </p>
+                  )}
 
                   {/* Key Stats Row */}
                   <div className="mt-4 flex flex-wrap items-center gap-2.5 text-xs">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/20 border border-warning/30 px-3 py-1 font-bold text-warning">
+                    {w.rating > 0 && <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/20 border border-warning/30 px-3 py-1 font-bold text-warning">
                       <Star className="size-3.5 fill-warning text-warning" />
-                      {w.rating} Rating (286 reviews)
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 border border-primary-foreground/15 px-3 py-1 font-medium text-primary-foreground/90">
+                      {w.rating} retailer rating
+                    </span>}
+                    {w.location && <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 border border-primary-foreground/15 px-3 py-1 font-medium text-primary-foreground/90">
                       <LocationOn className="size-3.5 text-primary" />
                       {w.location}
-                    </span>
+                    </span>}
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 border border-primary-foreground/15 px-3 py-1 font-medium text-primary-foreground/90">
                       <Inventory2 className="size-3.5 text-primary" />
-                      {wholesalerProducts.length}+ Trade Products
+                      {wholesalerProducts.length} Trade Products
                     </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 border border-primary-foreground/15 px-3 py-1 font-medium text-primary-foreground/90">
+                    {w.delivery && <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 border border-primary-foreground/15 px-3 py-1 font-medium text-primary-foreground/90">
                       <LocalShipping className="size-3.5 text-success" />
                       {w.delivery}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 border border-primary-foreground/15 px-3 py-1 font-medium text-primary-foreground/90">
-                      <VerifiedUser className="size-3.5 text-success" />
-                      18 Yrs Trade Exp.
-                    </span>
+                    </span>}
                   </div>
                 </div>
               </div>
@@ -1697,7 +1660,7 @@ export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }
               </div>
 
               {/* Product Grid with Stagger Fade Animation */}
-              <div className="storefront-featured-products grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4 lg:gap-8">
+              <div className="storefront-featured-products grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 2xl:grid-cols-5 2xl:gap-5">
                 {catProds.map((p, index) => (
                   <div
                     key={p.id}

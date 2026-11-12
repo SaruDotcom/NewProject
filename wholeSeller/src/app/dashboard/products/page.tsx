@@ -789,7 +789,7 @@ export default function ProductsPage() {
           <div>
             <p className="font-bold text-status-warning-foreground">
               {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-                ? 'Complete your KYC.'
+                ? 'Complete Your KYC'
                 : profile.kycStatus === 'REJECTED'
                   ? 'KYC application needs changes.'
                   : profile.kycStatus === 'RESUBMISSION_REQUIRED'

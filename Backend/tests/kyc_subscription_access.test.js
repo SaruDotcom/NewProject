@@ -10,7 +10,7 @@ describe('KYC and Subscription Access Control', () => {
   });
 
   describe('Combination 1: KYC pending + no subscription', () => {
-    test('blocks access with "Your KYC is under review"', async () => {
+    test('blocks access with "Complete your KYC"', async () => {
       jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
         select: jest.fn().mockReturnValue({
           lean: jest.fn().mockResolvedValue({
@@ -21,7 +21,7 @@ describe('KYC and Subscription Access Control', () => {
         }),
       });
       await expect(assertWholesalerBusinessActivated('user-pending-1')).rejects.toMatchObject({
-        message: 'Your KYC is under review',
+        message: 'Complete your KYC',
         code: 'KYC_PENDING',
         statusCode: 403,
       });
@@ -52,7 +52,7 @@ describe('KYC and Subscription Access Control', () => {
   });
 
   describe('Combination 3: KYC pending despite an active subscription', () => {
-    test('blocks access with "Your KYC is under review"', async () => {
+    test('blocks access with "Complete your KYC"', async () => {
       jest.spyOn(WholesalerSubscription, 'findOne')
         .mockResolvedValue({ status: 'ACTIVE', renewalDate: new Date(Date.now() + 86400000) });
       jest.spyOn(WholesalerProfile, 'findOne').mockReturnValue({
@@ -65,7 +65,7 @@ describe('KYC and Subscription Access Control', () => {
         }),
       });
       await expect(assertWholesalerBusinessActivated('user-pending-3')).rejects.toMatchObject({
-        message: 'Your KYC is under review',
+        message: 'Complete your KYC',
         code: 'KYC_PENDING',
         statusCode: 403,
       });

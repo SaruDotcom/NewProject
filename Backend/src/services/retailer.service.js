@@ -790,6 +790,15 @@ class RetailerService {
     }
 
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
+    if (
+      checkoutPayload.wholesalerId &&
+      String(checkoutPayload.wholesalerId) !== String(wholesalerUser._id)
+    ) {
+      throw new ForbiddenError(
+        'You can only purchase products from your connected wholesaler.',
+        'WHOLESALER_MISMATCH'
+      );
+    }
     const cartProductIds = items.map((item) => item.productId || item.id);
     const validProductsCount = await Product.countDocuments({
       _id: { $in: cartProductIds },
@@ -805,6 +814,7 @@ class RetailerService {
     }
 
     const normalizedPayload = {
+      wholesalerId: String(wholesalerUser._id),
       items,
       shippingAddress: checkoutPayload.shippingAddress,
       billingAddress: checkoutPayload.billingAddress,

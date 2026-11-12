@@ -29,9 +29,9 @@ export default function BusinessActivationNotice(props: BusinessActivationNotice
 
   if (!kycApproved) {
     if (['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(kycStatus)) {
-      title = 'Your KYC is under review';
-      description = 'Your KYC documents are currently being verified by the admin team. Business management features will activate once approved.';
-      actionText = 'View KYC Status';
+      title = 'Complete Your KYC';
+      description = 'Please complete your KYC verification to activate your business management features.';
+      actionText = 'Complete Your KYC';
       actionLink = '/dashboard/kyc';
       icon = <Clock className="mt-0.5 size-5 shrink-0 text-amber-600" />;
       badgeTone = 'border-amber-200 bg-amber-50/70 text-amber-900';
@@ -43,9 +43,9 @@ export default function BusinessActivationNotice(props: BusinessActivationNotice
       icon = <ShieldAlert className="mt-0.5 size-5 shrink-0 text-rose-600" />;
       badgeTone = 'border-rose-200 bg-rose-50/80 text-rose-900';
     } else {
-      title = 'Complete KYC to continue';
-      description = 'Submit your business identity documents for KYC review to unlock product, category, and retailer features.';
-      actionText = 'Complete KYC';
+      title = 'Complete Your KYC';
+      description = 'Please complete your KYC verification to activate your business management features.';
+      actionText = 'Complete Your KYC';
       actionLink = '/dashboard/kyc';
       icon = <ShieldCheck className="mt-0.5 size-5 shrink-0 text-tradeflow-navy" />;
       badgeTone = 'border-[#E8D8C8] bg-[#FBF5EA] text-[#4B2430]';

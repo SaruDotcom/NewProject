@@ -152,24 +152,11 @@ function RouterView() {
   */
   // ===== END Disable Retailer Landing Page =====
 
-  // Returning retailers should land on login instead of seeing registration again.
-  if (
-    !authenticated &&
-    hasCompletedRetailerRegistration() &&
-    (path === "/" || path === "/register") &&
-    !url.searchParams.has("ref")
-  ) {
-    return (
-      <AuthPage
-        key={`returning-login-${url.search}`}
-        mode="login"
-        {...(hasReferralAttribution ? { redirect: "/" } : {})}
-      />
-    );
-  }
-
   // Public authentication routes
   if (/^\/r\/[^/]+$/.test(path)) {
+    return <HomePage />;
+  }
+  if (path === "/register" && url.searchParams.has("ref") && !url.searchParams.has("redirect")) {
     return <HomePage />;
   }
   const isRefPath = path === "/register";
@@ -220,6 +207,8 @@ function RouterView() {
     return <WholesalerProfilePage wholesalerId={decodeURIComponent(parts[2] ?? "")} />;
   }
   if (path === "/cart") return <CartPage />;
+  if (path === "/wishlist") return <WishlistPage />;
+  if (path === "/coupons") return <CouponsPage />;
 
   // Route Guard: Require authentication for all protected account/workspace pages
   if (!authenticated) {
@@ -238,10 +227,8 @@ function RouterView() {
   if (path === "/orders") return <OrdersPage />;
   if (path === "/transactions") return <TransactionsHistoryPage />;
   if (path.startsWith("/orders/")) return <OrderDetailsPage orderId={decodeURIComponent(path.split("/")[2] ?? "")} />;
-  if (path === "/wishlist") return <WishlistPage />;
   if (path === "/notifications") return <NotificationsPage />;
   if (path === "/support") return <HelpSupportPage />;
-  if (path === "/coupons") return <CouponsPage />;
   if (path === "/profile" || path === "/setup") return <ProfilePage setupMode={!isBusinessSetupComplete(retailerProfile)} />;
   if (path === "/addresses") return <AddressesPage />;
   if (path === "/settings") return <SettingsPage />;

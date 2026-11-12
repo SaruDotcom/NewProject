@@ -103,10 +103,31 @@ export type ApiWholesaler = {
   logo?: string;
   activeStoreTheme?: "DEFAULT" | "ROYAL" | "FESTIVE" | "MINIMAL";
   banners?: ApiBannerSlide[];
+  coupons?: Array<{
+    _id?: string;
+    id?: string;
+    code?: string;
+    title?: string;
+    description?: string;
+    discountType?: string;
+    discountValue?: number;
+    minOrderValue?: number;
+    maxDiscountCap?: number;
+    validFrom?: string;
+    validUntil?: string | null;
+    wholesalerId?: string | { _id?: string; id?: string } | null;
+    isAvailable?: boolean;
+  }>;
   description?: string;
   address?: Record<string, string>;
+  city?: string;
   minOrderValue?: number;
   rating?: number;
+  verified?: boolean;
+  isVerified?: boolean;
+  verificationStatus?: string;
+  delivery?: string;
+  categories?: string[];
   relationshipStatus?: string;
   status?: string;
   available?: boolean;
@@ -618,6 +639,7 @@ export const api = {
 
   checkout: (payload: {
     items?: Array<{ productId: string; quantity: number }>;
+    wholesalerId?: string;
     shippingAddress: {
       addressLine1: string;
       city: string;
@@ -645,6 +667,7 @@ export const api = {
     }),
   quoteCheckout: (payload: {
     items: Array<{ productId: string; quantity: number }>;
+    wholesalerId?: string;
     shippingAddress: {
       addressLine1: string;
       city: string;

@@ -17,7 +17,7 @@ class ReferralService {
     return new NotFoundError(message, 'INVALID_REFERRAL_CODE');
   }
 
-  static async resolveActiveCode(code) {
+  static async resolveActiveCode(code, { requireSignupsEnabled = true } = {}) {
     const normalizedCode = String(code || '').trim().toUpperCase();
     if (!/^[A-Z0-9]{4,10}$/.test(normalizedCode)) {
       throw this.invalidReferral();
@@ -41,7 +41,7 @@ class ReferralService {
       throw new ForbiddenError('This wholesaler is currently undergoing verification.', 'WHOLESALER_KYC_PENDING');
     }
 
-    if (profile.retailerSignupsEnabled === false) {
+    if (requireSignupsEnabled && profile.retailerSignupsEnabled === false) {
       throw new ForbiddenError('This wholesaler has temporarily paused new retailer sign-ups.', 'SIGNUPS_PAUSED');
     }
 
@@ -198,8 +198,8 @@ class ReferralService {
   }
 
   static async getPublicReferral(code) {
-    const { profile, wholesaler } = await this.resolveActiveCode(code);
-    const { Category } = require('../../models');
+    const { profile, wholesaler } = await this.resolveActiveCode(code, { requireSignupsEnabled: false });
+    const { Category, Coupon } = require('../../models');
 
     // 1. Fetch only active categories owned by this wholesaler.
     const categoryDetails = await Category.find({
@@ -235,6 +235,18 @@ class ReferralService {
         active: true,
         isActive: true,
       }));
+    const now = new Date();
+    const coupons = await Coupon.find({
+      $or: [{ wholesalerId: profile.userId }, { wholesalerId: null }],
+      isActive: true,
+      isDeleted: false,
+      applicableFor: { $in: ['RETAILER_ORDER', 'ALL'] },
+      validFrom: { $lte: now },
+      $and: [{ $or: [{ validUntil: null }, { validUntil: { $gte: now } }] }],
+    })
+      .select('code title description discountType discountValue minOrderValue maxDiscountCap validFrom validUntil wholesalerId')
+      .sort({ createdAt: -1 })
+      .lean();
 
     return {
       _id: String(profile.userId),
@@ -250,11 +262,25 @@ class ReferralService {
       businessCategory,
       activeStoreTheme: profile.activeStoreTheme || 'DEFAULT',
       banners: activeBanners,
+      coupons: coupons.map((coupon) => ({
+        _id: String(coupon._id),
+        code: coupon.code,
+        title: coupon.title,
+        description: coupon.description || '',
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        minOrderValue: coupon.minOrderValue || 0,
+        maxDiscountCap: coupon.maxDiscountCap || 0,
+        validFrom: coupon.validFrom,
+        validUntil: coupon.validUntil,
+        wholesalerId: coupon.wholesalerId ? String(coupon.wholesalerId) : null,
+        isAvailable: true,
+      })),
     };
   }
 
   static async getReferralProducts(code, query = {}) {
-    const { profile } = await this.resolveActiveCode(code);
+    const { profile } = await this.resolveActiveCode(code, { requireSignupsEnabled: false });
     const { Product, Category } = require('../../models');
     const { PRODUCT_STATUS } = require('../../config/constants');
     const { parsePagination } = require('../../utils/pagination');

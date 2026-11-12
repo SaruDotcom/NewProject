@@ -281,8 +281,8 @@ export default function KycPage() {
   const statusConfig = status === 'APPROVED'
     ? { icon: CheckCircle2, tone: 'border-status-success/25 bg-tradeflow-green-50 text-status-success', title: 'KYC approved', detail: 'You can now add products and categories.' }
     : isLocked
-      ? { icon: Clock3, tone: 'border-amber-500/30 bg-amber-50 text-status-warning-foreground', title: 'KYC under review', detail: 'Product and category creation will unlock after approval.' }
-      : { icon: AlertCircle, tone: 'border-tradeflow-green/20 bg-tradeflow-green-50 text-green-700', title: status === 'REJECTED' ? 'KYC needs changes' : status === 'RESUBMISSION_REQUIRED' ? 'KYC resubmission requested' : 'Complete your KYC', detail: reviewReason || 'Submit your PAN and identity documents. Business, address, GST, and bank details are optional.' };
+      ? { icon: Clock3, tone: 'border-amber-500/30 bg-amber-50 text-status-warning-foreground', title: 'Complete Your KYC', detail: 'Please complete your KYC verification to activate your business management features.' }
+      : { icon: AlertCircle, tone: 'border-tradeflow-green/20 bg-tradeflow-green-50 text-green-700', title: status === 'REJECTED' ? 'KYC needs changes' : status === 'RESUBMISSION_REQUIRED' ? 'KYC resubmission requested' : 'Complete Your KYC', detail: reviewReason || 'Please complete your KYC verification to activate your business management features.' };
   const StatusIcon = statusConfig.icon;
   const existingBusinessProof = [...existingDocuments]
     .reverse()

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700;800&display=swap");
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -7,8 +7,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "Inter", sans-serif;
-  --font-heading: "Poppins", "Inter", sans-serif;
+  --font-sans: "Manrope", sans-serif;
+  --font-heading: "Playfair Display", "Manrope", sans-serif;
   --radius-sm: calc(var(--radius) - 3px);
   --radius-md: calc(var(--radius) - 1px);
   --radius-lg: var(--radius);
@@ -82,11 +82,6 @@
 
   [class*="text-primary/"] {
     color: var(--color-green-700);
-  }
-
-  [class~="bg-primary"][class*="text-primary-foreground"],
-  [class~="bg-primary"] [class*="text-primary-foreground"] {
-    color: var(--color-tradeflow-navy);
   }
 
   .MuiButton-outlinedPrimary:not([class*="border-destructive"]) {

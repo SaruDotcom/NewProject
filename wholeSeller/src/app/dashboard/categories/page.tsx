@@ -467,7 +467,7 @@ export default function CategoriesPage() {
           <div>
             <p className="font-bold text-amber-900">
               {profile.kycStatus === 'SUBMITTED' || profile.kycStatus === 'UNDER_REVIEW'
-                ? 'Complete Your KYC.'
+                ? 'Complete Your KYC'
                 : profile.kycStatus === 'REJECTED'
                   ? 'KYC verification needs changes.'
                   : profile.kycStatus === 'RESUBMISSION_REQUIRED'
