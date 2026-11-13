@@ -83,7 +83,7 @@ const checkoutSchema = Joi.object({
     phone: Joi.string().trim().optional(),
   }).optional(),
   paymentMethod: Joi.string()
-    .valid('CREDIT', 'UPI')
+    .valid('CREDIT', 'UPI', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE')
     .default('UPI'),
   couponCode: Joi.string().trim().allow('', null).optional(),
   expectedQuoteHash: Joi.string().hex().length(64).optional(),

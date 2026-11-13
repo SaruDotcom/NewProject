@@ -161,6 +161,17 @@ export default function CategoriesPage() {
     setParentId(category.parentId || '');
   };
 
+  const editableParentCategories = useMemo(() => {
+    const descendantIds = editingCategory
+      ? getAllDescendantCategoryIds(editingCategory.id, categories)
+      : new Set<string>();
+    return categories.filter((category) =>
+      category.id !== editingCategory?.id &&
+      !descendantIds.has(category.id) &&
+      getCategoryLevel(category.id, categories) < 3,
+    );
+  }, [categories, editingCategory]);
+
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateCategories) {
@@ -983,26 +994,17 @@ export default function CategoriesPage() {
                   id="category-parent"
                   value={parentId}
                   onChange={(event) => setParentId(event.target.value)}
-                  disabled={Boolean(editingCategory && categories.some((category) => category.parentId === editingCategory.id))}
                   className="w-full rounded-xl border border-[#E7E5E4] bg-[#FAF9F6] px-3.5 py-2.5 focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green/20 focus:outline-none font-medium text-gray-800 text-xs"
                 >
                   <option value="">Main category (Root Level 1)</option>
-                  {categories
-                    .filter((category) => category.id !== editingCategory?.id)
-                    .map((category) => {
-                      const depth = getCategoryLevel(category.id, categories);
-                      const isLevel3 = depth >= 3;
-                      return (
-                        <option
-                          key={category.id}
-                          value={category.id}
-                          disabled={isLevel3}
-                        >
-                          {category.displayPath || getCategoryDisplayPath(category.id)}{' '}
-                          {isLevel3 ? '(Level 3 - Max Depth)' : `(Level ${depth})`}
-                        </option>
-                      );
-                    })}
+                  {editableParentCategories.map((category) => {
+                    const depth = getCategoryLevel(category.id, categories);
+                    return (
+                      <option key={category.id} value={category.id}>
+                        {category.displayPath || getCategoryDisplayPath(category.id)} (Level {depth})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

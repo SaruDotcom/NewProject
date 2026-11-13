@@ -314,10 +314,10 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
     });
     return available.map((category) => {
       const key = normalizeCategoryName(category.name).toLowerCase();
-      const qualifiedName = category.displayPath || [category.parentName, category.name].filter(Boolean).join(" / ");
+      const qualifiedName = category.displayPath || [category.parentName, category.name].filter(Boolean).join(" > ");
       return {
         ...category,
-        name: normalizeCategoryName(nameCounts.get(key)! > 1 ? qualifiedName : category.name),
+        name: normalizeCategoryName(category.displayPath || (nameCounts.get(key)! > 1 ? qualifiedName : category.name)),
       };
     });
   }, [categories]);

@@ -1,6 +1,7 @@
 const { WholesalerRetailerRelationship, WholesalerProfile } = require('../../models');
 const AuditService = require('../../services/audit.service');
 const RetailerService = require('../../services/retailer.service');
+const InvoiceService = require('../orders/invoice.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -177,6 +178,17 @@ class RetailerController {
   getOrderById = asyncHandler(async (req, res) => {
     const orderData = await RetailerService.getOrderById(req.user._id, req.params.id);
     return ApiResponse.success(res, orderData, 'Order details retrieved successfully');
+  });
+
+  downloadInvoice = asyncHandler(async (req, res) => {
+    const invoice = await InvoiceService.createRetailerInvoice(req.params.id, req.user._id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${invoice.filename}"`,
+      'Content-Length': invoice.buffer.length,
+      'Cache-Control': 'private, no-store',
+    });
+    return res.status(200).send(invoice.buffer);
   });
 
   cancelOrder = asyncHandler(async (req, res) => {

@@ -17,9 +17,12 @@ export interface Product {
   title: string;
   sku: string;
   category: string;
+  categoryPath?: string;
   categoryId: string;
   subcategoryId?: string | null;
   subcategoryName?: string;
+  subSubcategoryId?: string | null;
+  subSubcategoryName?: string;
   costPrice: number;
   sellingPrice: number;
   mrp?: number;

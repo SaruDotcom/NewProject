@@ -52,10 +52,27 @@ module.exports = {
       req.params.reportId,
       req.body.action,
       req.body.note,
+      req.body.otp,
       req.user,
       req
     );
     return ApiResponse.success(res, report, req.body.action === 'VERIFY' ? 'Payment confirmed' : 'Payment report rejected');
+  }),
+
+  requestApprovalOtp: asyncHandler(async (req, res) => {
+    const result = await PaymentsService.requestApprovalOtp(req.user._id, req.params.reportId, req.user, req);
+    return ApiResponse.success(res, result, result.otpRequired ? 'Payment approval code sent' : 'No approval code is required');
+  }),
+
+  reverseReport: asyncHandler(async (req, res) => {
+    const report = await PaymentsService.reverseReport(
+      req.user._id,
+      req.params.reportId,
+      req.body.reason,
+      req.user,
+      req
+    );
+    return ApiResponse.success(res, report, 'Payment reversal recorded');
   }),
 
   getScreenshot: asyncHandler(async (req, res) => {

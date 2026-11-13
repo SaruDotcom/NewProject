@@ -17,9 +17,10 @@ const imageUpload = multer({
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
       'image/webp': ['.webp'],
+      'application/pdf': ['.pdf'],
     };
     if (!valid[file.mimetype]?.includes(extension)) {
-      return callback(new BadRequestError('Upload a JPG, PNG, or WEBP image up to 5 MB.', 'INVALID_PAYMENT_IMAGE'));
+      return callback(new BadRequestError('Upload a JPG, PNG, WEBP, or PDF receipt up to 5 MB.', 'INVALID_PAYMENT_IMAGE'));
     }
     return callback(null, true);
   },
@@ -38,7 +39,9 @@ wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));
 wholesalerRoutes.get('/payment-settings', controller.getSettings);
 wholesalerRoutes.patch('/payment-settings', identityUploadRateLimiter, imageUpload.single('qrImage'), controller.updateSettings);
 wholesalerRoutes.get('/payment-reports', controller.listWholesalerReports);
+wholesalerRoutes.post('/payment-reports/:reportId/approval-otp', identityUploadRateLimiter, controller.requestApprovalOtp);
 wholesalerRoutes.patch('/payment-reports/:reportId', controller.reviewReport);
+wholesalerRoutes.post('/payment-reports/:reportId/reverse', controller.reverseReport);
 wholesalerRoutes.get('/payment-reports/:reportId/screenshot', controller.getScreenshot);
 
 const adminRoutes = express.Router();

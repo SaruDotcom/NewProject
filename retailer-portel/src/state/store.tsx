@@ -81,6 +81,7 @@ export type Product = {
   category: string;
   categoryId?: string;
   subcategoryId?: string;
+  subSubcategoryId?: string;
   wholesalerId: string;
   price: number;
   mrp: number;
@@ -392,12 +393,19 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     typeof item.subcategoryId === "object" && item.subcategoryId !== null
       ? item.subcategoryId._id || item.subcategoryId.id
       : item.subcategoryId;
+  const subSubcategoryId =
+    typeof item.subSubcategoryId === "object" && item.subSubcategoryId !== null
+      ? item.subSubcategoryId._id || item.subSubcategoryId.id
+      : item.subSubcategoryId;
 
   const categoryById =
+    (subSubcategoryId && categoryMap?.get(String(subSubcategoryId))) ||
     (subcategoryId && categoryMap?.get(String(subcategoryId))) ||
     (categoryId && categoryMap?.get(String(categoryId)));
   if (categoryById) {
     categoryName = categoryById;
+  } else if (typeof item.subSubcategoryId === "object" && item.subSubcategoryId?.name) {
+    categoryName = normalizeCategoryName(item.subSubcategoryId.name);
   } else if (typeof item.subcategoryId === "object" && item.subcategoryId?.name) {
     categoryName = normalizeCategoryName(item.subcategoryId.name);
   } else if (categoryObject?.name) {
@@ -427,6 +435,7 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     category: categoryName,
     ...(categoryId ? { categoryId: String(categoryId) } : {}),
     ...(subcategoryId ? { subcategoryId: String(subcategoryId) } : {}),
+    ...(subSubcategoryId ? { subSubcategoryId: String(subSubcategoryId) } : {}),
     wholesalerId: typeof item.wholesalerId === "object" && item.wholesalerId !== null
       ? String(item.wholesalerId._id || item.wholesalerId.id || "")
       : item.wholesalerId || "",
@@ -598,7 +607,7 @@ export function getCategoryHierarchy(
   if (names.length === 0 && storeCategories && storeCategories.length > 0) {
     const firstCatName = typeof prodObj?.category === "string" ? prodObj.category : "";
     const matchedCat = storeCategories.find(
-      (c) => c.name === firstCatName || String(c.id) === String(prodObj?.categoryId) || String(c.id) === String(prodObj?.subcategoryId)
+      (c) => c.name === firstCatName || String(c.id) === String(prodObj?.categoryId) || String(c.id) === String(prodObj?.subcategoryId) || String(c.id) === String(prodObj?.subSubcategoryId)
     );
 
     if (matchedCat) {

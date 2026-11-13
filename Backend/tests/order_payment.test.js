@@ -1,4 +1,6 @@
 const request = require('supertest');
+const fs = require('fs');
+const path = require('path');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
@@ -11,12 +13,14 @@ const {
   Inventory,
   Order,
   Payment,
+  Notification,
   Wallet,
   Earning,
   Coupon,
   InventoryTransaction,
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS, RELATIONSHIP_STATUS, ORDER_STATUS, PAYMENT_STATUS } = require('../src/config/constants');
+const env = require('../src/config/env');
 
 setupTestDB();
 
@@ -156,6 +160,256 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const inv = await Inventory.findOne({ productId: product._id });
     expect(inv.available).toBe(90);
     expect(inv.reserved).toBe(10);
+  });
+
+  test('tax-inclusive prices are not taxed twice and GST is split by supply state', async () => {
+    await WholesalerProfile.updateOne(
+      { userId: wholesalerUser._id },
+      { $set: { 'address.state': 'Karnataka' } }
+    );
+    await Product.updateOne(
+      { _id: product._id },
+      {
+        $set: {
+          wholesalePrice: 118,
+          sellingPrice: 118,
+          retailerPrice: 118,
+          basePrice: 118,
+          gst: 18,
+          cgst: 9,
+          sgst: 9,
+          igst: 18,
+          priceIncludesTax: true,
+          taxConfigured: true,
+        },
+      }
+    );
+
+    const intraState = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'UPI',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+      });
+    expect(intraState.status).toBe(201);
+    expect(intraState.body.data.order.grandTotal).toBe(1180);
+    expect(intraState.body.data.order.tax).toBe(180);
+    expect(intraState.body.data.order.items[0]).toMatchObject({
+      taxableValue: 1000,
+      cgstAmount: 90,
+      sgstAmount: 90,
+      igstAmount: 0,
+      total: 1180,
+    });
+
+    const interState = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'UPI',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Mumbai', state: 'Maharashtra', pincode: '400001' },
+      });
+    expect(interState.status).toBe(201);
+    expect(interState.body.data.order.items[0]).toMatchObject({
+      taxableValue: 1000,
+      cgstAmount: 0,
+      sgstAmount: 0,
+      igstAmount: 180,
+      total: 1180,
+    });
+  });
+
+  test('enabled bank methods show bank details and accept cheque reports', async () => {
+    const settings = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', 'Omni Supplies')
+      .field('bankName', 'Example Bank')
+      .field('accountNumber', '123456789012')
+      .field('ifscCode', 'EXAM0001234')
+      .field('branch', 'Bengaluru Main')
+      .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE']));
+    expect(settings.status).toBe(200);
+
+    const options = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['UPI', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE']));
+    expect(options.body.data.bankDetails).toMatchObject({
+      accountHolderName: 'Omni Supplies',
+      bankName: 'Example Bank',
+      accountNumber: '123456789012',
+      ifscCode: 'EXAM0001234',
+    });
+
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CHEQUE',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+      });
+    expect(checkout.status).toBe(201);
+    const report = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .field('orderId', checkout.body.data.order._id)
+      .field('amount', '2360')
+      .field('paymentMethod', 'CHEQUE')
+      .field('transactionReference', 'CHEQUE-REF-10001')
+      .field('paymentDetails', 'Cheque 10001 dated 2026-01-15')
+      .attach('screenshot', Buffer.from('%PDF-1.4\n%%EOF'), {
+        filename: 'cheque-receipt.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(report.status).toBe(201);
+    expect(report.body.data.paymentMethod).toBe('CHEQUE');
+    expect(report.body.data.paymentDetails).toBe('Cheque 10001 dated 2026-01-15');
+    expect(report.body.data.screenshotAvailable).toBe(true);
+    expect(await Notification.countDocuments({ recipientId: wholesalerUser._id, 'data.paymentReportId': report.body.data._id })).toBe(1);
+    const savedReport = await Payment.findById(report.body.data._id);
+    const evidence = await request(app)
+      .get(`/api/v1/wholesaler/payment-reports/${report.body.data._id}/screenshot`)
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    if (evidence.status !== 200) throw new Error(`Evidence request failed: ${evidence.status} ${JSON.stringify(evidence.body)}`);
+    expect(evidence.status).toBe(200);
+    expect(evidence.headers['content-type']).toContain('application/pdf');
+    expect(evidence.body.subarray(0, 5).toString()).toBe('%PDF-');
+    await fs.promises.unlink(path.join(env.UPLOAD_PATH, 'payment-reports', path.basename(savedReport.screenshotPath)));
+  });
+
+  test('high-value report approval requires an owner-only MSG91 code', async () => {
+    const originalAuthKey = env.MSG91_AUTH_KEY;
+    const originalTemplateId = env.MSG91_TEMPLATE_ID;
+    const originalFetch = global.fetch;
+    env.MSG91_AUTH_KEY = 'test-auth-key';
+    env.MSG91_TEMPLATE_ID = 'test-flow-id';
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ type: 'success' }) });
+    await User.updateOne({ _id: wholesalerUser._id }, { $set: { phone: '9876543210' } });
+    await WholesalerProfile.updateOne({ userId: wholesalerUser._id }, { $set: { 'paymentSettings.paymentOtpLimit': 1000 } });
+
+    try {
+      const checkout = await request(app)
+        .post('/api/v1/retailer/checkout')
+        .set('Authorization', `Bearer ${retailerToken}`)
+        .send({
+          paymentMethod: 'UPI',
+          items: [{ productId: product._id, quantity: 10 }],
+          shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+        });
+      const report = await request(app)
+        .post('/api/v1/retailer/payments/reports')
+        .set('Authorization', `Bearer ${retailerToken}`)
+        .send({
+          orderId: checkout.body.data.order._id,
+          amount: '2360',
+          transactionReference: 'OTP-UPI-REF-10001',
+        });
+      const otpResponse = await request(app)
+        .post(`/api/v1/wholesaler/payment-reports/${report.body.data._id}/approval-otp`)
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({});
+      expect(otpResponse.status).toBe(200);
+      expect(otpResponse.body.data.sentTo).toBe('******3210');
+      const smsBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(smsBody.recipients[0]).toMatchObject({ mobiles: '919876543210' });
+      const otp = smsBody.recipients[0].VAR1;
+
+      const missingOtp = await request(app)
+        .patch(`/api/v1/wholesaler/payment-reports/${report.body.data._id}`)
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({ action: 'VERIFY' });
+      expect(missingOtp.status).toBe(400);
+      expect(missingOtp.body.code).toBe('PAYMENT_OTP_REQUIRED');
+
+      const verified = await request(app)
+        .patch(`/api/v1/wholesaler/payment-reports/${report.body.data._id}`)
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({ action: 'VERIFY', otp });
+      expect(verified.status).toBe(200);
+      expect(verified.body.data.status).toBe(PAYMENT_STATUS.PAID);
+    } finally {
+      env.MSG91_AUTH_KEY = originalAuthKey;
+      env.MSG91_TEMPLATE_ID = originalTemplateId;
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('approved payment reversal preserves the original and writes a separate entry', async () => {
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'UPI',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+      });
+    const report = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        orderId: checkout.body.data.order._id,
+        amount: '2360',
+        transactionReference: 'REVERSAL-UPI-10001',
+      });
+    await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${report.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY' })
+      .expect(200);
+
+    const reversalResponse = await request(app)
+      .post(`/api/v1/wholesaler/payment-reports/${report.body.data._id}/reverse`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ reason: 'Payment was entered against the wrong order.' });
+    expect(reversalResponse.status).toBe(200);
+    expect(reversalResponse.body.data).toMatchObject({
+      isReversal: true,
+      reversalReason: 'Payment was entered against the wrong order.',
+      status: PAYMENT_STATUS.REFUNDED,
+    });
+    expect((await Payment.findById(report.body.data._id)).status).toBe(PAYMENT_STATUS.PAID);
+    expect((await Order.findById(checkout.body.data.order._id)).paymentStatus).toBe(PAYMENT_STATUS.PENDING);
+
+    const duplicate = await request(app)
+      .post(`/api/v1/wholesaler/payment-reports/${report.body.data._id}/reverse`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ reason: 'Duplicate reverse attempt.' });
+    expect(duplicate.status).toBe(409);
+  });
+
+  test('retailer can download a PDF invoice only after delivery', async () => {
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'UPI',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+      });
+    const orderId = checkout.body.data.order._id;
+    const earlyInvoice = await request(app)
+      .get(`/api/v1/retailer/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(earlyInvoice.status).toBe(400);
+    expect(earlyInvoice.body.code).toBe('INVOICE_ORDER_NOT_COMPLETED');
+
+    await request(app)
+      .patch(`/api/v1/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: ORDER_STATUS.DELIVERED })
+      .expect(200);
+    const invoice = await request(app)
+      .get(`/api/v1/retailer/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(invoice.status).toBe(200);
+    expect(invoice.headers['content-type']).toContain('application/pdf');
+    expect(invoice.body.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(invoice.headers['content-disposition']).toContain(`INV-${checkout.body.data.order.orderNumber}.pdf`);
   });
 
   test('wholesaler status updates persist canonically and are returned to the retailer', async () => {
@@ -454,6 +708,67 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     ]);
   });
 
+  test('credit payment reversal restores the balance and preserves the approved report', async () => {
+    await request(app)
+      .patch('/api/v1/wholesaler/credit-policy')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ creditEnabled: true, defaultCreditLimit: 5000, creditPeriodDays: 15 })
+      .expect(200);
+    await request(app)
+      .patch(`/api/v1/wholesaler/retailers/${retailerUser._id}/credit-policy`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ status: 'APPROVED', customCreditLimit: 3000, creditPeriodDays: 30 })
+      .expect(200);
+
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CREDIT',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: {
+          addressLine1: '10 Main Road',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          postalCode: '560001',
+        },
+      });
+    expect(checkout.status).toBe(201);
+
+    const report = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        type: 'CREDIT_REPAYMENT',
+        amount: '500',
+        transactionReference: 'CREDIT-REVERSAL-10001',
+      });
+    expect(report.status).toBe(201);
+    await request(app)
+      .patch(`/api/v1/wholesaler/payment-reports/${report.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'VERIFY' })
+      .expect(200);
+
+    const reversal = await request(app)
+      .post(`/api/v1/wholesaler/payment-reports/${report.body.data._id}/reverse`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ reason: 'Correcting a misapplied credit payment.' });
+    expect(reversal.status).toBe(200);
+    expect(reversal.body.data).toMatchObject({ isReversal: true, status: PAYMENT_STATUS.REFUNDED });
+    expect((await Payment.findById(report.body.data._id)).status).toBe(PAYMENT_STATUS.PAID);
+
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      wholesalerId: wholesalerUser._id,
+      retailerId: retailerUser._id,
+    });
+    expect(relationship.currentOutstandingPaise).toBe(236000);
+    const order = await Order.findById(checkout.body.data.order._id);
+    expect(order.creditPaidAmount).toBe(0);
+    expect(order.creditPaymentStatus).toBe('PENDING');
+    expect(order.paymentStatus).toBe(PAYMENT_STATUS.PENDING);
+  });
+
   test('3. Insufficient stock rejected', async () => {
     // Requesting 150 units when only 100 available
     const res = await request(app)
@@ -587,7 +902,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .set('Authorization', `Bearer ${retailerToken}`)
       .send(checkoutPayload);
     expect(quote.status).toBe(200);
-    expect(quote.body.data).toMatchObject({ subtotal: 2000, discount: 200, tax: 360, grandTotal: 2160 });
+    expect(quote.body.data).toMatchObject({ subtotal: 2000, discount: 200, tax: 324, grandTotal: 2124 });
     expect(await Order.countDocuments()).toBe(0);
 
     const checkout = await request(app)
@@ -599,7 +914,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       });
 
     expect(checkout.status).toBe(201);
-    expect(checkout.body.data.order).toMatchObject({ discount: 200, couponCode: 'SAVE10', grandTotal: 2160 });
+    expect(checkout.body.data.order).toMatchObject({ discount: 200, couponCode: 'SAVE10', tax: 324, grandTotal: 2124 });
     expect((await Coupon.findById(coupon._id)).usageCount).toBe(1);
   });
 
@@ -642,14 +957,14 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(checkout.body.data.order).toMatchObject({
       isCreditOrder: true,
       discount: 200,
-      grandTotal: 2160,
+      grandTotal: 2124,
       creditPaidAmount: 0,
     });
     const relationship = await WholesalerRetailerRelationship.findOne({
       wholesalerId: wholesalerUser._id,
       retailerId: retailerUser._id,
     });
-    expect(relationship.currentOutstandingPaise).toBe(216000);
+    expect(relationship.currentOutstandingPaise).toBe(212400);
   });
 
   test('verified partial UPI payment remains due until the remaining installment is confirmed', async () => {

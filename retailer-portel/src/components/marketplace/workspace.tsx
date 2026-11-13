@@ -202,6 +202,8 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [paymentDetails, setPaymentDetails] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -216,6 +218,12 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
     gcTime: 0,
   });
   const options = paymentOptionsQuery.data;
+  const availableMethods = options?.paymentMethods || [];
+  useEffect(() => {
+    if (availableMethods.length && !availableMethods.includes(paymentMethod)) {
+      setPaymentMethod(availableMethods[0]);
+    }
+  }, [availableMethods, paymentMethod]);
   const reportsQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-reports"),
     queryFn: async () => (await api.getRetailerPaymentReports()).data || [],
@@ -240,8 +248,16 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
       toast.error(`Enter a repayment between ₹0.01 and ${money(outstanding)}.`);
       return;
     }
+    if (!availableMethods.includes(paymentMethod)) {
+      toast.error("Your wholesaler has not enabled the selected payment method.");
+      return;
+    }
     if (reference.trim().length < 4) {
-      toast.error("Enter the UPI transaction/reference ID.");
+      toast.error("Enter the payment transaction/reference ID.");
+      return;
+    }
+    if (["CASH_DEPOSIT", "CHEQUE"].includes(paymentMethod) && paymentDetails.trim().length < 3) {
+      toast.error("Enter the deposit or cheque details.");
       return;
     }
     setSubmitting(true);
@@ -250,6 +266,8 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
         type: "CREDIT_REPAYMENT",
         amount: numericAmount.toFixed(2),
         transactionReference: reference.trim(),
+        paymentMethod,
+        paymentDetails,
         screenshot: screenshot || undefined,
       });
       setSubmitted(true);
@@ -276,7 +294,7 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
           <h2 className="font-extrabold text-ink">Repay credit balance</h2>
           <p className="mt-1 text-xs text-muted-foreground">Outstanding: <strong>{money(outstanding)}</strong>. Pay any installment up to this amount; only wholesaler-confirmed payments update your balance.</p>
         </div>
-        {options?.qrPaymentsEnabled && !qrOpen && <Button variant="outline" size="sm" onClick={openQr}>Show payment QR</Button>}
+        {paymentMethod === "UPI" && options?.qrPaymentsEnabled && !qrOpen && <Button variant="outline" size="sm" onClick={openQr}>Show payment QR</Button>}
       </div>
       {qrOpen && options?.qrPaymentsEnabled && (
         <div className="mt-3 rounded-xl border bg-background p-3 text-center">
@@ -296,20 +314,37 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
       )}
       {!submitted ? (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-bold sm:col-span-2">Payment method
+            <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-1 w-full rounded-lg border bg-background px-3 py-2">
+              {availableMethods.map((method) => <option key={method} value={method}>{method.replace(/_/g, " ")}</option>)}
+            </select>
+          </label>
+          {paymentMethod !== "UPI" && options?.bankDetails && (
+            <div className="rounded-lg border bg-background p-3 text-xs sm:col-span-2">
+              <b>Wholesaler bank details</b>
+              <p>{options.bankDetails.accountHolderName} · {options.bankDetails.bankName}</p>
+              <p>A/C {options.bankDetails.accountNumber} · IFSC {options.bankDetails.ifscCode} · {options.bankDetails.branch}</p>
+            </div>
+          )}
           <label className="text-xs font-bold">Installment amount (₹)
             <Input type="number" min="0.01" max={outstanding} step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
           </label>
-          <label className="text-xs font-bold">UPI transaction/reference ID
+          <label className="text-xs font-bold">Transaction / reference ID
             <Input value={reference} onChange={(event) => setReference(event.target.value)} />
           </label>
-          <label className="text-xs font-bold sm:col-span-2">Screenshot (optional)
-            <Input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setScreenshot(event.target.files?.[0] || null)} />
+          {["CASH_DEPOSIT", "CHEQUE"].includes(paymentMethod) && (
+            <label className="text-xs font-bold sm:col-span-2">{paymentMethod === "CHEQUE" ? "Cheque number / date" : "Deposit branch / date"}
+              <Input value={paymentDetails} onChange={(event) => setPaymentDetails(event.target.value)} />
+            </label>
+          )}
+          <label className="text-xs font-bold sm:col-span-2">Receipt or screenshot (optional)
+            <Input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setScreenshot(event.target.files?.[0] || null)} />
           </label>
-          <Button type="button" onClick={() => void submit()} disabled={submitting || !(options?.qrPaymentsEnabled || options?.upiIdPaymentsEnabled)} className="sm:col-span-2">
+          <Button type="button" onClick={() => void submit()} disabled={submitting || !availableMethods.includes(paymentMethod)} className="sm:col-span-2">
             {submitting ? "Submitting…" : "Submit Repayment for Verification"}
           </Button>
-          {!options?.qrPaymentsEnabled && !options?.upiIdPaymentsEnabled && (
-            <p className="text-xs text-amber-800 sm:col-span-2">Your wholesaler has not enabled a UPI repayment method. Contact them to arrange repayment.</p>
+          {!availableMethods.length && (
+            <p className="text-xs text-amber-800 sm:col-span-2">Your wholesaler has not enabled a repayment method. Contact them to arrange repayment.</p>
           )}
         </div>
       ) : <p className="mt-3 rounded-lg bg-white p-3 text-sm font-bold text-amber-900">Payment report is Pending Verification.</p>}
@@ -498,7 +533,15 @@ export function TransactionsHistoryPage() {
     refetchInterval: 15000,
     staleTime: 0,
   });
+  const paymentReportsQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-reports"),
+    queryFn: async () => (await api.getRetailerPaymentReports()).data || [],
+    enabled: Boolean(currentUser?.id),
+    refetchInterval: 15000,
+    staleTime: 0,
+  });
   const transactions = transactionsQuery.data?.transactions || [];
+  const paymentReports = paymentReportsQuery.data || [];
   const summary = transactionsQuery.data?.summary;
   const statusClass = (value: string) => value === "VERIFIED"
     ? "bg-emerald-100 text-emerald-800"
@@ -621,6 +664,41 @@ export function TransactionsHistoryPage() {
           </>
         )}
       </section>
+
+      <section className="mt-6 rounded-2xl border bg-card p-4 sm:p-6">
+        <h2 className="text-lg font-extrabold text-ink">Payment approvals</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Submitted payments appear here with their owner verification status and any rejection reason.</p>
+        {paymentReportsQuery.isLoading ? (
+          <p className="py-6 text-sm text-muted-foreground">Loading payment approvals…</p>
+        ) : paymentReportsQuery.isError ? (
+          <p role="alert" className="py-6 text-sm font-semibold text-rose-700">
+            {paymentReportsQuery.error instanceof Error ? paymentReportsQuery.error.message : "Unable to load payment approvals."}
+          </p>
+        ) : paymentReports.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">No submitted payments yet.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {paymentReports.map((report: any) => (
+              <article key={report._id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border p-4">
+                <div className="min-w-0">
+                  <p className="font-bold text-ink">₹{Number(report.amount).toLocaleString("en-IN")} · {String(report.paymentMethod || "UPI").replace(/_/g, " ")}</p>
+                  <p className="mt-1 break-all text-xs text-muted-foreground">
+                    Ref {report.transactionReference} · {report.isCreditRepayment ? "Credit repayment" : `Order ${report.orderId?.orderNumber || report.orderId}`}
+                  </p>
+                  {report.reviewNote && <p className="mt-2 text-sm text-rose-700">Owner note: {report.reviewNote}</p>}
+                  {report.isReversal && <p className="mt-2 text-sm text-rose-700">Reverse entry: {report.reversalReason}</p>}
+                  <p className="mt-1 text-xs text-muted-foreground">{new Date(report.createdAt).toLocaleString("en-IN")}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${
+                  report.status === "PAID" ? "bg-emerald-100 text-emerald-800"
+                    : report.status === "REJECTED" || report.status === "REFUNDED" ? "bg-rose-100 text-rose-800"
+                      : "bg-amber-100 text-amber-800"
+                }`}>{report.isReversal ? "REVERSED" : report.status}</span>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
@@ -646,6 +724,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelNote, setCancelNote] = useState("");
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   if (!order) {
     return (
@@ -670,6 +749,23 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
 
   const wholesalerName = linkedWholesaler?.name || linkedWholesaler?.businessName || "Connected wholesaler";
   const returnReq = (returns || []).find((r: any) => String(r.orderId) === String(order.id) || String(r.orderId?._id) === String(order.id));
+
+  const handleDownloadInvoice = async () => {
+    setDownloadingInvoice(true);
+    try {
+      const blob = await api.downloadOrderInvoice(order.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `INV-${order.orderNumber || order.id}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to download this invoice.');
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
 
   const handleRequestReturn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1195,7 +1291,11 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
               <span>{order.items.length} products ({order.items.reduce((s, i) => s + i.quantity, 0)} units)</span>
               <b>{money(order.total)}</b>
             </div>
-            <Button className="mt-5 w-full rounded-xl font-bold" variant="outline">Download invoice</Button>
+            {order.status === "delivered" && (
+              <Button className="mt-5 w-full rounded-xl font-bold" variant="outline" onClick={() => void handleDownloadInvoice()} disabled={downloadingInvoice}>
+                {downloadingInvoice ? "Preparing invoice…" : "Download invoice"}
+              </Button>
+            )}
           </div>
           <div className="border bg-card p-5 rounded-2xl shadow-xs space-y-2">
             <h2 className="font-bold">Payment Information</h2>
@@ -1532,9 +1632,15 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [placed, setPlaced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<"UPI" | "CREDIT">("UPI");
-  const [reportedOrder, setReportedOrder] = useState<{ id: string; number: string; amount: number } | null>(null);
+  const [paymentMode, setPaymentMode] = useState<"UPI" | "NET_BANKING" | "CASH_DEPOSIT" | "CHEQUE" | "CREDIT">("UPI");
+  const [reportedOrder, setReportedOrder] = useState<{
+    id: string;
+    number: string;
+    amount: number;
+    paymentMethod: "UPI" | "NET_BANKING" | "CASH_DEPOSIT" | "CHEQUE";
+  } | null>(null);
   const [paymentReference, setPaymentReference] = useState("");
+  const [paymentDetails, setPaymentDetails] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
   const [reportSubmitted, setReportSubmitted] = useState(false);
@@ -1599,6 +1705,8 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   const [requestingCredit, setRequestingCredit] = useState(false);
 
   const hasDirectUpi = Boolean(paymentOptions?.qrPaymentsEnabled || paymentOptions?.upiIdPaymentsEnabled);
+  const availableDirectMethods = paymentOptions?.paymentMethods || [];
+  const selectedDirectMethodEnabled = availableDirectMethods.includes(paymentMode);
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + creditPeriodDays);
@@ -1807,10 +1915,11 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   const isCreditEligible = isCreditEnabled && meetsMinOrder && availableCredit >= finalTotal;
 
   useEffect(() => {
-    if (!paymentOptionsQuery.isLoading && !hasDirectUpi && paymentMode === "UPI" && isCreditEligible) {
-      setPaymentMode("CREDIT");
+    if (!paymentOptionsQuery.isLoading && paymentMode !== "CREDIT" && !availableDirectMethods.includes(paymentMode)) {
+      if (availableDirectMethods.length) setPaymentMode(availableDirectMethods[0] as typeof paymentMode);
+      else if (isCreditEligible) setPaymentMode("CREDIT");
     }
-  }, [paymentOptionsQuery.isLoading, hasDirectUpi, paymentMode, isCreditEligible]);
+  }, [paymentOptionsQuery.isLoading, availableDirectMethods, paymentMode, isCreditEligible]);
 
   const checkoutStorageKey = `retailer-checkout-idempotency:${currentUser?.id || "unknown"}`;
   const clearCheckoutIdempotencyKey = () => {
@@ -1869,8 +1978,8 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
       toast.error("You are not eligible for credit on this order.");
       return;
     }
-    if (paymentMode === "UPI" && !hasDirectUpi) {
-      toast.error("Your wholesaler has not configured UPI payments.");
+    if (paymentMode !== "CREDIT" && !availableDirectMethods.includes(paymentMode)) {
+      toast.error("Your wholesaler has not enabled the selected payment method.");
       return;
     }
     setSubmitting(true);
@@ -1902,7 +2011,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
         });
         await refreshData(true);
         const order = (checkoutResponse.data as any)?.order || checkoutResponse.data;
-        if (paymentMode === "UPI") {
+        if (paymentMode !== "CREDIT") {
           const orderId = String(order?._id || order?.id || "");
           if (!orderId) throw new Error("The order was placed but its payment reference could not be loaded. Please check Orders.");
           clearCheckoutIdempotencyKey();
@@ -1910,10 +2019,12 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
             id: orderId,
             number: String(order.orderNumber || orderId),
             amount: Number(order.grandTotal || order.total || finalTotal),
+            paymentMethod: paymentMode,
           });
           setPaymentAmount(Number(order.grandTotal || order.total || finalTotal).toFixed(2));
-          toast.success("Order placed. Report your UPI payment for wholesaler verification.");
-          if (paymentOptions?.qrPaymentsEnabled) void startQrSession();
+          setPaymentDetails("");
+          toast.success("Order placed. Report your payment for wholesaler verification.");
+          if (paymentMode === "UPI" && paymentOptions?.qrPaymentsEnabled) void startQrSession();
           return;
         }
         clearCheckoutIdempotencyKey();
@@ -1930,7 +2041,11 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   const submitPaymentReport = async () => {
     if (!reportedOrder) return;
     if (paymentReference.trim().length < 4) {
-      toast.error("Enter the UPI transaction/reference ID.");
+      toast.error("Enter the payment transaction/reference ID.");
+      return;
+    }
+    if (["CASH_DEPOSIT", "CHEQUE"].includes(reportedOrder.paymentMethod) && paymentDetails.trim().length < 3) {
+      toast.error("Enter the deposit or cheque details.");
       return;
     }
     setSubmitting(true);
@@ -1939,6 +2054,8 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
         orderId: reportedOrder.id,
         amount: paymentAmount || reportedOrder.amount.toFixed(2),
         transactionReference: paymentReference.trim(),
+        paymentMethod: reportedOrder.paymentMethod,
+        paymentDetails,
         screenshot: paymentScreenshot || undefined,
       });
       setReportSubmitted(true);
@@ -2174,6 +2291,33 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
               </div>
             </div>
 
+            {availableDirectMethods.filter((method) => method !== "UPI").map((method) => (
+              <div
+                key={method}
+                className={`border p-4 rounded-xl transition-all ${paymentMode === method ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border/80 cursor-pointer hover:bg-muted/30"}`}
+                onClick={() => setPaymentMode(method as typeof paymentMode)}
+              >
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={paymentMode === method}
+                    onChange={() => setPaymentMode(method as typeof paymentMode)}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <b className="text-sm text-ink">{method.replace(/_/g, " ")}</b>
+                    <p className="mt-1 text-xs text-muted-foreground">Pay using the wholesaler&apos;s bank account and submit the reference for verification.</p>
+                    <div className="mt-3 rounded-lg border bg-background p-3 text-xs">
+                      <b>{paymentOptions?.bankDetails?.accountHolderName}</b>
+                      <p>{paymentOptions?.bankDetails?.bankName} · {paymentOptions?.bankDetails?.branch}</p>
+                      <p>A/C {paymentOptions?.bankDetails?.accountNumber} · IFSC {paymentOptions?.bankDetails?.ifscCode}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
             <div
               className={`border p-4 rounded-xl transition-all ${
                 paymentMode === "CREDIT"
@@ -2267,7 +2411,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
             {reportedOrder && (
               <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
                 <div>
-                  <h3 className="font-bold text-ink">Pay your wholesaler directly</h3>
+                  <h3 className="font-bold text-ink">Pay your wholesaler directly · {reportedOrder.paymentMethod.replace(/_/g, " ")}</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Order {reportedOrder.number} · Exact order total {money(reportedOrder.amount)} · Account {paymentOptions?.accountName || paymentOptions?.businessName || "Wholesaler"}
                   </p>
@@ -2291,17 +2435,28 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
                     )}
                   </div>
                 )}
-                {renderQrSection()}
+                {reportedOrder.paymentMethod === "UPI" ? renderQrSection() : (
+                  <div className="rounded-xl border bg-background p-3 text-xs">
+                    <b>{paymentOptions?.bankDetails?.accountHolderName}</b>
+                    <p>{paymentOptions?.bankDetails?.bankName} · {paymentOptions?.bankDetails?.branch}</p>
+                    <p>A/C {paymentOptions?.bankDetails?.accountNumber} · IFSC {paymentOptions?.bankDetails?.ifscCode}</p>
+                  </div>
+                )}
                 {!reportSubmitted ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="text-xs font-bold text-ink">Amount paid (₹)
                       <Input type="number" min="0.01" max={reportedOrder.amount} step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
                     </label>
-                    <label className="text-xs font-bold text-ink">UPI transaction / reference ID
-                      <Input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Enter your UPI reference" />
+                    <label className="text-xs font-bold text-ink">Transaction / reference ID
+                      <Input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Enter the payment reference" />
                     </label>
-                    <label className="text-xs font-bold text-ink sm:col-span-2">Payment screenshot (optional)
-                      <Input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setPaymentScreenshot(event.target.files?.[0] || null)} />
+                    {["CASH_DEPOSIT", "CHEQUE"].includes(reportedOrder.paymentMethod) && (
+                      <label className="text-xs font-bold text-ink sm:col-span-2">{reportedOrder.paymentMethod === "CHEQUE" ? "Cheque number / date" : "Deposit branch / date"}
+                        <Input value={paymentDetails} onChange={(event) => setPaymentDetails(event.target.value)} />
+                      </label>
+                    )}
+                    <label className="text-xs font-bold text-ink sm:col-span-2">Receipt or screenshot (optional)
+                      <Input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setPaymentScreenshot(event.target.files?.[0] || null)} />
                     </label>
                     <Button type="button" onClick={() => void submitPaymentReport()} disabled={submitting} className="sm:col-span-2">
                       {submitting ? "Submitting…" : "Report Payment for Verification"}
@@ -2618,7 +2773,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
               className="w-full rounded-xl font-extrabold"
               size="lg"
               onClick={handlePlaceOrder}
-              disabled={!hasActiveWholesalerConnection || submitting || quoteQuery.isLoading || quoteQuery.isError || !quote || (paymentMode === "UPI" ? !hasDirectUpi : !isCreditEligible)}
+              disabled={!hasActiveWholesalerConnection || submitting || quoteQuery.isLoading || quoteQuery.isError || !quote || (paymentMode === "CREDIT" ? !isCreditEligible : !selectedDirectMethodEnabled)}
             >
               {submitting ? "Processing..." : "Place Order"}
             </Button>

@@ -1111,17 +1111,28 @@ export const api = {
         }[];
       };
     }>('/wholesaler/financial-summary', { method: 'GET' }),
-  reviewPaymentReport: (reportId: string, action: 'VERIFY' | 'REJECT', note = '') =>
+  requestPaymentApprovalOtp: (reportId: string) =>
+    request<{ success: boolean; data: { otpRequired: boolean; expiresAt?: string; sentTo?: string } }>(
+      `/wholesaler/payment-reports/${reportId}/approval-otp`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+  reviewPaymentReport: (reportId: string, action: 'VERIFY' | 'REJECT', note = '', otp?: string) =>
     request<{ success: boolean; data: any }>(`/wholesaler/payment-reports/${reportId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ action, note }),
+      body: JSON.stringify({ action, note, ...(otp ? { otp } : {}) }),
+    }),
+  reversePaymentReport: (reportId: string, reason: string) =>
+    request<{ success: boolean; data: any }>(`/wholesaler/payment-reports/${reportId}/reverse`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     }),
   getPaymentReportScreenshot: async (reportId: string) => {
     const url = buildApiUrl(`/wholesaler/payment-reports/${encodeURIComponent(reportId)}/screenshot`);
     const token = getAuthToken();
     const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!response.ok) throw new Error('Unable to load payment evidence.');
-    return URL.createObjectURL(await response.blob());
+    const blob = await response.blob();
+    return { url: URL.createObjectURL(blob), contentType: blob.type };
   },
 
   getCreditOverview: () =>

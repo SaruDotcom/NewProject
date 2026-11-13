@@ -302,7 +302,7 @@ export default function ProductsPage() {
       ? categories.filter((c) => String(c.parentId) === String(level2CategoryId))
       : []
   ), [categories, level2CategoryId]);
-  const selectedFormSubcategory = categories.find((category) => String(category.id) === String(subcategoryId));
+  const selectedFormSubcategory = categories.find((category) => String(category.id) === String(level3CategoryId || level2CategoryId || subcategoryId));
   const currentAttributeSchema = getCategoryAttributeSchema(categoryName, selectedFormSubcategory?.name);
 
   const retainAttributesForSchema = (schema: CategoryAttributeDef[]) => {
@@ -418,9 +418,13 @@ export default function ProductsPage() {
     setCategoryName(product.category || '');
 
     const subId = product.subcategoryId || '';
-    setSubcategoryId(subId);
+    const subSubId = product.subSubcategoryId || '';
+    setSubcategoryId(subSubId || subId);
 
-    if (subId) {
+    if (subSubId) {
+      setLevel2CategoryId(String(subId));
+      setLevel3CategoryId(String(subSubId));
+    } else if (subId) {
       const targetSub = categories.find((c) => String(c.id) === String(subId));
       if (targetSub) {
         const parentSub = categories.find((c) => String(c.id) === String(targetSub.parentId));
@@ -679,7 +683,8 @@ export default function ProductsPage() {
           sku,
           category: categoryName,
           categoryId,
-          subcategoryId: subcategoryId || null,
+          subcategoryId: level2CategoryId || null,
+          subSubcategoryId: level3CategoryId || null,
           costPrice: numCostPrice,
           mrp: numMrp,
           sellingPrice: numSellingPrice,
@@ -705,7 +710,8 @@ export default function ProductsPage() {
           sku: sku.trim(),
           category: categoryName,
           categoryId,
-          subcategoryId: subcategoryId || null,
+          subcategoryId: level2CategoryId || null,
+          subSubcategoryId: level3CategoryId || null,
           costPrice: numCostPrice,
           mrp: numMrp,
           sellingPrice: numSellingPrice,
@@ -911,7 +917,7 @@ export default function ProductsPage() {
 
                   <div className="flex flex-1 flex-col space-y-3 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold">
-                      <span className="rounded-sm bg-tradeflow-gray-50 px-2 py-1 text-gray-600">{product.category}{product.subcategoryName ? ` / ${product.subcategoryName}` : ''}</span>
+                      <span className="rounded-sm bg-tradeflow-gray-50 px-2 py-1 text-gray-600">{product.categoryPath || [product.category, product.subcategoryName, product.subSubcategoryName].filter(Boolean).join(' / ')}</span>
                       <span className="text-tradeflow-navy">MOQ {product.minOrderQty}</span>
                     </div>
 
@@ -1015,7 +1021,7 @@ export default function ProductsPage() {
                           <div className="text-[10px] font-mono text-gray-400">SKU: {product.sku}</div>
                         </div>
                       </td>
-                      <td className="py-3.5 text-gray-600 font-semibold">{product.category}</td>
+                      <td className="py-3.5 text-gray-600 font-semibold">{product.categoryPath || [product.category, product.subcategoryName, product.subSubcategoryName].filter(Boolean).join(' / ')}</td>
                       <td className="py-3.5 font-mono text-gray-500 font-bold">₹{cost}</td>
                       <td className="py-3.5 font-bold text-tradeflow-navy text-sm">₹{selling}</td>
                       <td className="py-3.5">

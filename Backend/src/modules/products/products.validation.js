@@ -20,6 +20,7 @@ const updateProductSchema = Joi.object({
   categoryId: objectId.allow('', null),
   subcategoryId: objectId.allow(null, ''),
   subCategory: objectId.allow(null, ''),
+  subSubcategoryId: objectId.allow(null, ''),
   categoryName: Joi.string().allow(''),
   subcategoryName: Joi.string().allow(''),
   costPrice: nonNegativeNumber,
@@ -123,7 +124,7 @@ const validateCategoryAttributes = async (req, requireCategory = false) => {
       categoryName = catDoc.name;
     }
   }
-  const subcategoryId = req.body.subcategoryId || req.body.subCategory || req.body.subSubcategoryId;
+  const subcategoryId = req.body.subSubcategoryId || req.body.subcategoryId || req.body.subCategory;
   if (subcategoryId && /^[0-9a-fA-F]{24}$/.test(String(subcategoryId))) {
     const subcategoryDoc = await Category.findById(subcategoryId);
     if (subcategoryDoc) subcategoryName = subcategoryDoc.name;
@@ -208,9 +209,11 @@ const validateProductUpdateMiddleware = async (req, res, next) => {
 
     // Validate category attributes when either the category or its selected subcategory changes.
     const incomingCatId = req.body.categoryId || (String(req.body.category).match(/^[0-9a-fA-F]{24}$/) ? req.body.category : null);
-    const incomingSubcategoryId = req.body.subcategoryId || req.body.subCategory || req.body.subSubcategoryId;
-    const hasIncomingSubcategory = ['subcategoryId', 'subCategory', 'subSubcategoryId'].some((field) => Object.prototype.hasOwnProperty.call(req.body, field));
-    if (!incomingCatId && !hasIncomingSubcategory) return next();
+    const incomingSubcategoryId = req.body.subcategoryId || req.body.subCategory;
+    const incomingSubSubcategoryId = req.body.subSubcategoryId;
+    const hasIncomingSubcategory = ['subcategoryId', 'subCategory'].some((field) => Object.prototype.hasOwnProperty.call(req.body, field));
+    const hasIncomingSubSubcategory = Object.prototype.hasOwnProperty.call(req.body, 'subSubcategoryId');
+    if (!incomingCatId && !hasIncomingSubcategory && !hasIncomingSubSubcategory) return next();
 
     try {
       const currentProduct = await Product.findOne({
@@ -221,10 +224,11 @@ const validateProductUpdateMiddleware = async (req, res, next) => {
       if (!currentProduct) return next();
 
       const currentCatId = currentProduct.categoryId || currentProduct.category;
-      const currentSubcategoryId = currentProduct.subcategoryId || currentProduct.subCategory || currentProduct.subSubcategoryId;
+      const currentSubcategoryId = currentProduct.subcategoryId || currentProduct.subCategory;
       const categoryChanged = incomingCatId && String(currentCatId) !== String(incomingCatId);
       const subcategoryChanged = hasIncomingSubcategory && String(currentSubcategoryId || '') !== String(incomingSubcategoryId || '');
-      if (!categoryChanged && !subcategoryChanged) {
+      const subSubcategoryChanged = hasIncomingSubSubcategory && String(currentProduct.subSubcategoryId || '') !== String(incomingSubSubcategoryId || '');
+      if (!categoryChanged && !subcategoryChanged && !subSubcategoryChanged) {
         return next();
       }
 

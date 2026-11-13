@@ -103,6 +103,87 @@ describe('Product update validation and persistence', () => {
     expect((await Inventory.findOne({ productId: product._id })).available).toBe(14);
   });
 
+  test('product creation and edits preserve all three category levels', async () => {
+    const levelTwo = await Category.create({
+      name: 'Womenswear',
+      slug: 'clothing-womenswear',
+      parentId: category._id,
+      wholesalerId: wholesaler._id,
+    });
+    const levelThree = await Category.create({
+      name: 'Sarees',
+      slug: 'clothing-womenswear-sarees',
+      parentId: levelTwo._id,
+      wholesalerId: wholesaler._id,
+    });
+    const alternateLevelThree = await Category.create({
+      name: 'Kurtas',
+      slug: 'clothing-womenswear-kurtas',
+      parentId: levelTwo._id,
+      wholesalerId: wholesaler._id,
+    });
+
+    const createResponse = await request(app)
+      .post('/api/v1/wholesaler/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Printed Saree',
+        sku: 'PRINTED-SAREE-01',
+        categoryId: String(category._id),
+        subcategoryId: String(levelTwo._id),
+        subSubcategoryId: String(levelThree._id),
+        wholesalePrice: 100,
+        sellingPrice: 100,
+        mrp: 150,
+        stock: 10,
+      });
+
+    expect(createResponse.status).toBe(201);
+    const createdProductId = createResponse.body.data.product._id;
+    expect(String(createResponse.body.data.product.subcategoryId)).toBe(String(levelTwo._id));
+    expect(String(createResponse.body.data.product.subSubcategoryId)).toBe(String(levelThree._id));
+
+    const updateResponse = await request(app)
+      .put(`/api/v1/wholesaler/products/${createdProductId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ subSubcategoryId: String(alternateLevelThree._id) });
+
+    expect(updateResponse.status).toBe(200);
+    const savedProduct = await Product.findById(createdProductId).lean();
+    expect(String(savedProduct.subcategoryId)).toBe(String(levelTwo._id));
+    expect(String(savedProduct.subSubcategoryId)).toBe(String(alternateLevelThree._id));
+
+    const retailer = await User.create({
+      name: 'Hierarchy Retailer',
+      email: 'hierarchy-retailer@test.com',
+      passwordHash: await User.hashPassword('Retailer123'),
+      role: ROLES.RETAILER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await WholesalerRetailerRelationship.create({
+      wholesalerId: wholesaler._id,
+      retailerId: retailer._id,
+      status: RELATIONSHIP_STATUS.ACTIVE,
+    });
+    const retailerLogin = await request(app).post('/api/v1/auth/login').send({
+      email: 'hierarchy-retailer@test.com',
+      password: 'Retailer123',
+    });
+    const retailerCategories = await request(app)
+      .get('/api/v1/retailer/categories')
+      .set('Authorization', `Bearer ${retailerLogin.body.data.token}`);
+    const retailerResponse = await request(app)
+      .get(`/api/v1/retailer/products?category=${alternateLevelThree._id}`)
+      .set('Authorization', `Bearer ${retailerLogin.body.data.token}`);
+
+    expect(retailerCategories.body.data.find(({ _id }) => String(_id) === String(alternateLevelThree._id)).displayPath)
+      .toBe('Clothing > Womenswear > Kurtas');
+    expect(retailerResponse.status).toBe(200);
+    expect(retailerResponse.body.data).toHaveLength(1);
+    expect(String(retailerResponse.body.data[0].subcategoryId)).toBe(String(levelTwo._id));
+    expect(String(retailerResponse.body.data[0].subSubcategoryId)).toBe(String(alternateLevelThree._id));
+  });
+
   test('product edits and retailer catalog preserve every product and color image', async () => {
     const retailer = await User.create({
       name: 'Catalog Retailer',

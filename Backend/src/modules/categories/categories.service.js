@@ -13,6 +13,54 @@ const getDuplicateCategoryScope = (wholesalerId) => (
 );
 
 class CategoryService {
+  static async getCategoryDepth(category) {
+    let current = category;
+    let depth = 1;
+    const visited = new Set([String(category._id)]);
+
+    while (current?.parentId || current?.parentCategoryId) {
+      const parentId = String(current.parentId || current.parentCategoryId);
+      if (visited.has(parentId)) {
+        throw new BadRequestError('Category hierarchy cannot contain a cycle');
+      }
+      visited.add(parentId);
+      current = await Category.findById(parentId).select('_id parentId parentCategoryId isDeleted');
+      if (!current || current.isDeleted) {
+        throw new NotFoundError('Parent category not found');
+      }
+      depth += 1;
+    }
+
+    return depth;
+  }
+
+  static async getCategorySubtreeHeight(categoryId) {
+    const visited = new Set([String(categoryId)]);
+    let frontier = [{ id: String(categoryId), depth: 1 }];
+    let height = 1;
+
+    while (frontier.length) {
+      const next = [];
+      for (const current of frontier) {
+        const children = await Category.find({
+          $or: [{ parentId: current.id }, { parentCategoryId: current.id }],
+          isDeleted: false,
+        }).select('_id');
+        for (const child of children) {
+          const childId = String(child._id);
+          if (visited.has(childId)) continue;
+          visited.add(childId);
+          const depth = current.depth + 1;
+          height = Math.max(height, depth);
+          next.push({ id: childId, depth });
+        }
+      }
+      frontier = next;
+    }
+
+    return height;
+  }
+
   static async validateParentCategory(parentId, user, categoryId = null) {
     if (!parentId) return null;
     if (categoryId && String(parentId) === String(categoryId)) {
@@ -28,22 +76,22 @@ class CategoryService {
     if (!parent || parent.isDeleted) {
       throw new NotFoundError('Parent category not found');
     }
-    if (categoryId) {
-      let curr = parent;
-      const visited = new Set();
-      while (curr && curr.parentId) {
-        const currParentIdStr = String(curr.parentId._id || curr.parentId);
-        if (currParentIdStr === String(categoryId)) {
-          throw new BadRequestError('Cannot set a descendant category as parent (circular hierarchy)');
-        }
-        if (visited.has(currParentIdStr)) break;
-        visited.add(currParentIdStr);
-        curr = await Category.findById(curr.parentId);
-      }
+    if (categoryId && String(parent._id) === String(categoryId)) {
+      throw new BadRequestError('Cannot set a descendant category as parent (circular hierarchy)');
     }
-    const parentLevel = parent.level || (parent.parentId ? 2 : 1);
+    const parentLevel = await this.getCategoryDepth(parent);
     if (parentLevel >= 3) {
       throw new BadRequestError('Maximum 3 levels supported: Category (Level 1) → Subcategory (Level 2) → Sub-subcategory (Level 3)');
+    }
+    if (categoryId) {
+      let current = parent;
+      while (current?.parentId || current?.parentCategoryId) {
+        const ancestorId = current.parentId || current.parentCategoryId;
+        if (String(ancestorId) === String(categoryId)) {
+          throw new BadRequestError('Cannot set a descendant category as parent (circular hierarchy)');
+        }
+        current = await Category.findById(ancestorId).select('_id parentId parentCategoryId');
+      }
     }
 
     if (
@@ -399,14 +447,16 @@ class CategoryService {
     if (updateData.sortOrder !== undefined) category.sortOrder = updateData.sortOrder;
     if (updateData.isActive !== undefined) category.isActive = updateData.isActive;
     if (updateData.parentId !== undefined) {
-      if (updateData.parentId) {
-        await this.validateParentCategory(updateData.parentId, user, category._id);
-        const childCount = await Category.countDocuments({ parentId: category._id, isDeleted: false });
-        if (childCount > 0) {
-          throw new BadRequestError('A category with subcategories must remain a top-level category');
-        }
+      const parent = updateData.parentId
+        ? await this.validateParentCategory(updateData.parentId, user, category._id)
+        : null;
+      const subtreeHeight = await this.getCategorySubtreeHeight(category._id);
+      const depth = parent ? await this.getCategoryDepth(parent) + 1 : 1;
+      if (depth + subtreeHeight - 1 > 3) {
+        throw new BadRequestError('This parent would make the category hierarchy exceed 3 levels.');
       }
-      category.parentId = updateData.parentId || null;
+      category.parentId = parent?._id || null;
+      category.parentCategoryId = category.parentId;
     }
 
     await category.save();

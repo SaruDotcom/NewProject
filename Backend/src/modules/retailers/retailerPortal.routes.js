@@ -66,6 +66,7 @@ router.delete('/cart', retailerController.clearCart);
 router.post('/checkout/quote', validate(checkoutSchema), retailerController.quoteCheckout);
 router.post('/checkout', idempotency, validate(checkoutSchema), retailerController.checkout);
 router.get('/orders', retailerController.getOrders);
+router.get('/orders/:id/invoice', retailerController.downloadInvoice);
 router.get('/orders/:id', retailerController.getOrderById);
 router.post('/orders/:id/cancel', validate(cancelOrderSchema), retailerController.cancelOrder);
 router.patch('/orders/:id/cancel', validate(cancelOrderSchema), retailerController.cancelOrder);

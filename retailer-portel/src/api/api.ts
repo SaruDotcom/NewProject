@@ -34,6 +34,7 @@ export type ApiProduct = {
   category?: { _id?: string; id?: string; name?: string; slug?: string } | string;
   categoryId?: string | { _id?: string; id?: string; name?: string; slug?: string };
   subcategoryId?: string | { _id?: string; id?: string; name?: string; slug?: string };
+  subSubcategoryId?: string | { _id?: string; id?: string; name?: string; slug?: string };
   rating?: number;
   averageRating?: number;
   wholesalerId?: string | { _id?: string; id?: string; name?: string };
@@ -713,6 +714,14 @@ export const api = {
       upiIdPaymentsEnabled: boolean;
       upiId: string;
       qrSessionMinutes: number;
+      paymentMethods: string[];
+      bankDetails: {
+        accountHolderName: string;
+        bankName: string;
+        accountNumber: string;
+        ifscCode: string;
+        branch: string;
+      };
     }>>(`/retailer/payment-options${wholesalerId ? `?wholesalerId=${encodeURIComponent(wholesalerId)}` : ''}`, { method: 'GET' }),
   createRetailerQrSession: (wholesalerId?: string) =>
     request<ApiEnvelope<{
@@ -722,11 +731,21 @@ export const api = {
       qrSessionMinutes: number;
       expiresAt: string;
     }>>('/retailer/payment-options/qr-session', { method: 'POST', body: JSON.stringify(wholesalerId ? { wholesalerId } : {}) }),
-  createPaymentReport: (payload: { orderId?: string; amount: string; transactionReference: string; type?: 'CREDIT_REPAYMENT'; screenshot?: File }) => {
+  createPaymentReport: (payload: {
+    orderId?: string;
+    amount: string;
+    transactionReference: string;
+    paymentMethod?: string;
+    paymentDetails?: string;
+    type?: 'CREDIT_REPAYMENT';
+    screenshot?: File;
+  }) => {
     const formData = new FormData();
     if (payload.orderId) formData.append('orderId', payload.orderId);
     formData.append('amount', payload.amount);
     formData.append('transactionReference', payload.transactionReference);
+    if (payload.paymentMethod) formData.append('paymentMethod', payload.paymentMethod);
+    if (payload.paymentDetails) formData.append('paymentDetails', payload.paymentDetails);
     if (payload.type) formData.append('type', payload.type);
     if (payload.screenshot) formData.append('screenshot', payload.screenshot);
     return request<ApiEnvelope<any>>('/retailer/payments/reports', { method: 'POST', body: formData });
@@ -741,6 +760,16 @@ export const api = {
 
   getOrders: (params?: Record<string, string | number | boolean | null | undefined>) =>
     request<ApiEnvelope<ApiOrder[] | ApiOrderListData>>(`/retailer/orders${buildQueryString(params)}`, { method: 'GET' }),
+  downloadOrderInvoice: async (orderId: string) => {
+    const response = await fetch(buildApiUrl(`/retailer/orders/${encodeURIComponent(orderId)}/invoice`), {
+      headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {},
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.message || 'Unable to download this invoice.');
+    }
+    return response.blob();
+  },
 
   getReturns: () => request<ApiEnvelope<any[]>>('/retailer/returns', { method: 'GET' }),
 

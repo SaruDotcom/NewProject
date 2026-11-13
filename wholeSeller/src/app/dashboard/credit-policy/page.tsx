@@ -333,36 +333,21 @@ export default function CreditPolicyPage() {
             <label className="block text-xs font-bold text-tradeflow-navy mb-1.5">
               Credit Period (Days) *
             </label>
-            <div className="flex items-center rounded-xl border border-tradeflow-gray-300 bg-white px-2 py-1 focus-within:border-tradeflow-green">
-              <button
-                type="button"
-                onClick={() => setPolicy((p) => ({ ...p, creditPeriodDays: Math.max(1, p.creditPeriodDays - 1) }))}
-                className="px-2 py-1 text-xs font-bold text-gray-500 hover:text-black hover:bg-gray-100 rounded transition-colors"
-                title="Decrease 1 day"
-              >
-                -
-              </button>
+            <div className="rounded-xl border border-tradeflow-gray-300 bg-white px-3 py-1 focus-within:border-tradeflow-green">
               <input
                 type="number"
                 min={1}
+                max={365}
                 step={1}
                 required
                 value={policy.creditPeriodDays === 0 ? '' : policy.creditPeriodDays}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setPolicy({ ...policy, creditPeriodDays: val === '' ? 1 : Math.max(1, Math.floor(Number(val))) });
+                  setPolicy({ ...policy, creditPeriodDays: val === '' ? 0 : Math.min(365, Math.max(1, Math.floor(Number(val)))) });
                 }}
                 placeholder="e.g. 15, 30, 45"
-                className="w-full text-center text-xs font-bold outline-none border-none py-1"
+                className="w-full text-xs font-bold outline-none border-none py-2"
               />
-              <button
-                type="button"
-                onClick={() => setPolicy((p) => ({ ...p, creditPeriodDays: p.creditPeriodDays + 1 }))}
-                className="px-2 py-1 text-xs font-bold text-gray-500 hover:text-black hover:bg-gray-100 rounded transition-colors"
-                title="Increase 1 day"
-              >
-                +
-              </button>
             </div>
             <p className="mt-1 text-[10px] text-gray-400">Days until due (whole number ≥ 1)</p>
           </div>

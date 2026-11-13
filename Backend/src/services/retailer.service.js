@@ -54,6 +54,8 @@ const allowedProductFields = [
   'categoryId',
   'category',
   'subcategoryId',
+  'subCategory',
+  'subSubcategoryId',
   'categoryName',
   'images',
   'imageUrl',
@@ -441,7 +443,7 @@ class RetailerService {
   static async getCategories(retailerId, query = {}) {
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
     const filter = {
-      wholesalerId: wholesalerUser._id,
+      wholesalerId: { $in: [wholesalerUser._id, null] },
       isActive: true,
       isDeleted: false,
       isDemo: { $ne: true },
@@ -453,23 +455,44 @@ class RetailerService {
     }
 
     const { page, limit, skip, sort } = parsePagination(query);
-    const [categories, total] = await Promise.all([
+    const hierarchyFilter = { ...filter };
+    delete hierarchyFilter.$or;
+    const [categories, allCategories, total] = await Promise.all([
       Category.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      Category.find(hierarchyFilter).select('_id name slug parentId parentCategoryId level').lean(),
       Category.countDocuments(filter),
     ]);
 
-    return { categories, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+    const categoryById = new Map(allCategories.map((category) => [String(category._id), category]));
+    const decoratedCategories = categories.map((category) => {
+      const path = [];
+      const visited = new Set();
+      let current = category;
+      while (current && !visited.has(String(current._id))) {
+        visited.add(String(current._id));
+        path.unshift({ id: String(current._id), name: current.name, slug: current.slug });
+        const parentId = current.parentId || current.parentCategoryId;
+        current = parentId ? categoryById.get(String(parentId)) : null;
+      }
+      return {
+        ...category,
+        path,
+        displayPath: path.map(({ name }) => name).join(' > '),
+      };
+    });
+
+    return { categories: decoratedCategories, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   static async getProducts(retailerId, query = {}) {
     const wholesalerUser = await this.getActiveWholesalerOrThrow(retailerId);
     const { page, limit, skip, sort } = parsePagination(query);
     const activeCategories = await Category.find({
-      wholesalerId: wholesalerUser._id,
+      wholesalerId: { $in: [wholesalerUser._id, null] },
       isActive: true,
       isDeleted: false,
       isDemo: { $ne: true },
-    }).select('_id').lean();
+    }).select('_id parentId parentCategoryId').lean();
 
     const filter = {
       wholesalerId: wholesalerUser._id,
@@ -478,7 +501,9 @@ class RetailerService {
       isDemo: { $ne: true },
       categoryId: { $in: activeCategories.map(({ _id }) => _id) },
       subcategoryId: { $in: [null, ...activeCategories.map(({ _id }) => _id)] },
+      subSubcategoryId: { $in: [null, ...activeCategories.map(({ _id }) => _id)] },
     };
+    const filterConditions = [];
 
     if (query.category && query.category !== 'All') {
       const categoryFilter = objectIdPattern.test(String(query.category))
@@ -486,29 +511,54 @@ class RetailerService {
         : { $or: [{ name: new RegExp(escapeRegex(query.category), 'i') }, { slug: query.category }] };
       const category = await Category.findOne({
         ...categoryFilter,
-        wholesalerId: wholesalerUser._id,
+        wholesalerId: { $in: [wholesalerUser._id, null] },
         isActive: true,
         isDeleted: false,
         isDemo: { $ne: true },
-      }).select('_id').lean();
+      }).select('_id parentId parentCategoryId').lean();
       if (!category) {
         return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
       }
-      filter.categoryId = category._id;
+      const categoryIds = new Set([String(category._id)]);
+      let frontier = [String(category._id)];
+      while (frontier.length) {
+        const descendants = activeCategories
+          .filter(({ parentId, parentCategoryId }) => frontier.includes(String(parentId || parentCategoryId || '')))
+          .map(({ _id }) => String(_id))
+          .filter((id) => !categoryIds.has(id));
+        descendants.forEach((id) => categoryIds.add(id));
+        frontier = descendants;
+      }
+      const ids = [...categoryIds];
+      filterConditions.push({
+        $or: [
+          { categoryId: { $in: ids } },
+          { category: { $in: ids } },
+          { subcategoryId: { $in: ids } },
+          { subCategory: { $in: ids } },
+          { subSubcategoryId: { $in: ids } },
+        ],
+      });
     }
 
     if (query.subcategory) {
       const subcategory = await Category.findOne({
         _id: query.subcategory,
-        wholesalerId: wholesalerUser._id,
+        wholesalerId: { $in: [wholesalerUser._id, null] },
         isActive: true,
         isDeleted: false,
         isDemo: { $ne: true },
-      }).select('_id').lean();
+      }).select('_id parentId parentCategoryId').lean();
       if (!subcategory) {
         return { products: [], meta: { page, limit, total: 0, totalPages: 0 } };
       }
-      filter.subcategoryId = subcategory._id;
+      filterConditions.push({
+        $or: [
+          { subcategoryId: subcategory._id },
+          { subCategory: subcategory._id },
+          { subSubcategoryId: subcategory._id },
+        ],
+      });
     }
 
     if (query.brand) {
@@ -528,13 +578,14 @@ class RetailerService {
 
     if (query.search) {
       const search = new RegExp(escapeRegex(query.search), 'i');
-      filter.$or = [
+      filterConditions.push({ $or: [
         { name: search },
         { title: search },
         { sku: search },
         { brand: search },
-      ];
+      ] });
     }
+    if (filterConditions.length) filter.$and = filterConditions;
 
     const { products, total } = await ProductRepository.findByWholesaler(
       wholesalerUser._id,
@@ -562,7 +613,7 @@ class RetailerService {
       _id: productId,
       wholesalerId: wholesalerUser._id,
       isDeleted: false,
-    }).populate('categoryId subcategoryId');
+    }).populate('categoryId subcategoryId subSubcategoryId');
 
     if (!product) {
       throw new NotFoundError('Product not found in connected wholesaler catalog');

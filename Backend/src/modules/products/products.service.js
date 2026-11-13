@@ -88,7 +88,7 @@ function sanitizeProductData(prod) {
 }
 
 class ProductService {
-  static async validateCategorySelection(categoryId, subcategoryId, wholesalerId) {
+  static async validateCategorySelection(categoryId, subcategoryId, wholesalerId, subSubcategoryId = null) {
     if (!categoryId) {
       throw new BadRequestError('A main category is required');
     }
@@ -97,37 +97,46 @@ class ProductService {
     if (!category || category.isDeleted) {
       throw new NotFoundError('Category not found');
     }
-    if (category.parentId) {
+    if (category.parentId || category.parentCategoryId) {
       throw new BadRequestError('Select a main category, not a subcategory');
     }
     if (category.wholesalerId && String(category.wholesalerId) !== String(wholesalerId)) {
       throw new ForbiddenError('You can only use your own or global categories');
     }
 
+    let subcategory = null;
     if (subcategoryId) {
-      const subcategory = await Category.findOne({ _id: subcategoryId, isDemo: { $ne: true } });
+      subcategory = await Category.findOne({ _id: subcategoryId, isDemo: { $ne: true } });
       if (!subcategory || subcategory.isDeleted) {
         throw new NotFoundError('Subcategory not found');
       }
 
-      // Check that subcategory traces up to the selected main category (handles Level 2 and Level 3)
-      let curr = subcategory;
-      let belongs = false;
-      const visited = new Set();
-      while (curr && curr.parentId && !visited.has(String(curr._id))) {
-        visited.add(String(curr._id));
-        if (String(curr.parentId) === String(category._id)) {
-          belongs = true;
-          break;
-        }
-        curr = await Category.findById(curr.parentId);
-      }
-
-      if (!belongs) {
+      const parentId = String(subcategory.parentId || subcategory.parentCategoryId || '');
+      const parent = parentId ? await Category.findById(parentId).select('_id parentId parentCategoryId') : null;
+      const isLevel2 = parentId === String(category._id);
+      const isLegacyLevel3 = !subSubcategoryId && parent &&
+        String(parent.parentId || parent.parentCategoryId || '') === String(category._id);
+      if (!isLevel2 && !isLegacyLevel3) {
         throw new BadRequestError('Subcategory must belong to the selected main category');
       }
       if (subcategory.wholesalerId && String(subcategory.wholesalerId) !== String(wholesalerId)) {
         throw new ForbiddenError('You can only use your own or global subcategories');
+      }
+    }
+
+    if (subSubcategoryId) {
+      if (!subcategory || !String(subcategory.parentId || subcategory.parentCategoryId || '')) {
+        throw new BadRequestError('Select a level 2 subcategory before selecting a sub-subcategory');
+      }
+      const subSubcategory = await Category.findOne({ _id: subSubcategoryId, isDemo: { $ne: true } });
+      if (!subSubcategory || subSubcategory.isDeleted) {
+        throw new NotFoundError('Sub-subcategory not found');
+      }
+      if (String(subSubcategory.parentId || subSubcategory.parentCategoryId || '') !== String(subcategory._id)) {
+        throw new BadRequestError('Sub-subcategory must belong to the selected subcategory');
+      }
+      if (subSubcategory.wholesalerId && String(subSubcategory.wholesalerId) !== String(wholesalerId)) {
+        throw new ForbiddenError('You can only use your own or global sub-subcategories');
       }
     }
 
@@ -283,6 +292,8 @@ class ProductService {
     const [products, total] = await Promise.all([
       Product.find(filter)
         .populate('categoryId', 'name slug')
+        .populate('subcategoryId', 'name slug')
+        .populate('subSubcategoryId', 'name slug')
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -328,7 +339,7 @@ class ProductService {
 
     if (query.category && query.category !== 'All') {
       const categoryDoc = await Category.findOne({
-        wholesalerId,
+        wholesalerId: { $in: [wholesalerId, null] },
         isActive: true,
         isDeleted: { $ne: true },
         isDemo: { $ne: true },
@@ -364,6 +375,8 @@ class ProductService {
       Product.find(filter)
         .populate('categoryId', 'name slug')
         .populate('category', 'name slug')
+        .populate('subcategoryId', 'name slug')
+        .populate('subSubcategoryId', 'name slug')
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -389,7 +402,8 @@ class ProductService {
     const product = await Product.findById(productId)
       .populate('wholesalerId', 'name email phone')
       .populate('categoryId', 'name slug')
-      .populate('subcategoryId', 'name slug');
+      .populate('subcategoryId', 'name slug')
+      .populate('subSubcategoryId', 'name slug');
 
     if (!product || product.isDeleted || product.isDemo) {
       throw new NotFoundError('Product not found');
@@ -479,7 +493,7 @@ class ProductService {
       throw new ConflictError(`A product with SKU '${cleanSku}' already exists in your inventory.`, 'DUPLICATE_SKU');
     }
 
-    const category = await this.validateCategorySelection(categoryId, subcategoryId, wholesalerId);
+    const category = await this.validateCategorySelection(categoryId, subcategoryId, wholesalerId, subSubcategoryId);
     const categoryName = category.name;
 
     const slug = await this.generateSlug(productName);
@@ -788,23 +802,28 @@ class ProductService {
     const incomingCatId = updateData.categoryId || (String(updateData.category).match(/^[0-9a-fA-F]{24}$/) ? updateData.category : null);
     const categoryChanged = incomingCatId && String(incomingCatId) !== String(product.categoryId || product.category);
 
-    if (categoryChanged || supplied('subcategoryId') || supplied('subCategory')) {
+    if (categoryChanged || supplied('subcategoryId') || supplied('subCategory') || supplied('subSubcategoryId')) {
       const nextCategoryId = incomingCatId || product.categoryId || product.category;
       const nextSubcategoryId = supplied('subcategoryId')
         ? (updateData.subcategoryId || null)
         : supplied('subCategory') ? (updateData.subCategory || null) : product.subcategoryId;
+      const nextSubSubcategoryId = supplied('subSubcategoryId')
+        ? (updateData.subSubcategoryId || null)
+        : product.subSubcategoryId;
 
       if (nextCategoryId && String(nextCategoryId).match(/^[0-9a-fA-F]{24}$/)) {
         const category = await this.validateCategorySelection(
           nextCategoryId,
           nextSubcategoryId,
-          product.wholesalerId
+          product.wholesalerId,
+          nextSubSubcategoryId
         );
         set.categoryId = category._id;
         set.category = category._id;
         set.categoryName = category.name;
         set.subcategoryId = nextSubcategoryId || null;
         set.subCategory = nextSubcategoryId || null;
+        set.subSubcategoryId = nextSubSubcategoryId || null;
       }
     }
 

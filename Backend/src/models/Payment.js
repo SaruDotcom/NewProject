@@ -50,6 +50,8 @@ const paymentSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    paymentDetails: { type: String, default: '', maxlength: 500 },
+    evidenceMimeType: { type: String, enum: ['', 'image/jpeg', 'image/png', 'image/webp', 'application/pdf'], default: '' },
     transactionReferenceKey: { type: String, default: '' },
     isReport: { type: Boolean, default: false, index: true },
     isCreditRepayment: { type: Boolean, default: false, index: true },
@@ -62,6 +64,16 @@ const paymentSchema = new mongoose.Schema(
     reviewNote: { type: String, default: '' },
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     reviewedAt: { type: Date, default: null },
+    approvalOtpHash: { type: String, default: '' },
+    approvalOtpExpiresAt: { type: Date, default: null },
+    approvalOtpAttempts: { type: Number, default: 0, min: 0 },
+    approvalOtpSentAt: { type: Date, default: null },
+    approvalOtpVerifiedAt: { type: Date, default: null },
+    isReversal: { type: Boolean, default: false, index: true },
+    reversesPaymentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Payment', default: null },
+    reversalReason: { type: String, default: '', maxlength: 500 },
+    reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    reversedAt: { type: Date, default: null },
     gatewayResponse: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
@@ -83,6 +95,10 @@ paymentSchema.index(
 paymentSchema.index({ wholesalerId: 1, isReport: 1, status: 1, paidAt: -1 });
 paymentSchema.index({ orderId: 1, isReport: 1, status: 1 });
 paymentSchema.index({ wholesalerId: 1, createdAt: -1 });
+paymentSchema.index(
+  { reversesPaymentId: 1 },
+  { unique: true, partialFilterExpression: { reversesPaymentId: { $type: 'objectId' } } }
+);
 
 const Payment = mongoose.model('Payment', paymentSchema);
 module.exports = Payment;

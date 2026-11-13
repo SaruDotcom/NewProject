@@ -60,8 +60,8 @@ class OrderService {
     if (paymentMethod === 'COD') {
       throw new BadRequestError('Cash on Delivery is unavailable. Choose direct UPI or approved credit.', 'COD_DISABLED');
     }
-    if (paymentMethod && !['UPI', 'CREDIT'].includes(paymentMethod)) {
-      throw new BadRequestError('Choose direct UPI or approved credit for retailer checkout.', 'UNSUPPORTED_PAYMENT_METHOD');
+    if (paymentMethod && !['UPI', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE', 'CREDIT'].includes(paymentMethod)) {
+      throw new BadRequestError('Choose an enabled payment method or approved credit for retailer checkout.', 'UNSUPPORTED_PAYMENT_METHOD');
     }
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new BadRequestError('Order must contain at least one item', 'EMPTY_ORDER');
@@ -168,9 +168,11 @@ class OrderService {
         ? Math.round((itemSubtotal * gstRate / (100 + gstRate)) * 100) / 100
         : Math.round((itemSubtotal * (gstRate / 100)) * 100) / 100;
       const itemTotal = priceIncludesTax ? itemSubtotal : itemSubtotal + itemGst;
+      const cgstRate = hasSplitTax ? cgst : (isIntraState ? gstRate / 2 : 0);
+      const sgstRate = hasSplitTax ? sgst : (isIntraState ? gstRate / 2 : 0);
+      const igstRate = hasSplitTax ? igst : (isIntraState ? 0 : gstRate);
 
       subtotal += itemSubtotal;
-      totalTax += itemGst;
 
       calculatedOrderItems.push({
         productId: product._id,
@@ -183,10 +185,18 @@ class OrderService {
         costPriceAtOrder: Number(product.costPrice || 0),
         gstRate,
         gstAmount: itemGst,
+        taxableValue: priceIncludesTax ? Math.round((itemSubtotal - itemGst) * 100) / 100 : itemSubtotal,
+        discountAmount: 0,
         hsnCode: product.hsnCode || product.hsn || '',
         cgst: hasSplitTax ? cgst : null,
         sgst: hasSplitTax ? sgst : null,
         igst: hasSplitTax ? igst : null,
+        cgstRate,
+        sgstRate,
+        igstRate,
+        cgstAmount: 0,
+        sgstAmount: 0,
+        igstAmount: 0,
         priceIncludesTax,
         total: itemTotal,
       });
@@ -212,10 +222,52 @@ class OrderService {
       appliedCoupon = validationResult.coupon;
     }
 
-    const grandTotal = Math.round(Math.max(0, subtotal + totalTax - discountAmount) * 100) / 100;
+    const discountPaise = Math.min(Math.round(subtotal * 100), Math.max(0, Math.round(discountAmount * 100)));
+    discountAmount = discountPaise / 100;
+    let remainingDiscountPaise = discountPaise;
+    let additionalTaxPaise = 0;
+    totalTax = 0;
+    calculatedOrderItems.forEach((item, index) => {
+      const itemSubtotalPaise = Math.round(Number(item.subtotal) * 100);
+      const itemDiscountPaise = index === calculatedOrderItems.length - 1
+        ? Math.min(itemSubtotalPaise, remainingDiscountPaise)
+        : Math.min(itemSubtotalPaise, remainingDiscountPaise, Math.round(discountPaise * itemSubtotalPaise / Math.max(1, Math.round(subtotal * 100))));
+      remainingDiscountPaise -= itemDiscountPaise;
+      const discountedSubtotalPaise = itemSubtotalPaise - itemDiscountPaise;
+      const gstRate = Number(item.gstRate || 0);
+      const taxableValuePaise = item.priceIncludesTax && gstRate > 0
+        ? Math.round(discountedSubtotalPaise * 100 / (100 + gstRate))
+        : discountedSubtotalPaise;
+      const taxAmountPaise = item.priceIncludesTax
+        ? discountedSubtotalPaise - taxableValuePaise
+        : Math.round(taxableValuePaise * gstRate / 100);
+      const cgstAmountPaise = gstRate > 0
+        ? Math.round(taxAmountPaise * Number(item.cgstRate || 0) / gstRate)
+        : 0;
+      const sgstAmountPaise = gstRate > 0
+        ? Math.round(taxAmountPaise * Number(item.sgstRate || 0) / gstRate)
+        : 0;
+      const igstAmountPaise = taxAmountPaise - cgstAmountPaise - sgstAmountPaise;
+
+      item.discountAmount = itemDiscountPaise / 100;
+      item.taxableValue = taxableValuePaise / 100;
+      item.gstAmount = taxAmountPaise / 100;
+      item.cgstAmount = cgstAmountPaise / 100;
+      item.sgstAmount = sgstAmountPaise / 100;
+      item.igstAmount = igstAmountPaise / 100;
+      item.total = (item.priceIncludesTax ? discountedSubtotalPaise : taxableValuePaise + taxAmountPaise) / 100;
+      totalTax += item.gstAmount;
+      if (!item.priceIncludesTax) additionalTaxPaise += taxAmountPaise;
+    });
+
+    const grandTotal = Math.max(0, Math.round(subtotal * 100) - discountPaise + additionalTaxPaise) / 100;
 
     // Check Wholesaler minimum order value
     const wholesalerProfile = await WholesalerProfile.findOne({ userId: wholesalerId });
+    if (['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'].includes(paymentMethod) &&
+      !wholesalerProfile?.paymentSettings?.additionalPaymentMethods?.includes(paymentMethod)) {
+      throw new BadRequestError('This wholesaler has not enabled the selected payment method.', 'PAYMENT_METHOD_DISABLED');
+    }
     if (wholesalerProfile?.minOrderValue && grandTotal < wholesalerProfile.minOrderValue) {
       throw new BadRequestError(
         `Minimum order value for this wholesaler is ₹${wholesalerProfile.minOrderValue}. Your total: ₹${grandTotal}.`,
@@ -791,6 +843,7 @@ class OrderService {
 
     // If order is DELIVERED, settle earnings and move reserved inventory into sold.
     if (normalizedStatus === ORDER_STATUS.DELIVERED && previousStatus !== ORDER_STATUS.DELIVERED) {
+      order.invoiceIssuedAt = order.invoiceIssuedAt || new Date();
       const claimed = await Order.findOneAndUpdate(
         {
           _id: order._id,

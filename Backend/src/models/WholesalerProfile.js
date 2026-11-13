@@ -191,6 +191,11 @@ const wholesalerProfileSchema = new mongoose.Schema(
       qrPaymentsEnabled: { type: Boolean, default: false },
       upiIdPaymentsEnabled: { type: Boolean, default: false },
       qrSessionMinutes: { type: Number, default: 10, min: 1, max: 60 },
+      additionalPaymentMethods: {
+        type: [{ type: String, enum: ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'] }],
+        default: [],
+      },
+      paymentOtpLimit: { type: Number, default: 10000, min: 0 },
     },
     walletId: {
       type: mongoose.Schema.Types.ObjectId,

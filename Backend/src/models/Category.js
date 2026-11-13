@@ -75,15 +75,17 @@ const categorySchema = new mongoose.Schema(
 );
 
 categorySchema.pre('validate', async function (next) {
-  // Sync parentId and parentCategoryId
-  if (this.parentCategoryId && !this.parentId) {
+  if (this.isNew && this.parentCategoryId && !this.parentId) {
     this.parentId = this.parentCategoryId;
-  }
-  if (this.parentId && !this.parentCategoryId) {
+  } else if (this.isNew && this.parentId) {
+    this.parentCategoryId = this.parentId;
+  } else if (this.isModified('parentCategoryId') && !this.isModified('parentId')) {
+    this.parentId = this.parentCategoryId;
+  } else if (this.isModified('parentId') || (this.parentId && !this.parentCategoryId)) {
     this.parentCategoryId = this.parentId;
   }
 
-  const pId = this.parentCategoryId || this.parentId;
+  const pId = this.parentId || this.parentCategoryId;
   if (!pId) {
     this.level = 1;
     this.parentId = null;
@@ -92,19 +94,36 @@ categorySchema.pre('validate', async function (next) {
   }
 
   try {
-    const parent = await mongoose.model('Category').findOne({
-      _id: pId,
-    });
+    const Category = mongoose.model('Category');
+    let parent = await Category.findById(pId).select('_id parentId parentCategoryId isDeleted');
     if (!parent || parent.isDeleted) {
       return next(new Error('Parent category not found'));
     }
 
-    const parentLevel = parent.level || (parent.parentId ? 2 : 1);
-    if (parentLevel >= 3) {
+    const visited = new Set([String(this._id)]);
+    let level = 1;
+    while (parent) {
+      const parentId = String(parent._id);
+      if (visited.has(parentId)) {
+        return next(new Error('Category hierarchy cannot contain a cycle'));
+      }
+      visited.add(parentId);
+      level += 1;
+      if (level > 3) {
+        return next(new Error('Maximum category depth exceeded: Only 3 levels supported (Category → Subcategory → Sub-subcategory)'));
+      }
+      const ancestorId = parent.parentId || parent.parentCategoryId;
+      parent = ancestorId ? await Category.findById(ancestorId).select('_id parentId parentCategoryId isDeleted') : null;
+      if (parent?.isDeleted) {
+        return next(new Error('Parent category not found'));
+      }
+    }
+
+    if (level > 3) {
       return next(new Error('Maximum category depth exceeded: Only 3 levels supported (Category → Subcategory → Sub-subcategory)'));
     }
 
-    this.level = parentLevel + 1;
+    this.level = level;
     next();
   } catch (err) {
     next(err);

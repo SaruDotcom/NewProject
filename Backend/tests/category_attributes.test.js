@@ -367,6 +367,36 @@ describe('Dynamic Category Attributes & Ownership RBAC Test Suite', () => {
     expect(deepestRes.body.message).toMatch(/maximum 3 levels supported/i);
   });
 
+  test('category reparenting preserves a valid three-level subtree and synchronizes parent aliases', async () => {
+    const rootRes = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Moved Root' });
+    const childRes = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Moved Child', parentId: rootRes.body.data._id });
+    const grandchildRes = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Moved Grandchild', parentId: childRes.body.data._id });
+    const secondRootRes = await request(app)
+      .post('/api/v1/wholesaler/categories')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Second Root' });
+
+    const moved = await request(app)
+      .put(`/api/v1/wholesaler/categories/${childRes.body.data._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ parentId: secondRootRes.body.data._id });
+
+    expect(moved.status).toBe(200);
+    expect(String(moved.body.data.parentId)).toBe(String(secondRootRes.body.data._id));
+    expect(String(moved.body.data.parentCategoryId)).toBe(String(secondRootRes.body.data._id));
+    const grandchild = await Category.findById(grandchildRes.body.data._id);
+    expect(grandchild.level).toBe(3);
+  });
+
   test('7. Wholesaler cannot use another wholesaler category as a parent', async () => {
     const foreignCategory = await Category.create({
       name: 'Beta Category',

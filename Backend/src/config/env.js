@@ -52,6 +52,8 @@ const env = {
   SMTP_APP_PASSWORD: process.env.SMTP_APP_PASSWORD || '',
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
+  MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY || '',
+  MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID || '',
 };
 
 env.assertCloudinaryConfigured = () => {

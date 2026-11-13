@@ -10,6 +10,15 @@ import { wholesalerQueryKeys } from '@/lib/query-client';
 type PaymentSettings = {
   upiId: string;
   accountName: string;
+  bankDetails: {
+    accountHolderName: string;
+    bankName: string;
+    accountNumber: string;
+    ifscCode: string;
+    branch: string;
+  };
+  additionalPaymentMethods: string[];
+  paymentOtpLimit: number;
   hasQrImage: boolean;
   qrPaymentsEnabled: boolean;
   upiIdPaymentsEnabled: boolean;
@@ -36,6 +45,15 @@ export default function PaymentSettingsPage() {
   });
   const [upiId, setUpiId] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [bankDetails, setBankDetails] = useState({
+    accountHolderName: '',
+    bankName: '',
+    accountNumber: '',
+    ifscCode: '',
+    branch: '',
+  });
+  const [additionalPaymentMethods, setAdditionalPaymentMethods] = useState<string[]>([]);
+  const [paymentOtpLimit, setPaymentOtpLimit] = useState(10000);
   const [qrPaymentsEnabled, setQrPaymentsEnabled] = useState(false);
   const [upiIdPaymentsEnabled, setUpiIdPaymentsEnabled] = useState(false);
   const [qrSessionMinutes, setQrSessionMinutes] = useState(10);
@@ -43,6 +61,7 @@ export default function PaymentSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
+  const [evidenceContentType, setEvidenceContentType] = useState('');
 
   useEffect(() => () => {
     if (evidenceUrl) URL.revokeObjectURL(evidenceUrl);
@@ -53,6 +72,15 @@ export default function PaymentSettingsPage() {
     if (!data) return;
     setUpiId(data.upiId || '');
     setAccountName(data.accountName || '');
+    setBankDetails(data.bankDetails || {
+      accountHolderName: '',
+      bankName: '',
+      accountNumber: '',
+      ifscCode: '',
+      branch: '',
+    });
+    setAdditionalPaymentMethods(data.additionalPaymentMethods || []);
+    setPaymentOtpLimit(Number(data.paymentOtpLimit ?? 10000));
     setQrPaymentsEnabled(Boolean(data.qrPaymentsEnabled));
     setUpiIdPaymentsEnabled(Boolean(data.upiIdPaymentsEnabled));
     setQrSessionMinutes(data.qrSessionMinutes || 10);
@@ -69,6 +97,9 @@ export default function PaymentSettingsPage() {
       payload.append('qrPaymentsEnabled', String(qrPaymentsEnabled));
       payload.append('upiIdPaymentsEnabled', String(upiIdPaymentsEnabled));
       payload.append('qrSessionMinutes', String(qrSessionMinutes));
+      payload.append('additionalPaymentMethods', JSON.stringify(additionalPaymentMethods));
+      payload.append('paymentOtpLimit', String(paymentOtpLimit));
+      Object.entries(bankDetails).forEach(([key, value]) => payload.append(key, value));
       if (qrImage) payload.append('qrImage', qrImage);
       await api.updatePaymentSettings(payload);
       await queryClient.invalidateQueries({ queryKey });
@@ -85,7 +116,17 @@ export default function PaymentSettingsPage() {
     const note = action === 'REJECT' ? window.prompt('Add a note for the retailer:') : '';
     if (action === 'REJECT' && note === null) return;
     try {
-      await api.reviewPaymentReport(id, action, note || '');
+      let otp: string | undefined;
+      const report = reports.find((item: any) => item._id === id);
+      if (action === 'VERIFY' && Number(report?.amount || 0) > Number(settings?.paymentOtpLimit ?? 10000)) {
+        const otpResponse = await api.requestPaymentApprovalOtp(id);
+        if (otpResponse.data.otpRequired) {
+          const enteredOtp = window.prompt(`Enter the code sent to ${otpResponse.data.sentTo || 'your registered mobile'}:`);
+          if (enteredOtp === null) return;
+          otp = enteredOtp.trim();
+        }
+      }
+      await api.reviewPaymentReport(id, action, note || '', otp);
       await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'payment-reports') });
       await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'credit-overview') });
     } catch (error) {
@@ -93,10 +134,29 @@ export default function PaymentSettingsPage() {
     }
   };
 
+  const reverse = async (id: string) => {
+    const reason = window.prompt('Enter the reason for this reverse entry:');
+    if (reason === null) return;
+    try {
+      await api.reversePaymentReport(id, reason);
+      await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'payment-reports') });
+      await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'credit-overview') });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to reverse this payment.');
+    }
+  };
+
+  const toggleAdditionalMethod = (method: string) => {
+    setAdditionalPaymentMethods((current) => current.includes(method)
+      ? current.filter((value) => value !== method)
+      : [...current, method]);
+  };
+
   const openEvidence = async (id: string) => {
     try {
-      const url = await api.getPaymentReportScreenshot(id);
-      setEvidenceUrl(url);
+      const evidence = await api.getPaymentReportScreenshot(id);
+      setEvidenceUrl(evidence.url);
+      setEvidenceContentType(evidence.contentType);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to open payment evidence.');
     }
@@ -111,7 +171,7 @@ export default function PaymentSettingsPage() {
         <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green"><QrCode className="h-5 w-5" /></div>
         <div>
           <h1 className="text-2xl font-extrabold text-tradeflow-navy">Payment Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure UPI payment details for your connected retailers.</p>
+          <p className="mt-1 text-sm text-gray-500">Configure payment methods, bank details, and high-value approval verification.</p>
         </div>
       </header>
 
@@ -139,6 +199,45 @@ export default function PaymentSettingsPage() {
             QR Session (minutes)
             <input type="number" min={1} max={60} value={qrSessionMinutes} onChange={(event) => setQrSessionMinutes(Number(event.target.value))} className="mt-1 block w-28 rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
           </label>
+          <fieldset className="space-y-2 rounded-xl border border-tradeflow-gray-200 p-4">
+            <legend className="px-1 text-sm font-bold text-tradeflow-navy">Additional payment methods</legend>
+            {[
+              ['NET_BANKING', 'Net Banking'],
+              ['CASH_DEPOSIT', 'Cash Deposit'],
+              ['CHEQUE', 'Cheque'],
+            ].map(([value, label]) => (
+              <label key={value} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={additionalPaymentMethods.includes(value)} onChange={() => toggleAdditionalMethod(value)} />
+                {label}
+              </label>
+            ))}
+            <p className="text-xs text-gray-500">Bank details are required to enable these options.</p>
+          </fieldset>
+          <fieldset className="space-y-3 rounded-xl border border-tradeflow-gray-200 p-4">
+            <legend className="px-1 text-sm font-bold text-tradeflow-navy">Bank details shown to connected retailers</legend>
+            {[
+              ['accountHolderName', 'Account Holder Name'],
+              ['bankName', 'Bank Name'],
+              ['accountNumber', 'Account Number'],
+              ['ifscCode', 'IFSC Code'],
+              ['branch', 'Branch Name'],
+            ].map(([key, label]) => (
+              <label key={key} className="block text-sm font-semibold text-tradeflow-navy">
+                {label}
+                <input
+                  value={bankDetails[key as keyof typeof bankDetails]}
+                  onChange={(event) => setBankDetails((current) => ({ ...current, [key]: event.target.value }))}
+                  autoComplete="off"
+                  className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal"
+                />
+              </label>
+            ))}
+          </fieldset>
+          <label className="block text-sm font-semibold text-tradeflow-navy">
+            Payment OTP Limit (₹)
+            <input type="number" min={0} step="0.01" value={paymentOtpLimit} onChange={(event) => setPaymentOtpLimit(Number(event.target.value))} className="mt-1 block w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
+            <span className="mt-1 block text-xs font-normal text-gray-500">Approvals above this amount require a code sent to your registered mobile.</span>
+          </label>
           <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Test the QR with a UPI app before enabling. Expiry closes the retailer&apos;s QR session.</p>
           <button disabled={busy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving...' : 'Save'}</button>
         </section>
@@ -161,8 +260,9 @@ export default function PaymentSettingsPage() {
             <article key={report._id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-tradeflow-gray-200 p-4">
               <div>
                 <p className="font-bold text-tradeflow-navy">{report.retailerId?.name || 'Retailer'} · ₹{Number(report.amount).toLocaleString('en-IN')}</p>
-                <p className="mt-1 text-xs text-gray-500">Ref: {report.transactionReference} · {report.isCreditRepayment ? 'Credit repayment' : report.orderId?.orderNumber || 'Order payment'} · {report.status}</p>
+                <p className="mt-1 text-xs text-gray-500">{report.paymentMethod} · Ref: {report.transactionReference} · {report.paymentDetails || (report.isCreditRepayment ? 'Credit repayment' : report.orderId?.orderNumber || 'Order payment')} · {report.status}</p>
                 {report.reviewNote && <p className="mt-1 text-xs text-amber-700">{report.reviewNote}</p>}
+                {report.isReversal && <p className="mt-1 text-xs text-red-700">Reverse entry · {report.reversalReason}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
                 {report.screenshotAvailable && <button onClick={() => void openEvidence(report._id)} className="rounded-lg border px-3 py-2 text-xs font-bold">View evidence</button>}
@@ -170,6 +270,9 @@ export default function PaymentSettingsPage() {
                   <button onClick={() => void review(report._id, 'VERIFY')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"><CheckCircle2 className="h-4 w-4" /> Confirm received</button>
                   <button onClick={() => void review(report._id, 'REJECT')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700">Reject</button>
                 </>}
+                {report.status === 'PAID' && !report.isReversal && !report.wasReversed && (
+                  <button onClick={() => void reverse(report._id)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700">Reverse entry</button>
+                )}
               </div>
             </article>
           ))}
@@ -182,7 +285,9 @@ export default function PaymentSettingsPage() {
               <a href={evidenceUrl} download="payment-evidence" className="rounded-lg border px-3 py-2 text-xs font-bold">Download</a>
               <button onClick={() => setEvidenceUrl(null)} className="rounded-lg bg-tradeflow-navy px-3 py-2 text-xs font-bold text-white">Close</button>
             </div>
-            <img src={evidenceUrl} alt="Retailer-submitted payment screenshot" className="mx-auto max-h-[75vh] max-w-full object-contain" />
+            {evidenceContentType === 'application/pdf'
+              ? <iframe src={evidenceUrl} title="Retailer-submitted payment receipt" className="h-[75vh] w-full" />
+              : <img src={evidenceUrl} alt="Retailer-submitted payment screenshot" className="mx-auto max-h-[75vh] max-w-full object-contain" />}
           </div>
         </div>
       )}
