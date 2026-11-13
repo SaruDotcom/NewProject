@@ -129,6 +129,7 @@ export default function SubscriptionPage() {
   const [subscription, setSubscription] = useState<WholesalerSubscription | null>(null);
   const [payments, setPayments] = useState<SubscriptionPaymentRecord[]>([]);
   const [paymentConfigured, setPaymentConfigured] = useState(true);
+  const [paymentConfigIssues, setPaymentConfigIssues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submittingPlanId, setSubmittingPlanId] = useState('');
   const [selectedPlanForReview, setSelectedPlanForReview] = useState<SubscriptionPlan | null>(null);
@@ -157,6 +158,7 @@ export default function SubscriptionPage() {
       setSubscription(response.data.subscription);
       setPayments(response.data.payments || []);
       setPaymentConfigured(response.data.payment?.configured ?? true);
+      setPaymentConfigIssues(response.data.payment?.issues || []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load subscription details.');
     } finally {
@@ -374,6 +376,11 @@ export default function SubscriptionPage() {
             <p className="text-xs text-amber-800 font-normal mt-0.5">
               Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the backend hosting environment using the matching Razorpay test or live credentials, then restart or redeploy the backend. Never add these secrets to frontend code.
             </p>
+            {paymentConfigIssues.length > 0 && (
+              <p className="mt-1 text-xs text-amber-900 font-normal">
+                Backend configuration check: {paymentConfigIssues.join('; ')}.
+              </p>
+            )}
           </div>
         </div>
       )}

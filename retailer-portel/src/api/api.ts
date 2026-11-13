@@ -1,6 +1,7 @@
 // Central API service for NEXORA Retailer Portal
 import { queryClient, retailerQueryKeys } from "@/lib/query-client";
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+const BASE_URL = (configuredApiUrl || (import.meta.env.DEV ? 'http://localhost:5001/api' : '')).replace(/\/+$/, '');
 const TOKEN_KEY = 'nexora_jwt_token';
 const USER_ID_KEY = 'nexora_retailer_user_id';
 
@@ -30,9 +31,11 @@ export type ApiProduct = {
   name?: string;
   title?: string;
   brand?: string;
-  category?: { _id?: string; name?: string; slug?: string } | string;
+  category?: { _id?: string; id?: string; name?: string; slug?: string } | string;
   categoryId?: string | { _id?: string; id?: string; name?: string; slug?: string };
-  subcategoryId?: string;
+  subcategoryId?: string | { _id?: string; id?: string; name?: string; slug?: string };
+  rating?: number;
+  averageRating?: number;
   wholesalerId?: string | { _id?: string; id?: string; name?: string };
   wholesalePrice?: number;
   retailerPrice?: number;
@@ -320,8 +323,16 @@ function buildQueryString(params?: Record<string, string | number | boolean | nu
   return queryString ? `?${queryString}` : '';
 }
 
+function buildApiUrl(endpoint: string): string {
+  if (!BASE_URL) {
+    throw new Error('VITE_API_URL is not configured for this production build');
+  }
+
+  return `${BASE_URL}/${endpoint.replace(/^\/+/, '')}`;
+}
+
 async function request<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${BASE_URL.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
+  const url = buildApiUrl(endpoint);
   const token = getAuthToken();
   const method = (options.method || "GET").toUpperCase();
   const path = endpoint.split("?")[0];
@@ -577,7 +588,7 @@ export const api = {
     }),
 
   getRetailerDocument: async (retailerId: string, documentType: string): Promise<Blob> => {
-    const url = `${BASE_URL.replace(/\/+$/, '')}/retailer-identity/${encodeURIComponent(retailerId)}/documents/${encodeURIComponent(documentType)}`;
+    const url = buildApiUrl(`/retailer-identity/${encodeURIComponent(retailerId)}/documents/${encodeURIComponent(documentType)}`);
     const token = getAuthToken();
     const response = await fetch(url, {
       cache: 'no-store',

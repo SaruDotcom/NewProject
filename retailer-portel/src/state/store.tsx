@@ -79,6 +79,8 @@ export type Product = {
   name: string;
   brand: string;
   category: string;
+  categoryId?: string;
+  subcategoryId?: string;
   wholesalerId: string;
   price: number;
   mrp: number;
@@ -116,6 +118,17 @@ export type Category = {
   path?: Array<{ id: string; name: string; slug: string }>;
   level?: number;
 };
+
+export function normalizeCategoryName(value: string): string {
+  const cleaned = value
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  return cleaned.replace(/(^|[\s/&])([a-z])/g, (_match, separator: string, letter: string) =>
+    `${separator}${letter.toUpperCase()}`,
+  );
+}
 
 export type BannerSlide = {
   id: string;
@@ -368,9 +381,27 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
       : typeof item.categoryId === "string"
         ? item.categoryId.trim()
         : "";
+  const categoryId =
+    (typeof item.categoryId === "object" && item.categoryId !== null
+      ? item.categoryId._id || item.categoryId.id
+      : item.categoryId) ||
+    (typeof item.category === "object" && item.category !== null
+      ? item.category._id || item.category.id
+      : /^[0-9a-fA-F]{24}$/.test(categoryValue) ? categoryValue : undefined);
+  const subcategoryId =
+    typeof item.subcategoryId === "object" && item.subcategoryId !== null
+      ? item.subcategoryId._id || item.subcategoryId.id
+      : item.subcategoryId;
 
-  if (categoryObject?.name) {
-    categoryName = String(categoryObject.name);
+  const categoryById =
+    (subcategoryId && categoryMap?.get(String(subcategoryId))) ||
+    (categoryId && categoryMap?.get(String(categoryId)));
+  if (categoryById) {
+    categoryName = categoryById;
+  } else if (typeof item.subcategoryId === "object" && item.subcategoryId?.name) {
+    categoryName = normalizeCategoryName(item.subcategoryId.name);
+  } else if (categoryObject?.name) {
+    categoryName = normalizeCategoryName(String(categoryObject.name));
   } else if (categoryValue) {
     const rawCat = categoryValue;
     if (categoryMap && categoryMap.has(rawCat)) {
@@ -380,7 +411,7 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     } else if (/^[0-9a-fA-F]{24}$/.test(rawCat)) {
       categoryName = "Uncategorized";
     } else {
-      categoryName = rawCat;
+      categoryName = normalizeCategoryName(rawCat);
     }
   }
 
@@ -394,6 +425,8 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     name: item.name || item.title || "Untitled product",
     brand: item.brand || "",
     category: categoryName,
+    ...(categoryId ? { categoryId: String(categoryId) } : {}),
+    ...(subcategoryId ? { subcategoryId: String(subcategoryId) } : {}),
     wholesalerId: typeof item.wholesalerId === "object" && item.wholesalerId !== null
       ? String(item.wholesalerId._id || item.wholesalerId.id || "")
       : item.wholesalerId || "",
@@ -402,7 +435,7 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
     moq: Number(item.moq ?? item.minOrderQty ?? 1),
     unit: item.unit,
     stock: Number(item.stock ?? item.quantity ?? 0),
-    rating: 0,
+    rating: Number(item.rating ?? item.averageRating ?? 0),
     image: index % 6,
     description: item.description || "",
     specs: {
@@ -442,13 +475,13 @@ export function mapProduct(item: ApiProduct, index = 0, categoryMap?: Map<string
 function mapCategory(item: ApiCategory): Category {
   const cat: Category = {
     id: item._id || item.id || item.slug || item.name || "category",
-    name: item.name || "Category",
+    name: normalizeCategoryName(item.name || "Category"),
     description: item.description || "Trade products from your connected wholesaler.",
     count: item.count || (item as any).productCount || (item as any).products || 0,
     imageUrl: (item as any).imageUrl || (item as any).image || undefined,
     parentId: (item as any).parentId ? (typeof (item as any).parentId === 'object' ? (item as any).parentId?._id : String((item as any).parentId)) : undefined,
     parentName: (item as any).parent?.name,
-    displayPath: (item as any).displayPath || item.name,
+    displayPath: normalizeCategoryName(String((item as any).displayPath || item.name || "Category")),
     path: (item as any).path || [],
     level: (item as any).level || 0,
   };

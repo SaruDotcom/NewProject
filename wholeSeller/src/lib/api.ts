@@ -667,7 +667,7 @@ export const api = {
         plans: SubscriptionPlan[];
         subscription: WholesalerSubscription | null;
         payments: SubscriptionPaymentRecord[];
-        payment: { configured: boolean };
+        payment: { configured: boolean; issues?: string[] };
       };
     }>('/wholesaler/subscription', { method: 'GET' }),
 

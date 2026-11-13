@@ -78,7 +78,7 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search products, brands, categories..."
+        placeholder="Search products..."
         className={cn(
           "w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 transition-all min-h-[44px]",
           hero && "py-3 text-base rounded-2xl shadow-lg border-primary/20"
@@ -89,7 +89,7 @@ export function SearchBar({ hero = false }: { hero?: boolean }) {
 }
 
 export function Logo({ variant = "default" }: { variant?: "default" | "light" }) {
-  const { linkedWholesaler } = useStore();
+  const { retailerProfile, linkedWholesaler } = useStore();
   const isLight = variant === "light";
 
   if (linkedWholesaler) {
@@ -104,9 +104,6 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
             className="size-9 sm:size-11 rounded-xl border border-border bg-white p-0.5 shadow-sm transition-transform group-hover:scale-105 shrink-0"
           />
         )}
-        {!linkedWholesaler.logo?.trim() && (
-          <TradeFlowMark className="size-9 shrink-0 rounded-xl shadow-sm transition-transform group-hover:scale-105 sm:size-11" />
-        )}
         <div className="min-w-0">
           <span
             title={wholesalerName}
@@ -117,25 +114,29 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
           >
             {wholesalerName}
           </span>
-          <span className={cn("mt-0.5 block truncate text-[9px] font-extrabold uppercase tracking-[0.12em]", isLight ? "text-white/70" : "text-primary/75")}>
-            ThokStore marketplace
-          </span>
         </div>
       </Link>
     );
   }
+
+  const retailerName = retailerProfile?.businessName?.trim() || "TradeFlow";
+  const hasCustomName = Boolean(retailerProfile?.businessName?.trim());
 
   return (
     <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group focus-visible:outline-none shrink-0">
       <TradeFlowMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
       <div className="flex flex-col min-w-0">
         <span className={cn("font-black tracking-tight text-base sm:text-xl leading-none truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[180px]", isLight ? "text-white" : "text-ink")}>
-          Thok<span className="text-[#D9A441]">Store</span>
+          {hasCustomName ? retailerName : (
+            <>
+              Trade<span className="text-tradeflow-green">Flow</span>
+            </>
+          )}
         </span>
         <span
-          className={cn("text-[9px] sm:text-[10px] font-extrabold tracking-wide leading-none mt-0.5 truncate hidden xs:block max-w-[110px] sm:max-w-[180px]", isLight ? "text-white/75" : "text-primary")}
+          className={cn("text-[9px] sm:text-[10px] font-extrabold tracking-wide leading-none mt-0.5 truncate hidden xs:block max-w-[110px] sm:max-w-[180px]", isLight ? "text-tradeflow-green" : "text-primary")}
         >
-          Premium Marketplace
+          Retailer Portal
         </span>
       </div>
     </Link>
@@ -195,8 +196,8 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.title = linkedWholesaler?.businessName?.trim()
-      ? `${linkedWholesaler.businessName.trim()} | ThokStore`
-      : "ThokStore | Premium Retailer Marketplace";
+      ? `${linkedWholesaler.businessName.trim()} | Retailer Store`
+      : "Retailer Wholesale Marketplace";
   }, [linkedWholesaler?.businessName]);
 
   if (isAuthRoute) return <>{children}</>;
@@ -219,14 +220,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <div className="border-b border-[#8A465E] bg-[#3B1727] text-[#FFF8E9]">
-        <div className="shell flex min-h-8 items-center justify-between gap-3 px-2.5 text-[9px] font-semibold tracking-wide sm:px-4 sm:text-[10px]">
-          <span className="truncate">Discover products and offers from your connected wholesaler</span>
-          <Link to="/coupons" className="shrink-0 text-[#F0D8A7] transition-colors hover:text-white">
-            Explore offers <span aria-hidden="true">&rarr;</span>
-          </Link>
-        </div>
-      </div>
       {/* Header */}
       <header className="premium-header sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
         <div className="shell flex h-16 sm:h-18 items-center justify-between gap-1.5 sm:gap-6 px-2.5 sm:px-4 lg:px-6">
@@ -268,14 +261,12 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
             {authenticated ? (
               <div className="group relative hidden lg:block">
                 <Button
-                  aria-label={`My Account, signed in as ${profileLabel}`}
                   variant="ghost"
                   className="min-h-[44px] gap-2 rounded-xl px-2 transition-colors duration-200 hover:bg-secondary hover:text-primary"
                 >
                   <span className="grid size-8 place-items-center rounded-lg border border-border bg-secondary text-xs font-black">
                     {initials}
                   </span>
-                  <span className="hidden text-xs font-bold xl:inline">My Account</span>
                   <KeyboardArrowDown className="size-4 text-muted-foreground" />
                 </Button>
                 <div className="invisible absolute right-0 top-full w-60 translate-y-1 border rounded-2xl bg-popover p-2 opacity-0 elevated transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 shadow-lg">
@@ -464,7 +455,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
             <div>
               <Logo variant="light" />
               <p className="mt-4 text-xs leading-relaxed text-primary-foreground/70">
-                Helping independent retailers discover products and offers from their connected wholesale supplier.
+                Empowering independent retailers across India with direct access to verified B2B wholesale suppliers.
               </p>
             </div>
             <div>
@@ -501,7 +492,7 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="mt-12 border-t border-primary-foreground/10 pt-6 text-center text-xs text-primary-foreground/50">
-            © {new Date().getFullYear()} ThokStore. All rights reserved. Built for independent retailers.
+            © 2026 TradeFlow Retailer Portal. All rights reserved. Trade rates reserved for verified retailers.
           </div>
         </div>
       </footer>

@@ -25,6 +25,10 @@ function clearSession() {
 }
 
 function buildUrl(path) {
+  if (!API_BASE_URL && import.meta.env.PROD) {
+    throw new Error('VITE_API_BASE_URL is not configured for this production build');
+  }
+
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${API_BASE_URL || ''}${normalizedPath}`;
 }

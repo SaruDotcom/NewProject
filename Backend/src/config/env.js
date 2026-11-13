@@ -14,7 +14,7 @@ if (!requiredMongoUri) {
 
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT || '5000', 10),
+  PORT: parseInt(process.env.PORT || '5001', 10),
   MONGO_URI: requiredMongoUri,
   
   JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'super_secret_access_jwt_key_at_least_32_characters_long_b2b_wholesale_platform',
@@ -76,6 +76,26 @@ env.assertSmtpConfigured = () => {
   if (missing.length) {
     throw new Error(`Password reset email requires Gmail SMTP settings: ${missing.join(', ')}`);
   }
+};
+
+env.getRazorpayConfiguration = () => {
+  const issues = [];
+  const keyId = env.RAZORPAY_KEY_ID.trim();
+  const keySecret = env.RAZORPAY_KEY_SECRET.trim();
+
+  if (!keyId) {
+    issues.push('RAZORPAY_KEY_ID is required');
+  } else if (!/^rzp_(test|live)_[A-Za-z0-9]+$/.test(keyId) || /your|replace|placeholder/i.test(keyId)) {
+    issues.push('RAZORPAY_KEY_ID must be a real Razorpay test or live key');
+  }
+
+  if (!keySecret) {
+    issues.push('RAZORPAY_KEY_SECRET is required');
+  } else if (/^(your|replace|placeholder|<)/i.test(keySecret)) {
+    issues.push('RAZORPAY_KEY_SECRET must be a real Razorpay secret');
+  }
+
+  return { configured: issues.length === 0, issues };
 };
 
 module.exports = env;

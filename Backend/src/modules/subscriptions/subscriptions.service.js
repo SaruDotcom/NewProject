@@ -119,7 +119,7 @@ function addCalendarPeriod(date, billingPeriod) {
 }
 
 function configured() {
-  return Boolean(env.RAZORPAY_KEY_ID.trim() && env.RAZORPAY_KEY_SECRET.trim());
+  return env.getRazorpayConfiguration().configured;
 }
 
 class SubscriptionService {
@@ -376,6 +376,7 @@ class SubscriptionService {
   }
 
   static async getWholesalerSubscription(userId) {
+    const razorpayConfiguration = env.getRazorpayConfiguration();
     const [allPlans, profile, subscription, payments] = await Promise.all([
       this.getCustomerPlans({ includeInactive: true }),
       WholesalerProfile.findOne({ userId, isDeleted: false }).select('_id'),
@@ -395,7 +396,10 @@ class SubscriptionService {
       plans: plans.map((plan) => this.serializePlan(plan)),
       subscription: subscription ? this.serializeSubscription(subscription) : null,
       payments: (payments || []).map((payment) => this.serializePayment(payment)),
-      payment: { configured: configured() },
+      payment: {
+        configured: razorpayConfiguration.configured,
+        issues: razorpayConfiguration.issues,
+      },
     };
   }
 

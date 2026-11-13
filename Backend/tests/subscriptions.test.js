@@ -25,6 +25,22 @@ describe('Wholesaler subscriptions', () => {
     global.fetch = originalFetch;
   });
 
+  test.each([
+    ['', 'test_secret', false],
+    ['rzp_test_key', '', false],
+    ['rzp_test_your_key_id', 'your_razorpay_test_secret', false],
+    ['rzp_test_key', 'test_secret', true],
+  ])('validates Razorpay credentials without exposing secrets', (keyId, keySecret, configured) => {
+    env.RAZORPAY_KEY_ID = keyId;
+    env.RAZORPAY_KEY_SECRET = keySecret;
+
+    const configuration = env.getRazorpayConfiguration();
+    expect(configuration.configured).toBe(configured);
+    if (keySecret) {
+      expect(configuration.issues.join(' ')).not.toContain(keySecret);
+    }
+  });
+
   test('the subscription plan model defaults to the Basic Monthly price', () => {
     const plan = new SubscriptionPlan({ name: 'Wholesaler Plan' });
 

@@ -1,9 +1,9 @@
 export const tradeflowMuiTokens = {
-  navy: "#3B1727",
-  green: "#721F3D",
-  white: "#FFFCF7",
-  page: "#FAF6F0",
-  gray100: "#F3ECE3",
-  gray500: "#81736B",
+  navy: "#12304A",
+  green: "#20A66A",
+  white: "#FFFFFF",
+  page: "#F4F7F8",
+  gray100: "#EAF0F2",
+  gray500: "#647782",
   danger: "#DC3545",
 } as const;
