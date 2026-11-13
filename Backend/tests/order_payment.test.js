@@ -5,6 +5,7 @@ const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
   User,
+  KycApplication,
   WholesalerProfile,
   RetailerProfile,
   WholesalerRetailerRelationship,
@@ -280,6 +281,53 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(evidence.headers['content-type']).toContain('application/pdf');
     expect(evidence.body.subarray(0, 5).toString()).toBe('%PDF-');
     await fs.promises.unlink(path.join(env.UPLOAD_PATH, 'payment-reports', path.basename(savedReport.screenshotPath)));
+  });
+
+  test('payment settings restore missing bank fields from the original KYC details', async () => {
+    const originalBankDetails = {
+      accountHolderName: 'Original Account Holder',
+      bankName: 'Original Bank',
+      accountNumber: '1122334455667788',
+      ifscCode: 'ORIG0001234',
+      branch: 'Original Branch',
+    };
+    await KycApplication.create({
+      wholesalerId: wholesalerUser._id,
+      pan: 'AAACP1234F',
+      bankDetails: originalBankDetails,
+    });
+    await WholesalerProfile.updateOne(
+      { userId: wholesalerUser._id },
+      {
+        $set: {
+          'bankDetails.accountHolderName': originalBankDetails.accountHolderName,
+          'bankDetails.bankName': originalBankDetails.bankName,
+          'bankDetails.accountNumber': '',
+          'bankDetails.ifscCode': originalBankDetails.ifscCode,
+          'bankDetails.branch': originalBankDetails.branch,
+        },
+      }
+    );
+
+    const settings = await request(app)
+      .get('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(settings.status).toBe(200);
+    expect(settings.body.data.bankDetails).toEqual(originalBankDetails);
+
+    const retailerOptions = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(retailerOptions.body.data.bankDetails).toEqual(originalBankDetails);
+
+    const saved = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountNumber', '');
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.bankDetails).toEqual(originalBankDetails);
+    const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
+    expect(profile.bankDetails.accountNumber).toBe(originalBankDetails.accountNumber);
   });
 
   test('high-value report approval requires an owner-only MSG91 code', async () => {

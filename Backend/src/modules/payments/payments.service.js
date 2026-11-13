@@ -9,6 +9,7 @@ const {
   Payment,
   User,
   Notification,
+  KycApplication,
   WholesalerProfile,
   WholesalerRetailerRelationship,
 } = require('../../models');
@@ -141,6 +142,20 @@ async function getProfile(wholesalerId) {
   return profile;
 }
 
+async function getBankDetails(profile) {
+  const profileDetails = profile.bankDetails || {};
+  const fields = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branch'];
+  const needsKycFallback = fields.some((field) => !String(profileDetails[field] || '').trim());
+  const kycApplication = needsKycFallback
+    ? await KycApplication.findOne({ wholesalerId: profile.userId }).select('bankDetails').lean()
+    : null;
+  const kycDetails = kycApplication?.bankDetails || {};
+  return Object.fromEntries(fields.map((field) => [
+    field,
+    String(profileDetails[field] || kycDetails[field] || ''),
+  ]));
+}
+
 function getQrDataUrl(profile) {
   const settings = profile?.paymentSettings || {};
   if (!settings.qrImagePath) return '';
@@ -182,19 +197,14 @@ function getQrDataUrl(profile) {
 class PaymentsService {
   static async getSettings(wholesalerId) {
     const profile = await getProfile(wholesalerId);
+    const bankDetails = await getBankDetails(profile);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const qrDataUrl = getQrDataUrl(profile);
     const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
     return {
       upiId: settings.upiId || '',
       accountName: settings.accountName || '',
-      bankDetails: {
-        accountHolderName: profile.bankDetails?.accountHolderName || '',
-        bankName: profile.bankDetails?.bankName || '',
-        accountNumber: profile.bankDetails?.accountNumber || '',
-        ifscCode: profile.bankDetails?.ifscCode || '',
-        branch: profile.bankDetails?.branch || '',
-      },
+      bankDetails,
       additionalPaymentMethods: settings.additionalPaymentMethods || [],
       paymentOtpLimit: Number(settings.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES),
       hasQrImage: Boolean(qrDataUrl),
@@ -208,6 +218,7 @@ class PaymentsService {
 
   static async updateSettings(wholesalerId, payload, file, actor, req) {
     const profile = await getProfile(wholesalerId);
+    const originalBankDetails = await getBankDetails(profile);
     const current = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const upiId = payload.upiId === undefined ? current.upiId || '' : String(payload.upiId).trim();
     const accountName = payload.accountName === undefined ? current.accountName || '' : String(payload.accountName).trim();
@@ -219,11 +230,11 @@ class PaymentsService {
       ? Number(current.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES)
       : Number(payload.paymentOtpLimit);
     const bankDetails = {
-      accountHolderName: String(payload.accountHolderName ?? profile.bankDetails?.accountHolderName ?? '').trim(),
-      bankName: String(payload.bankName ?? profile.bankDetails?.bankName ?? '').trim(),
-      accountNumber: String(payload.accountNumber ?? profile.bankDetails?.accountNumber ?? '').replace(/\s/g, ''),
-      ifscCode: String(payload.ifscCode ?? profile.bankDetails?.ifscCode ?? '').trim().toUpperCase(),
-      branch: String(payload.branch ?? profile.bankDetails?.branch ?? '').trim(),
+      accountHolderName: String(payload.accountHolderName || originalBankDetails.accountHolderName).trim(),
+      bankName: String(payload.bankName || originalBankDetails.bankName).trim(),
+      accountNumber: String(payload.accountNumber || originalBankDetails.accountNumber).trim(),
+      ifscCode: String(payload.ifscCode || originalBankDetails.ifscCode).trim().toUpperCase(),
+      branch: String(payload.branch || originalBankDetails.branch).trim(),
       isVerified: Boolean(profile.bankDetails?.isVerified),
     };
 
@@ -352,6 +363,7 @@ class PaymentsService {
 
   static async getRetailerPaymentOptions(retailerId, requestedWholesalerId = null) {
     const { relationship, profile } = await this.resolveWholesalerProfile(retailerId, requestedWholesalerId);
+    const bankDetails = await getBankDetails(profile);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const qrDataUrl = settings.qrPaymentsEnabled ? getQrDataUrl(profile) : '';
     const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
@@ -367,13 +379,7 @@ class PaymentsService {
       upiId: settings.upiId || '',
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
       paymentMethods: getEnabledPaymentMethods(settings),
-      bankDetails: {
-        accountHolderName: profile.bankDetails?.accountHolderName || '',
-        bankName: profile.bankDetails?.bankName || '',
-        accountNumber: profile.bankDetails?.accountNumber || '',
-        ifscCode: profile.bankDetails?.ifscCode || '',
-        branch: profile.bankDetails?.branch || '',
-      },
+      bankDetails,
     };
   }
 
