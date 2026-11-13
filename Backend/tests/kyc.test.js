@@ -6,6 +6,7 @@ const { setupTestDB, clearDatabase } = require('./setup');
 const { User, AdminProfile, WholesalerProfile, KycApplication, KycDocument, AuditLog } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
 const env = require('../src/config/env');
+const KycDocumentStorageService = require('../src/services/kycDocumentStorage.service');
 
 setupTestDB();
 
@@ -113,6 +114,13 @@ describe('KYC Workflow Test Suite', () => {
     expect(adminResponse.status).toBe(200);
     expect(adminResponse.headers['content-type']).toBe('image/png');
     expect(Buffer.isBuffer(adminResponse.body)).toBe(true);
+    expect(document.fileUrl).toBe(`/api/v1/kyc/documents/${document._id}`);
+    const downloadResponse = await request(app)
+      .get(`/api/v1/admin/kyc/documents/${document._id}?download=true`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers['content-disposition']).toContain('attachment;');
+    expect(downloadResponse.headers['content-disposition']).toContain("filename*=UTF-8''pan.png");
 
     // Verify Wholesaler Profile updated
     const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
@@ -233,6 +241,39 @@ describe('KYC Workflow Test Suite', () => {
       expect(response.body).toEqual(contents);
     } finally {
       await fs.promises.unlink(filePath);
+    }
+  });
+
+  test('legacy recovery requires an exact filename match', async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const legacyDirectory = path.resolve(__dirname, '../legacy-kyc-files');
+    const exactName = `legacy-test-${suffix}.pdf`;
+    const unrelatedName = `unrelated-test-${suffix}.pdf`;
+    const contents = Buffer.from('same-sized legacy documents');
+    const exactPath = path.join(legacyDirectory, exactName);
+    const unrelatedPath = path.join(legacyDirectory, unrelatedName);
+    await fs.promises.mkdir(legacyDirectory, { recursive: true });
+    await Promise.all([
+      fs.promises.writeFile(exactPath, contents),
+      fs.promises.writeFile(unrelatedPath, contents),
+    ]);
+
+    try {
+      expect(KycDocumentStorageService.findLegacyFilePath({
+        fileKey: exactName,
+        originalName: 'renamed-document.pdf',
+        fileSize: contents.length,
+      })).toBe(exactPath);
+      expect(KycDocumentStorageService.findLegacyFilePath({
+        fileKey: `missing-${suffix}.pdf`,
+        originalName: `missing-original-${suffix}.pdf`,
+        fileSize: contents.length,
+      })).toBeNull();
+    } finally {
+      await Promise.all([
+        fs.promises.unlink(exactPath),
+        fs.promises.unlink(unrelatedPath),
+      ]);
     }
   });
 

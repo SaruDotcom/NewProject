@@ -63,13 +63,12 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
-    files: 5,
+    files: 10,
   },
   fileFilter,
 });
 
-// Product images are uploaded to Cloudinary by the controller. KYC documents
-// continue using disk storage because their secure retrieval flow depends on it.
+// Product images and business logos use memory storage for their upload providers.
 const productImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: {

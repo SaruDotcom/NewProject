@@ -143,9 +143,10 @@ export async function apiGet(path) {
   });
 }
 
-export async function apiGetKycDocument(documentId) {
+export async function apiGetKycDocument(documentId, download = false) {
+  const query = download ? '?download=true' : '';
   const response = await fetch(
-    buildUrl(`/admin/kyc/documents/${encodeURIComponent(documentId)}`),
+    buildUrl(`/admin/kyc/documents/${encodeURIComponent(documentId)}${query}`),
     { headers: { Authorization: `Bearer ${getStoredToken()}` } },
   );
   if (response.status === 401) {
@@ -161,6 +162,18 @@ export async function apiGetKycDocument(documentId) {
     throw new Error(`Unable to load KYC document (HTTP ${response.status})`);
   }
   return response.blob();
+}
+
+export async function apiDownloadKycDocument(documentId, filename) {
+  const blob = await apiGetKycDocument(documentId, true);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "kyc-document";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function apiGetPrivateIdentityData(path, errorMessage) {

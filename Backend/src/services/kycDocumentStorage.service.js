@@ -1,6 +1,8 @@
 const fs = require('fs');
+const path = require('path');
 const mongoose = require('mongoose');
 const { pipeline } = require('stream/promises');
+const { Readable } = require('stream');
 const logger = require('../config/logger');
 const { NotFoundError } = require('../utils/errors');
 
@@ -21,15 +23,26 @@ function getFileId(fileKey) {
 }
 
 class KycDocumentStorageService {
+  /**
+   * Stores an uploaded file (memory buffer or disk path) directly into GridFS
+   */
   static async store(file) {
     const bucket = getBucket();
-    const uploadStream = bucket.openUploadStream(file.originalname, {
-      contentType: file.mimetype,
+    const originalName = file.originalname || 'kyc-document';
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const uploadStream = bucket.openUploadStream(originalName, {
+      contentType: mimeType,
       metadata: { kind: 'kyc-document' },
     });
 
     try {
-      await pipeline(fs.createReadStream(file.path), uploadStream);
+      if (file.buffer) {
+        await pipeline(Readable.from(file.buffer), uploadStream);
+      } else if (file.path) {
+        await pipeline(fs.createReadStream(file.path), uploadStream);
+      } else {
+        throw new Error('No file buffer or path provided for KYC document storage');
+      }
     } catch (error) {
       try {
         if (await bucket.find({ _id: uploadStream.id }).hasNext()) {
@@ -45,6 +58,151 @@ class KycDocumentStorageService {
     }
 
     return String(uploadStream.id);
+  }
+
+  /**
+   * Stores a legacy file from disk into GridFS
+   */
+  static async storeLegacyFile(filePath, originalName = 'legacy-document', mimeType = 'application/octet-stream') {
+    const bucket = getBucket();
+    const uploadStream = bucket.openUploadStream(originalName, {
+      contentType: mimeType,
+      metadata: { kind: 'kyc-document', source: 'legacy-migration' },
+    });
+
+    try {
+      await pipeline(fs.createReadStream(filePath), uploadStream);
+    } catch (error) {
+      try {
+        if (await bucket.find({ _id: uploadStream.id }).hasNext()) {
+          await bucket.delete(uploadStream.id);
+        }
+      } catch (cleanupError) {
+        logger.error('Unable to remove incomplete legacy KYC upload', {
+          fileId: String(uploadStream.id),
+          error: cleanupError.message,
+        });
+      }
+      throw error;
+    }
+
+    return String(uploadStream.id);
+  }
+
+  /**
+   * Finds the disk file for a legacy KYC document from tracked legacy folders
+   */
+  static findLegacyFilePath(doc) {
+    if (!doc) return null;
+    const env = require('../config/env');
+
+    const searchDirs = [
+      path.resolve(__dirname, '../../legacy-kyc-files'),
+      path.resolve(__dirname, '../../uploads/kyc'),
+      path.resolve(process.cwd(), 'legacy-kyc-files'),
+      path.resolve(process.cwd(), 'Backend/legacy-kyc-files'),
+      path.resolve(process.cwd(), 'uploads/kyc'),
+      path.resolve(process.cwd(), 'Backend/uploads/kyc'),
+      env.UPLOAD_PATH ? path.join(env.UPLOAD_PATH, 'kyc') : null,
+    ].filter(Boolean);
+
+    // 1. Direct match by filename from doc.fileKey
+    if (doc.fileKey) {
+      const baseFilename = path.basename(doc.fileKey);
+      for (const dir of searchDirs) {
+        if (!fs.existsSync(dir)) continue;
+        const candidate = path.join(dir, baseFilename);
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    // 2. Direct match by originalName
+    if (doc.originalName) {
+      const baseOriginal = path.basename(doc.originalName);
+      for (const dir of searchDirs) {
+        if (!fs.existsSync(dir)) continue;
+        const candidate = path.join(dir, baseOriginal);
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Migrates all legacy disk KYC documents into GridFS
+   */
+  static async migrateLegacyDocuments() {
+    try {
+      const KycDocument = require('../models/KycDocument');
+      const docsToMigrate = await KycDocument.find({
+        $or: [
+          { storageProvider: { $ne: 'GRIDFS' } },
+          { fileUrl: { $in: ['', null] } },
+        ],
+      });
+
+      if (!docsToMigrate.length) {
+        logger.info('[KYC Migration] All KYC documents already stored in persistent GridFS');
+        return;
+      }
+
+      logger.info(`[KYC Migration] Found ${docsToMigrate.length} documents to verify/migrate to GridFS`);
+      let migratedCount = 0;
+      let alreadyInGridCount = 0;
+      let missingCount = 0;
+
+      for (const doc of docsToMigrate) {
+        if (!doc.fileUrl) {
+          doc.fileUrl = `/api/kyc/documents/${doc._id}`;
+        }
+
+        if (doc.storageProvider === 'GRIDFS') {
+          try {
+            const bucket = getBucket();
+            const fileId = getFileId(doc.fileKey);
+            const exists = await bucket.find({ _id: fileId }).hasNext();
+            if (exists) {
+              await doc.save();
+              alreadyInGridCount++;
+              continue;
+            }
+          } catch {
+            // Not in GridFS, attempt recovery from legacy files below
+          }
+        }
+
+        const legacyPath = KycDocumentStorageService.findLegacyFilePath(doc);
+        if (legacyPath) {
+          try {
+            const newFileKey = await KycDocumentStorageService.storeLegacyFile(
+              legacyPath,
+              doc.originalName || 'legacy-kyc-document',
+              doc.mimeType || 'application/octet-stream'
+            );
+            doc.fileKey = newFileKey;
+            doc.storageProvider = 'GRIDFS';
+            doc.fileUrl = `/api/kyc/documents/${doc._id}`;
+            await doc.save();
+            migratedCount++;
+            logger.info(`[KYC Migration] Migrated doc ${doc._id} (${doc.originalName}) to GridFS fileKey: ${newFileKey}`);
+          } catch (migrateErr) {
+            logger.error(`[KYC Migration] Failed migrating doc ${doc._id}: ${migrateErr.message}`);
+          }
+        } else {
+          missingCount++;
+          logger.warn(`[KYC Migration] Could not locate legacy disk file for doc ${doc._id} (fileKey: ${doc.fileKey})`);
+        }
+      }
+
+      logger.info(`[KYC Migration Summary] Migrated: ${migratedCount}, Already GridFS: ${alreadyInGridCount}, Missing: ${missingCount}`);
+    } catch (err) {
+      logger.error(`[KYC Migration] Unexpected error during migration: ${err.message}`);
+    }
   }
 
   static async openReadStream(fileKey) {
@@ -70,7 +228,7 @@ class KycDocumentStorageService {
   }
 
   static async removeTemporaryUploads(files = []) {
-    await Promise.all(files.filter((file) => file.path).map(async (file) => {
+    await Promise.all((files || []).filter((file) => file && file.path).map(async (file) => {
       try {
         await fs.promises.unlink(file.path);
       } catch (error) {

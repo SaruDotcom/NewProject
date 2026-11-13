@@ -49,7 +49,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { apiGet, apiGetKycDocument, apiPatch } from "@/lib/api";
+import { apiGet, apiGetKycDocument, apiDownloadKycDocument, apiPatch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const RESUBMIT_REASONS = [
@@ -752,25 +752,35 @@ export function KycDetailPage() {
         {documents.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
             {documents.map((document, index) => {
-              const preview =
-                documentPreviews[String(document._id || document.id || "")];
+              const docId = String(document._id || document.id || "");
+              const preview = documentPreviews[docId];
               const isImage = document.mimeType?.startsWith("image/");
               const isPdf = document.mimeType === "application/pdf";
 
               return (
-                <button
-                  key={String(document._id || document.id || index)}
-                  type="button"
-                  className="group relative flex flex-col overflow-hidden rounded-xl border border-border/80 bg-card text-left transition-all duration-200 hover:border-primary/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  onClick={() => {
-                    setActiveDocumentIndex(index);
-                    setZoom(1);
-                    setRotation(0);
-                  }}
-                  aria-label={`View ${documentLabel(document.documentType)}`}
+                <div
+                  key={docId || index}
+                  className="group relative flex flex-col overflow-hidden rounded-xl border border-border/80 bg-card text-left transition-all duration-200 hover:border-primary/60 hover:shadow-md"
                 >
                   {/* Thumbnail Container with Hover Zoom */}
-                  <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden bg-muted/40 border-b border-border/60">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="relative flex aspect-[16/10] w-full cursor-pointer items-center justify-center overflow-hidden bg-muted/40 border-b border-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => {
+                      setActiveDocumentIndex(index);
+                      setZoom(1);
+                      setRotation(0);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        setActiveDocumentIndex(index);
+                        setZoom(1);
+                        setRotation(0);
+                      }
+                    }}
+                    aria-label={`View ${documentLabel(document.documentType)}`}
+                  >
                     {preview?.url && isImage ? (
                       <img
                         src={preview.url}
@@ -804,7 +814,7 @@ export function KycDetailPage() {
                   </div>
 
                   {/* Card Meta Content */}
-                  <div className="flex flex-1 flex-col justify-between p-3.5 space-y-1">
+                  <div className="flex flex-1 flex-col justify-between p-3.5 space-y-2">
                     <div>
                       <span className="block truncate text-sm font-bold text-foreground">
                         {documentLabel(document.documentType)}
@@ -814,14 +824,41 @@ export function KycDetailPage() {
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[11px] text-muted-foreground">
-                      <span>{formatDate(document.createdAt)}</span>
-                      <span className="font-semibold uppercase text-[10px] text-muted-foreground/80">
-                        {document.mimeType?.split("/")[1] || "DOC"}
-                      </span>
+                    <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <span>{formatDate(document.createdAt)}</span>
+                        <span>•</span>
+                        <span className="font-semibold uppercase text-[10px] text-muted-foreground/80">
+                          {document.mimeType?.split("/")[1] || "DOC"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                          title="Download document"
+                          aria-label="Download document"
+                          onClick={() => apiDownloadKycDocument(docId, document.originalName)}
+                        >
+                          <Download className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-2 gap-1 font-semibold"
+                          onClick={() => {
+                            setActiveDocumentIndex(index);
+                            setZoom(1);
+                            setRotation(0);
+                          }}
+                        >
+                          <Eye className="size-3" /> View
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -1110,16 +1147,22 @@ export function KycDetailPage() {
               >
                 <RotateCw className="size-4" />
               </Button>
-              {activePreview?.url && (
-                <a
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white transition-colors"
-                  href={activePreview.url}
-                  download={activeDocument?.originalName || "kyc-document"}
+              {activeDocument && (
+                <Button
+                  size="icon"
+                  variant="ghost"
                   title="Download document"
                   aria-label="Download document"
+                  onClick={() =>
+                    apiDownloadKycDocument(
+                      String(activeDocument._id || activeDocument.id || ""),
+                      activeDocument.originalName
+                    )
+                  }
+                  className="text-white hover:bg-white/15"
                 >
                   <Download className="size-4" />
-                </a>
+                </Button>
               )}
               <div className="h-4 w-px bg-white/20 mx-1" />
               <Button

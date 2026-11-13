@@ -30,10 +30,14 @@ const kycDocumentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    fileUrl: {
+      type: String,
+      default: '',
+    },
     storageProvider: {
       type: String,
-      enum: ['LOCAL', 'GRIDFS'],
-      default: 'LOCAL',
+      enum: ['LOCAL', 'GRIDFS', 'CLOUDINARY'],
+      default: 'GRIDFS',
     },
     mimeType: {
       type: String,
@@ -55,8 +59,17 @@ const kycDocumentSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+kycDocumentSchema.pre('save', function (next) {
+  if (!this.fileUrl && this._id) {
+    this.fileUrl = `/api/v1/kyc/documents/${this._id}`;
+  }
+  next();
+});
 
 const KycDocument = mongoose.model('KycDocument', kycDocumentSchema);
 module.exports = KycDocument;

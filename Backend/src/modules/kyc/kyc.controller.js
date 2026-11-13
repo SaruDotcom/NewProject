@@ -67,8 +67,13 @@ class KycController {
       req
     );
 
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${originalName}"`);
+    const isDownload = req.query.download === 'true' || req.query.download === '1';
+    const dispositionType = isDownload ? 'attachment' : 'inline';
+    const cleanAsciiName = (originalName || 'document').replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
+    const encodedName = encodeURIComponent(originalName || 'document');
+
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `${dispositionType}; filename="${cleanAsciiName}"; filename*=UTF-8''${encodedName}`);
     res.setHeader('Cache-Control', 'private, no-store, max-age=0');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const stream = fileStream || fs.createReadStream(filePath);

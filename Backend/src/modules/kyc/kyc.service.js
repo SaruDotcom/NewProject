@@ -21,6 +21,7 @@ const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
 const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
+const logger = require('../../config/logger');
 
 const maskAccountNumber = (accountNumber) => {
   const value = String(accountNumber || '');
@@ -215,9 +216,21 @@ class KycService {
    */
   static async getWholesalerKyc(wholesalerUser) {
     const application = await KycApplication.findOne({ wholesalerId: wholesalerUser._id }).populate(
-      'documents'
+      'documents',
+      'documentType originalName mimeType fileSize fileUrl storageProvider createdAt updatedAt'
     );
-    return application || { status: KYC_STATUS.DRAFT };
+    if (!application) {
+      return { status: KYC_STATUS.DRAFT };
+    }
+    const appObj = application.toObject ? application.toObject() : application;
+    if (Array.isArray(appObj.documents)) {
+      appObj.documents.forEach((doc) => {
+        if (!doc.fileUrl && doc._id) {
+          doc.fileUrl = `/api/v1/kyc/documents/${doc._id}`;
+        }
+      });
+    }
+    return appObj;
   }
 
   /**
@@ -251,7 +264,7 @@ class KycService {
       KycApplication.find(filter)
         .select('_id businessName ownerName pan gstin status submittedAt wholesalerId documents')
         .populate('wholesalerId', 'name email phone status')
-        .populate('documents', 'documentType originalName mimeType fileSize createdAt')
+        .populate('documents', 'documentType originalName mimeType fileSize fileUrl storageProvider createdAt')
         .populate('reviewedBy', 'name email')
         .sort(sort)
         .skip(skip)
@@ -259,6 +272,16 @@ class KycService {
         .lean(),
       KycApplication.countDocuments(filter),
     ]);
+
+    applications.forEach((app) => {
+      if (Array.isArray(app.documents)) {
+        app.documents.forEach((doc) => {
+          if (!doc.fileUrl && doc._id) {
+            doc.fileUrl = `/api/v1/kyc/documents/${doc._id}`;
+          }
+        });
+      }
+    });
 
     return {
       applications,
@@ -281,7 +304,7 @@ class KycService {
 
     const application = await KycApplication.findById(kycId)
       .populate('wholesalerId', 'name email phone status lastLoginAt createdAt')
-      .populate('documents', 'documentType originalName mimeType fileSize createdAt updatedAt')
+      .populate('documents', 'documentType originalName mimeType fileSize fileUrl storageProvider createdAt updatedAt')
       .populate('reviewedBy', 'name email')
       .populate('history.changedBy', 'name email role');
 
@@ -332,6 +355,13 @@ class KycService {
     }
 
     const responseData = application.toObject();
+    if (Array.isArray(responseData.documents)) {
+      responseData.documents.forEach((doc) => {
+        if (!doc.fileUrl && doc._id) {
+          doc.fileUrl = `/api/v1/kyc/documents/${doc._id}`;
+        }
+      });
+    }
     responseData.profile = wholesalerProfile || {};
     responseData.stats = {
       linkedRetailersCount: linkedRetailersCount || 0,
@@ -555,16 +585,67 @@ class KycService {
       });
     }
 
-    if (doc.storageProvider === 'GRIDFS') {
-      const storedFile = await KycDocumentStorageService.openReadStream(doc.fileKey);
-      return {
-        fileStream: storedFile.stream,
-        mimeType: storedFile.mimeType || doc.mimeType,
-        originalName: doc.originalName,
-      };
+    // 1. If stored in GridFS, attempt to stream it
+    if (doc.storageProvider === 'GRIDFS' && doc.fileKey) {
+      try {
+        const storedFile = await KycDocumentStorageService.openReadStream(doc.fileKey);
+        return {
+          fileStream: storedFile.stream,
+          mimeType: storedFile.mimeType || doc.mimeType,
+          originalName: doc.originalName,
+        };
+      } catch (streamError) {
+        logger.warn('Unable to stream KYC document from GridFS; attempting legacy recovery', {
+          documentId: String(doc._id),
+          error: streamError.message,
+        });
+      }
     }
 
+    // 2. On-demand auto-migration from legacy files if missing from GridFS or previously LOCAL
+    const legacyPath = KycDocumentStorageService.findLegacyFilePath(doc);
+    if (legacyPath) {
+      try {
+        const newFileKey = await KycDocumentStorageService.storeLegacyFile(
+          legacyPath,
+          doc.originalName || 'legacy-kyc-document',
+          doc.mimeType || 'application/octet-stream'
+        );
+        doc.fileKey = newFileKey;
+        doc.storageProvider = 'GRIDFS';
+        doc.fileUrl = `/api/v1/kyc/documents/${doc._id}`;
+        await doc.save();
+
+        const storedFile = await KycDocumentStorageService.openReadStream(newFileKey);
+        return {
+          fileStream: storedFile.stream,
+          mimeType: storedFile.mimeType || doc.mimeType,
+          originalName: doc.originalName,
+        };
+      } catch (recoveryErr) {
+        logger.error('Unable to migrate legacy KYC document while serving it', {
+          documentId: String(doc._id),
+          error: recoveryErr.message,
+        });
+      }
+    }
+
+    // 3. Fallback: try reading from local disk if file is physically present
     const filePath = StorageService.getFilePath('kyc', doc.fileKey);
+    KycDocumentStorageService.storeLegacyFile(filePath, doc.originalName, doc.mimeType)
+      .then(async (newFileKey) => {
+        doc.fileKey = newFileKey;
+        doc.storageProvider = 'GRIDFS';
+        doc.fileUrl = `/api/v1/kyc/documents/${doc._id}`;
+        await doc.save();
+      })
+      .catch((error) => {
+        logger.error('Unable to migrate local KYC document to GridFS', {
+          documentId: String(doc._id),
+          error: error.message,
+        });
+      });
+
     return { filePath, mimeType: doc.mimeType, originalName: doc.originalName };
   }
 }

@@ -10,5 +10,6 @@
 **/*.tsbuildinfo
 **/*.log
 **/uploads/
+Backend/legacy-kyc-files/
 **/.DS_Store
 __MACOSX/

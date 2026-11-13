@@ -4,6 +4,7 @@ const logger = require('./config/logger');
 const { connectDB, disconnectDB } = require('./config/database');
 const ensureSuperAdmin = require('./services/ensureSuperAdmin');
 const ensureReferralCodes = require('./services/ensureReferralCodes');
+const KycDocumentStorageService = require('./services/kycDocumentStorage.service');
 
 // Server entry point for B2B Wholesale Platform Backend
 let server;
@@ -18,6 +19,11 @@ const startServer = async () => {
 
     // 3. Ensure Referral Codes for Wholesalers
     await ensureReferralCodes();
+
+    // 4. Migrate Legacy KYC Documents to GridFS (runs in background)
+    KycDocumentStorageService.migrateLegacyDocuments().catch((err) => {
+      logger.error(`KYC legacy migration background error: ${err.message}`);
+    });
 
     // 3. Start HTTP Server
     server = app.listen(env.PORT, () => {
