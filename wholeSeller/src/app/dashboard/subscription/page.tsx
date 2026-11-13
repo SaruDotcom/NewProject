@@ -337,7 +337,7 @@ export default function SubscriptionPage() {
           </div>
           <h1 className="mt-1 text-2xl font-extrabold text-tradeflow-navy">Wholesaler Subscription Plans</h1>
           <p className="mt-1 text-sm text-gray-500">
-            An approved subscription and approved KYC are required to use wholesaler business features.
+            Subscription plans are optional. Approved KYC is required to use wholesaler business features.
           </p>
         </div>
         <button
@@ -365,7 +365,7 @@ export default function SubscriptionPage() {
       {hasPendingApproval && (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900 shadow-sm flex items-center gap-3">
           <Clock className="h-5 w-5 shrink-0 text-amber-700" />
-          <span>Your payment is confirmed and awaiting Superadmin approval. Business features remain locked until both your subscription and KYC are approved.</span>
+          <span>Your payment is confirmed and awaiting Superadmin approval. Subscription approval is optional; approved KYC enables business features.</span>
         </div>
       )}
       {!paymentConfigured && (

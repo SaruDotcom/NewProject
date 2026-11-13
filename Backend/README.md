@@ -108,7 +108,7 @@ The standard wholesaler subscription catalog has three tiers with monthly and ye
 
 Keep both `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the backend environment only. For local development, set them in `Backend/.env`; in production, add them as secrets/environment variables in the service that runs `Backend/src/server.js`, then redeploy or restart that backend. Use the same Test or Live mode for both credentials. Frontend builds need their own `VITE_API_BASE_URL` (wholesaler and admin) or `VITE_API_URL` (retailer) set to the backend's deployed API URL; obtain that URL from the backend hosting service rather than using localhost. The production frontend URL should also be included in the backend's `CLIENT_URL` setting when required by CORS.
 
-A captured subscription payment remains pending until a Super Admin approves it from **Subscriptions**. Approval requires the wholesaler's KYC to be approved; restricted wholesaler business operations require both approved KYC and an active, unexpired subscription. Use Razorpay test-mode credentials in development and configure the production key ID and secret only as backend hosting environment secrets.
+A captured subscription payment remains pending until a Super Admin approves it from **Subscriptions**. Approval requires the wholesaler's KYC to be approved. Subscription purchase and approval are optional; approved KYC alone enables wholesaler business operations. Use Razorpay test-mode credentials in development and configure the production key ID and secret only as backend hosting environment secrets.
 
 ### Retailer UPI payments and credit
 

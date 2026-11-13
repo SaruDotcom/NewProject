@@ -260,7 +260,7 @@ describe('Product update validation and persistence', () => {
     expect(String(validResponse.body.data.categoryId)).toBe(String(electronics._id));
   });
 
-  test('allows update and delete when wholesaler KYC is not approved', async () => {
+  test('requires approved KYC for product updates and deletes', async () => {
     await WholesalerProfile.findOneAndUpdate(
       { userId: wholesaler._id },
       { kycStatus: KYC_STATUS.DRAFT }
@@ -270,12 +270,12 @@ describe('Product update validation and persistence', () => {
       .put(`/api/v1/wholesaler/products/${product._id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ description: 'Updated without KYC approval' });
-    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.status).toBe(403);
 
     const deleteResponse = await request(app)
       .delete(`/api/v1/wholesaler/products/${product._id}`)
       .set('Authorization', `Bearer ${token}`);
-    expect(deleteResponse.status).toBe(200);
+    expect(deleteResponse.status).toBe(403);
   });
 
   test('rejects updates from a different wholesaler', async () => {
