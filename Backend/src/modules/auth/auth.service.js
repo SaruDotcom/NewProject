@@ -177,6 +177,7 @@ class AuthService {
       role: rawRole,
       businessName,
       businessType,
+      registrationNumber,
       city,
       state,
       address,
@@ -333,6 +334,7 @@ class AuthService {
         businessLogoUrl: uncommittedBusinessLogo?.url || '',
         businessLogoPublicId: uncommittedBusinessLogo?.publicId || '',
         businessType: businessType || 'Proprietorship',
+        registrationNumber: String(registrationNumber || '').trim(),
         gstin: isGstRegistered === false ? undefined : (gstin || undefined),
         gstStatus: isGstRegistered === false || gstStatus === 'UNREGISTERED' ? 'UNREGISTERED' : 'REGISTERED',
         pan: pan || undefined,
@@ -364,6 +366,7 @@ class AuthService {
           ownerName: name,
           email: normalizedEmail,
           phone: phone || '',
+          registrationNumber: String(registrationNumber || '').trim(),
           isGstRegistered: isGstRegistered !== false,
           gstin: isGstRegistered === false ? '' : (gstin || ''),
           businessAddress: {

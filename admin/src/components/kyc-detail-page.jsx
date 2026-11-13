@@ -90,11 +90,13 @@ const formatDateTime = (value) =>
       })
     : "Not provided";
 
-const documentLabel = (value) =>
-  String(value || "Document")
+const documentLabel = (value) => {
+  if (value === "BUSINESS_REGISTRATION_PROOF") return "Business Registration Certificate";
+  return String(value || "Document")
     .replaceAll("_", " ")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
 
 const maskNumber = (value) => {
   const digits = String(value || "").replace(/\D/g, "");
@@ -590,8 +592,12 @@ export function KycDetailPage() {
             value={application.businessName || profile.businessName}
           />
           <InfoField
-            label="Business type"
+            label="Registration type"
             value={application.businessType || profile.businessType}
+          />
+          <InfoField
+            label="Registration number"
+            value={application.registrationNumber || profile.registrationNumber}
           />
           <InfoField
             label="Street address"

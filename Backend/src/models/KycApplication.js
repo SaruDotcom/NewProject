@@ -24,6 +24,12 @@ const kycApplicationSchema = new mongoose.Schema(
       type: String,
       default: 'Proprietorship',
     },
+    registrationNumber: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 100,
+    },
     pan: {
       type: String,
       required: true,

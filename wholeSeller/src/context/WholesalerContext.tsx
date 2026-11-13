@@ -71,6 +71,7 @@ export interface WholesalerProfile {
   businessLogoUrl: string;
   activeStoreTheme: WholesalerStoreTheme;
   businessType: string;
+  registrationNumber: string;
   ownerName: string;
   email: string;
   phone: string;
@@ -105,6 +106,8 @@ export interface WholesalerAccountRegistration {
   email: string;
   phone: string;
   businessLogo?: File;
+  businessType?: string;
+  registrationNumber?: string;
   inviteToken?: string;
   ref?: string;
   adminCode?: string;
@@ -191,6 +194,7 @@ export const DEFAULT_PROFILE: WholesalerProfile = {
   businessLogoUrl: '',
   activeStoreTheme: 'DEFAULT',
   businessType: '',
+  registrationNumber: '',
   ownerName: '',
   email: '',
   phone: '',
@@ -405,6 +409,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               businessLogoUrl: wp.businessLogoUrl ?? prev.businessLogoUrl,
               activeStoreTheme: wp.activeStoreTheme || 'DEFAULT',
               businessType: wp.businessType || prev.businessType,
+              registrationNumber: wp.registrationNumber || wp.registrationDetails?.registrationNumber || prev.registrationNumber,
               ownerName: u.name || prev.ownerName,
               email: u.email || prev.email,
               phone: u.phone || prev.phone,
@@ -799,6 +804,8 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         email: data.email,
         password: passwordInput,
         businessName: data.businessName,
+        businessType: data.businessType,
+        registrationNumber: data.registrationNumber,
         phone: data.phone,
         businessLogo: data.businessLogo,
         isGstRegistered: false,

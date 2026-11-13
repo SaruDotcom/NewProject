@@ -40,6 +40,7 @@ const registerSchema = Joi.object({
       otherwise: Joi.string().trim().required().min(2).max(150),
     }),
   businessType: Joi.string().optional().allow('', null),
+  registrationNumber: Joi.string().trim().max(100).optional().allow('', null),
   city: Joi.string()
     .when('role', {
       is: Joi.string().valid(ROLES.WHOLESALER, 'wholesaler'),

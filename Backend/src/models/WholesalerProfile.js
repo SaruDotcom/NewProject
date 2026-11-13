@@ -91,6 +91,12 @@ const wholesalerProfileSchema = new mongoose.Schema(
       enum: ['Proprietorship', 'Partnership', 'LLP', 'Private Limited', 'Public Limited', 'Other'],
       default: 'Proprietorship',
     },
+    registrationNumber: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 100,
+    },
     gstin: {
       type: String,
       trim: true,

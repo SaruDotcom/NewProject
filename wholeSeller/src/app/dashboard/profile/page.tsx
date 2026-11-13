@@ -271,7 +271,8 @@ export default function WholesalerProfilePage() {
           <h2 className="mb-4 text-sm font-extrabold text-tradeflow-navy">Business information</h2>
           <dl className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
             <Detail label="Business name" value={profile.businessName || 'Not provided'} />
-            <Detail label="Business type" value={profile.businessType || 'Not provided'} />
+            <Detail label="Registration type" value={profile.businessType || 'Not provided'} />
+            <Detail label="Registration number" value={profile.registrationNumber || 'Not provided'} />
             <Detail label="GSTIN" value={profile.gstin || 'Not provided'} />
             <Detail label="Trade license" value={profile.tradeLicense || 'Not provided'} />
             <Detail label="Account status" value={profile.accountStatus ? profile.accountStatus.replace(/_/g, ' ') : 'Not available'} />

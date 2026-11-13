@@ -523,6 +523,8 @@ export const api = {
     email: string;
     password: string;
     businessName: string;
+    businessType?: string;
+    registrationNumber?: string;
     businessLogo?: File;
     phone?: string;
     address?: string;

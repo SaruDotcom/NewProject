@@ -11,6 +11,7 @@ const emptyForm = {
   businessName: '',
   ownerName: '',
   businessType: '',
+  registrationNumber: '',
   pan: '',
   hasGst: false,
   gstin: '',
@@ -75,6 +76,7 @@ export default function KycPage() {
         businessName: application.businessName || profile.businessName || '',
         ownerName: application.ownerName || profile.ownerName || '',
         businessType: application.businessType || profile.businessType || '',
+        registrationNumber: application.registrationNumber || profile.registrationNumber || '',
         pan: application.pan || '',
         hasGst,
         gstin: application.gstin || profile.gstin || '',
@@ -90,7 +92,7 @@ export default function KycPage() {
       });
     }
     if (kycQuery.error) setError(kycQuery.error.message || 'Unable to load KYC details.');
-  }, [kycQuery.data, kycQuery.error, profile.accountNumber, profile.bankName, profile.businessName, profile.city, profile.gstin, profile.ifscCode, profile.ownerName, profile.pincode, profile.state, profile.streetAddress, updateProfile]);
+  }, [kycQuery.data, kycQuery.error, profile.accountNumber, profile.bankName, profile.businessName, profile.businessType, profile.city, profile.gstin, profile.ifscCode, profile.ownerName, profile.pincode, profile.registrationNumber, profile.state, profile.streetAddress, updateProfile]);
 
   useEffect(() => {
     let active = true;
@@ -157,12 +159,12 @@ export default function KycPage() {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
-      setError('Choose a PDF, JPG, or PNG business proof document.');
+      setError('Choose a PDF, JPG, or PNG business registration certificate.');
       event.target.value = '';
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setError('The business proof document must be 10 MB or smaller.');
+      setError('The business registration certificate must be 10 MB or smaller.');
       event.target.value = '';
       return;
     }
@@ -230,6 +232,7 @@ export default function KycPage() {
         businessName: form.businessName.trim(),
         ownerName: form.ownerName.trim(),
         businessType: form.businessType,
+        registrationNumber: form.registrationNumber.trim(),
         pan: cleanPan,
         hasGst: String(form.hasGst),
         gstin: cleanGst,
@@ -317,7 +320,8 @@ export default function KycPage() {
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
                   <label className={fieldClass}>Business name (optional)<input className={inputClass} value={form.businessName} onChange={changeField('businessName')} /></label>
                   <label className={fieldClass}>Proprietor / owner name (optional)<input className={inputClass} value={form.ownerName} onChange={changeField('ownerName')} /></label>
-                  <label className={fieldClass}>Business type (optional)<select className={inputClass} value={form.businessType} onChange={changeField('businessType')}><option value="">Select business type (optional)</option><option>Proprietorship</option><option>Partnership</option><option>LLP</option><option>Private Limited</option><option>Public Limited</option><option>Other</option></select></label>
+                  <label className={fieldClass}>Registration type (optional)<select className={inputClass} value={form.businessType} onChange={changeField('businessType')}><option value="">Select registration type (optional)</option><option value="Proprietorship">Sole proprietorship</option><option value="Partnership">Partnership</option><option value="LLP">Limited liability partnership (LLP)</option><option value="Private Limited">Private limited company</option><option value="Public Limited">Public limited company</option><option value="Other">Other</option></select></label>
+                  <label className={fieldClass}>Registration number (optional)<input className={inputClass} value={form.registrationNumber} maxLength={100} onChange={changeField('registrationNumber')} placeholder="CIN, LLPIN, or other registration number" /></label>
                   <label className={fieldClass}>
                     PAN number *
                     <input
@@ -471,12 +475,11 @@ export default function KycPage() {
                     </div>
                   );
                 })}
-                {!form.gstin.trim() && (
-                  <div className="rounded-md border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3">
+                <div className="rounded-md border border-tradeflow-gray-200 bg-tradeflow-gray-50 p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <div>
                         <p className="text-xs font-extrabold text-tradeflow-navy">
-                          Upload Any Valid Business Proof / Certificate
+                          Business registration certificate
                         </p>
                         <p className="text-[11px] text-gray-500">Optional · PDF, JPG or PNG · up to 10 MB</p>
                       </div>
@@ -497,7 +500,7 @@ export default function KycPage() {
                       )}
                       <span className="min-w-0">
                         <span className="block truncate font-semibold">
-                          {businessProofFile?.name || existingBusinessProof?.originalName || 'Choose a business certificate'}
+                          {businessProofFile?.name || existingBusinessProof?.originalName || 'Choose a registration certificate'}
                         </span>
                         {!isLocked && <span className="mt-1 block text-[10px] text-gray-500">{businessProofFile || !existingBusinessProof ? 'Upload' : 'Replace'}</span>}
                       </span>
@@ -511,7 +514,6 @@ export default function KycPage() {
                       onChange={changeBusinessProof}
                     />
                   </div>
-                )}
               </div>
               <div className="flex items-start gap-2 border-t border-tradeflow-gray-200 bg-tradeflow-gray-50 px-4 py-3 text-[11px] leading-relaxed text-gray-600">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-status-success" />

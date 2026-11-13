@@ -56,6 +56,8 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [businessName, setBusinessName] = useState('');
+  const [businessType, setBusinessType] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [businessLogo, setBusinessLogo] = useState<File | null>(null);
   const [businessLogoPreview, setBusinessLogoPreview] = useState('');
@@ -174,6 +176,8 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
       const attribution = readUtmAttribution();
       await registerWholesaler({
         businessName,
+        businessType,
+        registrationNumber: registrationNumber.trim(),
         businessLogo: businessLogo || undefined,
         ownerName,
         email,
@@ -412,6 +416,35 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
                     }`}
                   />
                   {errors.businessName && <span className="text-[11px] text-red-600 mt-1 block font-semibold">{errors.businessName}</span>}
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Registration Type (optional)</label>
+                  <select
+                    value={businessType}
+                    onChange={(e) => setBusinessType(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green"
+                  >
+                    <option value="">Select registration type</option>
+                    <option value="Proprietorship">Sole proprietorship</option>
+                    <option value="Partnership">Partnership</option>
+                    <option value="LLP">Limited liability partnership (LLP)</option>
+                    <option value="Private Limited">Private limited company</option>
+                    <option value="Public Limited">Public limited company</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Registration Number (optional)</label>
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={registrationNumber}
+                    onChange={(e) => setRegistrationNumber(limitedText(e.target.value, 100))}
+                    placeholder="Enter CIN, LLPIN, or other registration number"
+                    className="w-full px-3.5 py-2.5 bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:border-tradeflow-green focus:ring-1 focus:ring-tradeflow-green"
+                  />
                 </div>
 
                 <div>

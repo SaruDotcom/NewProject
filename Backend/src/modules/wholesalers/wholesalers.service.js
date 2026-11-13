@@ -102,6 +102,7 @@ class WholesalerService {
       pan: profile.pan || profile.registrationDetails?.pan || '',
       hasGst: Boolean(profile.hasGst),
       businessType: profile.businessType || '',
+      registrationNumber: profile.registrationNumber || profile.registrationDetails?.registrationNumber || '',
       description: profile.description || '',
       streetAddress: address.street || '',
       city: address.city || '',

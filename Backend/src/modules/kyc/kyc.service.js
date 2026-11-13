@@ -36,7 +36,9 @@ class KycService {
 
     const [existingApplication, existingProfile] = await Promise.all([
       KycApplication.findOne({ wholesalerId }),
-      WholesalerProfile.findOne({ userId: wholesalerId }).select('businessName businessType').lean(),
+      WholesalerProfile.findOne({ userId: wholesalerId })
+        .select('businessName businessType registrationNumber registrationDetails')
+        .lean(),
     ]);
     let application = existingApplication;
 
@@ -71,6 +73,16 @@ class KycService {
     const pincode = (kycData.pincode || kycData.registeredAddress?.pincode || '').trim();
     if (pincode && !/^\d{6}$/.test(pincode)) {
       throw new BadRequestError('Invalid PIN code. Please enter a valid 6-digit Indian PIN code.', 'INVALID_PINCODE');
+    }
+
+    const registrationNumber = String(
+      kycData.registrationNumber ??
+      existingApplication?.registrationNumber ??
+      existingProfile?.registrationNumber ??
+      ''
+    ).trim();
+    if (registrationNumber.length > 100) {
+      throw new BadRequestError('Registration number cannot exceed 100 characters.', 'INVALID_REGISTRATION_NUMBER');
     }
 
     const accountNumber = (kycData.accountNumber || kycData.bankDetails?.accountNumber || '').trim();
@@ -121,6 +133,7 @@ class KycService {
       businessName,
       ownerName: (kycData.ownerName || '').trim(),
       businessType: (kycData.businessType || '').trim() || existingProfile?.businessType || 'Proprietorship',
+      registrationNumber,
       pan,
       hasGst,
       gstin: gstin,
@@ -162,6 +175,11 @@ class KycService {
       {
         businessName,
         businessType: applicationPayload.businessType,
+        registrationNumber,
+        registrationDetails: {
+          ...(existingProfile?.registrationDetails || {}),
+          registrationNumber,
+        },
         hasGst,
         gstin: gstin,
         gstStatus: hasGst ? 'REGISTERED' : 'UNREGISTERED',
@@ -275,7 +293,7 @@ class KycService {
 
     const [wholesalerProfile, linkedRetailersCount, productsCount, ordersCount, auditLogs] = await Promise.all([
       WholesalerProfile.findOne({ userId: wholesalerUserId })
-        .select('businessName businessType address pickupAddress bankDetails registrationSource adminReferralCode retailerReferralCode hasGst gstin pan kycStatus isVerified createdAt')
+        .select('businessName businessType registrationNumber address pickupAddress bankDetails registrationSource adminReferralCode retailerReferralCode hasGst gstin pan kycStatus isVerified createdAt')
         .lean(),
       WholesalerRetailerRelationship.countDocuments({ wholesalerId: wholesalerUserId }),
       Product.countDocuments({ wholesalerId: wholesalerUserId, isDeleted: { $ne: true } }),

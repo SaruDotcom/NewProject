@@ -145,7 +145,7 @@ export function WholesalerDetailPage() {
             setReferral(null);
             try {
                 if (!RETAILER_PRODUCTION_URL) {
-                    throw new Error("The production Retailer URL is not configured. Referral links cannot be marked live.");
+                    throw new Error("The production Retailer URL is not configured. Retailer invite links cannot be marked live.");
                 }
                 const referralResponse = await apiGet(`/admin/wholesalers/${id}/referral-link`);
                 if (!mounted) return;
@@ -175,7 +175,7 @@ export function WholesalerDetailPage() {
             } catch (linkError) {
                 if (!mounted) return;
                 setReferralState("error");
-                setReferralError(linkError.message || "Unable to verify this referral link.");
+                setReferralError(linkError.message || "Unable to verify this retailer invite link.");
             }
         };
         void testReferralLink();
@@ -211,9 +211,9 @@ export function WholesalerDetailPage() {
     const copyReferralLink = async () => {
         try {
             await navigator.clipboard.writeText(referralUrl);
-            toast.success("Referral link copied.");
+            toast.success("Retailer invite link copied.");
         } catch (copyError) {
-            toast.error(copyError.message || "Unable to copy the referral link.");
+            toast.error(copyError.message || "Unable to copy the retailer invite link.");
         }
     };
 
@@ -230,7 +230,7 @@ export function WholesalerDetailPage() {
             });
         } catch (shareError) {
             if (shareError.name !== "AbortError") {
-                toast.error(shareError.message || "Unable to share the referral link.");
+                toast.error(shareError.message || "Unable to share the retailer invite link.");
             }
         }
     };
@@ -401,7 +401,7 @@ export function WholesalerDetailPage() {
             </div>
             <Tabs defaultValue="overview">
                 <TabsList className="flex h-auto justify-start overflow-x-auto bg-transparent p-0">
-                    {[["overview", "Overview"], ["referral", "Referral Link"], ["subscription", "Subscription"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
+                    {[["overview", "Overview"], ["referral", "Retailers Invite Link"], ["subscription", "Subscription"], ["reviews", "Reviews"], ["feedback", "Submitted feedback"]].map(([value, label]) => <TabsTrigger key={value} value={value} className="whitespace-nowrap rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary">{label}</TabsTrigger>)}
                 </TabsList>
                 <TabsContent value="overview" className="space-y-5">
                     <SectionCard
@@ -419,7 +419,8 @@ export function WholesalerDetailPage() {
                             <p><strong>Business:</strong> {profile.businessName || profile.company || "—"}</p>
                             <p><strong>Email:</strong> {profile.email || "—"}</p>
                             <p><strong>Phone:</strong> {profile.phone || "—"}</p>
-                            <p><strong>Business type:</strong> {profile.businessType || "—"}</p>
+                            <p><strong>Registration type:</strong> {profile.businessType || "—"}</p>
+                            <p><strong>Registration number:</strong> {profile.registrationNumber || profile.registrationDetails?.registrationNumber || "—"}</p>
                             <p><strong>GST status:</strong> {profile.gstStatus || "—"}</p>
                             <p><strong>GSTIN:</strong> {profile.gstin || "—"}</p>
                             <p><strong>PAN:</strong> {pan || "—"}</p>
@@ -456,7 +457,7 @@ export function WholesalerDetailPage() {
                                                     <div className="flex min-w-0 items-center gap-2">
                                                         <FileText className="size-4 shrink-0 text-muted-foreground" />
                                                         <div className="min-w-0">
-                                                            <p className="break-words text-sm font-medium">{document.documentType?.replaceAll("_", " ") || "Verification document"}</p>
+                                                            <p className="break-words text-sm font-medium">{document.documentType === "BUSINESS_REGISTRATION_PROOF" ? "Business registration certificate" : document.documentType?.replaceAll("_", " ") || "Verification document"}</p>
                                                             <p className="break-all text-xs text-muted-foreground">{document.originalName || "Uploaded file"}</p>
                                                         </div>
                                                         <StatusBadge status={document.isVerified ? "Verified" : "Pending"} />
@@ -483,9 +484,9 @@ export function WholesalerDetailPage() {
                     </SectionCard>
                 </TabsContent>
                 <TabsContent value="referral">
-                    <SectionCard title="Retailer referral link" description="Share this production Retailer link to connect registrations with this wholesaler.">
+                    <SectionCard title="Retailers invite link" description="Share this production link to invite retailers to this wholesaler.">
                         {referralState === "loading" ? (
-                            <div className="p-6 text-sm text-muted-foreground">Generating and testing the production referral link...</div>
+                            <div className="p-6 text-sm text-muted-foreground">Generating and testing the production invite link...</div>
                         ) : (
                             <div className="space-y-5 p-5">
                                 <div className="flex flex-wrap items-center gap-3">
@@ -510,9 +511,9 @@ export function WholesalerDetailPage() {
                                     </div>
                                 )}
                                 {referralState === "live" ? (
-                                    <p role="status" className="text-sm font-medium text-emerald-700">Live — Retailer referral lookup verified for {referral.businessName}.</p>
+                                    <p role="status" className="text-sm font-medium text-emerald-700">Live — retailer invite link verified for {referral.businessName}.</p>
                                 ) : (
-                                    <p role="alert" className="text-sm text-destructive">{referralError || "This referral link is not live."}</p>
+                                    <p role="alert" className="text-sm text-destructive">{referralError || "This retailer invite link is not live."}</p>
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     <Button type="button" variant="outline" disabled={referralState !== "live"} onClick={() => void copyReferralLink()}>
@@ -639,13 +640,14 @@ export function WholesalerDetailPage() {
                                     <input className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" value={editForm.phone || ""} onChange={(e) => setEditForm(f => ({ ...f, phone: e.target.value }))} required />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-muted-foreground">Business Type</label>
+                                    <label className="text-xs font-semibold text-muted-foreground">Registration type</label>
                                     <select className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" value={editForm.businessType || ""} onChange={(e) => setEditForm(f => ({ ...f, businessType: e.target.value }))}>
-                                        <option value="Proprietorship">Proprietorship</option>
+                                        <option value="Proprietorship">Sole proprietorship</option>
                                         <option value="Partnership">Partnership</option>
-                                        <option value="Pvt Ltd">Pvt Ltd</option>
                                         <option value="LLP">LLP</option>
-                                        <option value="Individual">Individual</option>
+                                        <option value="Private Limited">Private limited company</option>
+                                        <option value="Public Limited">Public limited company</option>
+                                        <option value="Other">Other</option>
                                     </select>
                                 </div>
                                 <div>

@@ -124,6 +124,8 @@ describe('KYC Workflow Test Suite', () => {
       pan: 'AAACP1234F',
       hasGst: true,
       gstin: '',
+      businessType: 'LLP',
+      registrationNumber: 'LLPIN-AB-12345',
     }, wholesalerToken)
       .field('businessProof_type', 'BUSINESS_REGISTRATION_PROOF')
       .attach('businessProof', Buffer.from('%PDF-1.4 business certificate'), {
@@ -136,6 +138,8 @@ describe('KYC Workflow Test Suite', () => {
     expect(res.body.data.gstin).toBe('');
     expect(res.body.data.hasGst).toBe(false);
     expect(res.body.data.businessName).toBe('Pooja Textiles India');
+    expect(res.body.data.businessType).toBe('LLP');
+    expect(res.body.data.registrationNumber).toBe('LLPIN-AB-12345');
     expect(res.body.data.registeredAddress.pincode).toBe('');
 
     const proof = await KycDocument.findOne({
@@ -144,6 +148,9 @@ describe('KYC Workflow Test Suite', () => {
     });
     expect(proof).toBeTruthy();
     expect(proof.mimeType).toBe('application/pdf');
+    const savedProfile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
+    expect(savedProfile.registrationNumber).toBe('LLPIN-AB-12345');
+    expect(savedProfile.registrationDetails.registrationNumber).toBe('LLPIN-AB-12345');
 
     const adminResponse = await request(app)
       .get(`/api/v1/admin/kyc/${res.body.data._id}`)
@@ -157,6 +164,15 @@ describe('KYC Workflow Test Suite', () => {
         }),
       ]),
     );
+    expect(adminResponse.body.data.registrationNumber).toBe('LLPIN-AB-12345');
+    expect(adminResponse.body.data.profile.registrationNumber).toBe('LLPIN-AB-12345');
+
+    const wholesalerDetailResponse = await request(app)
+      .get(`/api/v1/admin/wholesalers/${wholesalerUser._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(wholesalerDetailResponse.status).toBe(200);
+    expect(wholesalerDetailResponse.body.data.profile.businessType).toBe('LLP');
+    expect(wholesalerDetailResponse.body.data.profile.registrationNumber).toBe('LLPIN-AB-12345');
 
     const documentResponse = await request(app)
       .get(`/api/v1/admin/kyc/documents/${proof._id}`)
@@ -164,6 +180,24 @@ describe('KYC Workflow Test Suite', () => {
     expect(documentResponse.status).toBe(200);
     expect(documentResponse.headers['content-type']).toBe('application/pdf');
     expect(Buffer.isBuffer(documentResponse.body)).toBe(true);
+  });
+
+  test('wholesaler registration stores registration type and number', async () => {
+    const response = await request(app).post('/api/v1/auth/register').send({
+      name: 'Registration Owner',
+      email: 'registration-owner@example.test',
+      password: 'Password123',
+      role: ROLES.WHOLESALER,
+      businessName: 'Registration Supply',
+      businessType: 'Partnership',
+      registrationNumber: 'REG-2026-7788',
+    });
+
+    expect(response.status).toBe(201);
+    const profile = await WholesalerProfile.findOne({ businessName: 'Registration Supply' });
+    expect(profile.businessType).toBe('Partnership');
+    expect(profile.registrationNumber).toBe('REG-2026-7788');
+    expect(profile.registrationDetails.registrationNumber).toBe('REG-2026-7788');
   });
 
   test('KYC submission requires PAN and both Aadhaar images', async () => {
