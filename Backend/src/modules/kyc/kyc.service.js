@@ -20,6 +20,7 @@ const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
+const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
 
 const maskAccountNumber = (accountNumber) => {
   const value = String(accountNumber || '');
@@ -59,22 +60,7 @@ class KycService {
       );
     }
 
-    // Process uploaded documents
     const documentIds = application ? [...application.documents] : [];
-
-    if (uploadedFiles && uploadedFiles.length > 0) {
-      for (const file of uploadedFiles) {
-        const doc = await KycDocument.create({
-          wholesalerId,
-          documentType: req?.body?.[`${file.fieldname}_type`] || 'OTHER',
-          originalName: file.originalname,
-          fileKey: file.filename,
-          mimeType: file.mimetype,
-          fileSize: file.size,
-        });
-        documentIds.push(doc._id);
-      }
-    }
 
     const pan = (kycData.pan || '').trim().toUpperCase();
     const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
@@ -107,6 +93,26 @@ class KycService {
       if (!gstRegex.test(gstin)) {
         throw new BadRequestError('Invalid GSTIN format. Standard Indian GSTIN must be 15 alphanumeric characters (e.g. 22AAAAA0000A1Z5)', 'INVALID_GSTIN');
       }
+    }
+
+    for (const file of uploadedFiles || []) {
+      const fileKey = await KycDocumentStorageService.store(file);
+      let document;
+      try {
+        document = await KycDocument.create({
+          wholesalerId,
+          documentType: req?.body?.[`${file.fieldname}_type`] || 'OTHER',
+          originalName: file.originalname,
+          fileKey,
+          storageProvider: 'GRIDFS',
+          mimeType: file.mimetype,
+          fileSize: file.size,
+        });
+      } catch (error) {
+        await KycDocumentStorageService.delete(fileKey);
+        throw error;
+      }
+      documentIds.push(document._id);
     }
 
     const businessName = (kycData.businessName || '').trim() || existingProfile?.businessName || '';
@@ -529,6 +535,15 @@ class KycService {
         },
         req,
       });
+    }
+
+    if (doc.storageProvider === 'GRIDFS') {
+      const storedFile = await KycDocumentStorageService.openReadStream(doc.fileKey);
+      return {
+        fileStream: storedFile.stream,
+        mimeType: storedFile.mimeType || doc.mimeType,
+        originalName: doc.originalName,
+      };
     }
 
     const filePath = StorageService.getFilePath('kyc', doc.fileKey);

@@ -42,6 +42,7 @@ const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const { deleteUploadedProductImage } = require('../../services/cloudinary.service');
+const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
 
 const collectProductImageIds = (value, ids = new Set()) => {
   if (Array.isArray(value)) {
@@ -581,6 +582,7 @@ class WholesalerService {
 
     const session = await mongoose.startSession();
     const imageIds = new Set();
+    let kycFileKeys = [];
     let deletionSummary;
 
     try {
@@ -594,6 +596,10 @@ class WholesalerService {
         const userId = profile.userId;
         const user = await User.findOne({ _id: userId, role: ROLES.WHOLESALER }).session(session);
         if (!user) throw new NotFoundError('Wholesaler account not found');
+        kycFileKeys = (await KycDocument.find({
+          wholesalerId: userId,
+          storageProvider: 'GRIDFS',
+        }).select('fileKey').session(session).lean()).map((document) => document.fileKey);
         collectProductImageIds(profile.businessLogoUrl, imageIds);
         collectProductImageIds(profile.promotionalBanners, imageIds);
 
@@ -843,7 +849,16 @@ class WholesalerService {
     }
 
     const imageCleanupFailures = [];
+    const kycDocumentCleanupFailures = [];
     let sharedImageCount = 0;
+    for (const fileKey of kycFileKeys) {
+      try {
+        await KycDocumentStorageService.delete(fileKey);
+      } catch (error) {
+        kycDocumentCleanupFailures.push({ message: error.message });
+      }
+    }
+
     for (const imageId of imageIds) {
       try {
         const escapedImageId = imageId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -875,12 +890,18 @@ class WholesalerService {
       }
     }
 
+    const cleanupIssues = [
+      ...(imageCleanupFailures.length ? [`${imageCleanupFailures.length} image asset(s)`] : []),
+      ...(kycDocumentCleanupFailures.length ? [`${kycDocumentCleanupFailures.length} KYC document(s)`] : []),
+    ];
+
     return {
-      message: imageCleanupFailures.length
-        ? `Wholesaler and associated records were deleted, but ${imageCleanupFailures.length} image asset(s) could not be removed.`
+      message: cleanupIssues.length
+        ? `Wholesaler and associated records were deleted, but ${cleanupIssues.join(' and ')} could not be removed.`
         : 'Wholesaler and associated records were permanently deleted successfully.',
       deleted: deletionSummary,
       imageCleanupFailures,
+      kycDocumentCleanupFailures,
       sharedImagesPreserved: sharedImageCount,
     };
   }

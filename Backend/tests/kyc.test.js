@@ -1,8 +1,11 @@
+const fs = require('fs');
+const path = require('path');
 const request = require('supertest');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
 const { User, AdminProfile, WholesalerProfile, KycApplication, KycDocument, AuditLog } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../src/config/constants');
+const env = require('../src/config/env');
 
 setupTestDB();
 
@@ -100,6 +103,7 @@ describe('KYC Workflow Test Suite', () => {
       'PAN_CARD',
     ]);
     const document = documents[0];
+    expect(document.storageProvider).toBe('GRIDFS');
     const publicResponse = await request(app).get(`/uploads/kyc/${document.fileKey}`);
     expect(publicResponse.status).toBe(404);
 
@@ -108,6 +112,7 @@ describe('KYC Workflow Test Suite', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(adminResponse.status).toBe(200);
     expect(adminResponse.headers['content-type']).toBe('image/png');
+    expect(Buffer.isBuffer(adminResponse.body)).toBe(true);
 
     // Verify Wholesaler Profile updated
     const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
@@ -158,6 +163,7 @@ describe('KYC Workflow Test Suite', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(documentResponse.status).toBe(200);
     expect(documentResponse.headers['content-type']).toBe('application/pdf');
+    expect(Buffer.isBuffer(documentResponse.body)).toBe(true);
   });
 
   test('KYC submission requires PAN and both Aadhaar images', async () => {
@@ -168,6 +174,32 @@ describe('KYC Workflow Test Suite', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('KYC_DOCUMENTS_REQUIRED');
+  });
+
+  test('continues serving legacy KYC documents from local storage', async () => {
+    const fileKey = `legacy-${Date.now()}.png`;
+    const filePath = path.join(env.UPLOAD_PATH, 'kyc', fileKey);
+    const contents = Buffer.from('legacy-document');
+    await fs.promises.writeFile(filePath, contents);
+    await KycDocument.create({
+      wholesalerId: wholesalerUser._id,
+      documentType: 'PAN_CARD',
+      originalName: 'legacy.png',
+      fileKey,
+      mimeType: 'image/png',
+      fileSize: contents.length,
+    });
+
+    try {
+      const response = await request(app)
+        .get(`/api/v1/admin/kyc/documents/${(await KycDocument.findOne({ fileKey }))._id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(contents);
+    } finally {
+      await fs.promises.unlink(filePath);
+    }
   });
 
   test('2. Admin sees pending KYC applications', async () => {

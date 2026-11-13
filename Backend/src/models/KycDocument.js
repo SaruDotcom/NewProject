@@ -30,6 +30,11 @@ const kycDocumentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    storageProvider: {
+      type: String,
+      enum: ['LOCAL', 'GRIDFS'],
+      default: 'LOCAL',
+    },
     mimeType: {
       type: String,
       required: true,

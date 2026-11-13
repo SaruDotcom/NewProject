@@ -1,5 +1,6 @@
 const fs = require('fs');
 const KycService = require('./kyc.service');
+const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -7,8 +8,12 @@ class KycController {
   // Wholesaler submits KYC
   submitKyc = asyncHandler(async (req, res) => {
     const files = req.files || (req.file ? [req.file] : []);
-    const application = await KycService.submitKyc(req.user, req.body, files, req);
-    return ApiResponse.created(res, application, 'KYC application submitted successfully');
+    try {
+      const application = await KycService.submitKyc(req.user, req.body, files, req);
+      return ApiResponse.created(res, application, 'KYC application submitted successfully');
+    } finally {
+      await KycDocumentStorageService.removeTemporaryUploads(files);
+    }
   });
 
   // Wholesaler gets own KYC
@@ -55,8 +60,8 @@ class KycController {
   });
 
   // Secure document download/stream
-  getDocumentFile = asyncHandler(async (req, res) => {
-    const { filePath, mimeType, originalName } = await KycService.getDocumentFile(
+  getDocumentFile = asyncHandler(async (req, res, next) => {
+    const { filePath, fileStream, mimeType, originalName } = await KycService.getDocumentFile(
       req.params.docId,
       req.user,
       req
@@ -64,8 +69,17 @@ class KycController {
 
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${originalName}"`);
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(res);
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const stream = fileStream || fs.createReadStream(filePath);
+    stream.on('error', (error) => {
+      if (res.headersSent) {
+        res.destroy(error);
+      } else {
+        next(error);
+      }
+    });
+    stream.pipe(res);
   });
 }
 

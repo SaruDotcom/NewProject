@@ -153,7 +153,12 @@ export async function apiGetKycDocument(documentId) {
     throw new Error("Authentication required");
   }
   if (!response.ok) {
-    throw new Error("Unable to load KYC document");
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const payload = await response.json();
+      throw new Error(payload?.message || `Unable to load KYC document (HTTP ${response.status})`);
+    }
+    throw new Error(`Unable to load KYC document (HTTP ${response.status})`);
   }
   return response.blob();
 }
