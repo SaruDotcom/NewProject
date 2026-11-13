@@ -125,7 +125,7 @@ export default function OverviewPage() {
 
       {showRegistrationSuccess && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
-          <span className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4" /> Registration successful. Complete KYC and get a subscription approved to activate business features.</span>
+          <span className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-4" /> Registration successful. Complete KYC to activate business features.</span>
           <button type="button" onClick={() => setShowRegistrationSuccess(false)} aria-label="Dismiss registration confirmation" className="rounded p-1 hover:bg-emerald-100"><span aria-hidden="true">×</span></button>
         </div>
       )}

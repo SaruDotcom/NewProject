@@ -1,10 +1,9 @@
-const { User, WholesalerProfile, WholesalerSubscription, SubscriptionPayment } = require('../models');
+const { User, WholesalerProfile, WholesalerSubscription } = require('../models');
 const { ROLES, USER_STATUS, KYC_STATUS } = require('../config/constants');
 const { ForbiddenError } = require('../utils/errors');
 
 const WHOLESALER_UNAVAILABLE_MESSAGE = 'This wholesaler is currently unavailable.';
 const KYC_APPROVAL_REQUIRED_MESSAGE = 'Approved KYC is required to manage wholesaler business features.';
-const SUBSCRIPTION_APPROVAL_REQUIRED_MESSAGE = 'An approved subscription is required to manage wholesaler business features.';
 
 const assertWholesalerAvailable = async (wholesalerId) => {
   const wholesaler = await User.findOne({
@@ -55,23 +54,8 @@ const assertWholesalerBusinessActivated = async (wholesalerId) => {
     await subscription.save();
   }
 
-  const isActive = subscription?.status === 'ACTIVE' && subscription.renewalDate > now;
-  if (!isActive) {
-    const pendingApproval = await SubscriptionPayment.exists({
-      userId: wholesalerId,
-      status: 'PAID',
-      approvalStatus: 'PENDING',
-    });
-    if (pendingApproval) {
-      throw new ForbiddenError('Your subscription payment is awaiting Superadmin approval', 'SUBSCRIPTION_PENDING_APPROVAL');
-    }
-    throw new ForbiddenError(
-      subscription ? 'An active subscription is required. Renew or select a plan to continue.' : SUBSCRIPTION_APPROVAL_REQUIRED_MESSAGE,
-      subscription ? 'SUBSCRIPTION_EXPIRED' : 'SUBSCRIPTION_REQUIRED',
-    );
-  }
-
-  return { profile, subscription };
+  // Subscription status is informational; approved KYC grants business access.
+  return { profile, subscription: subscription || null };
 };
 
 module.exports = {
