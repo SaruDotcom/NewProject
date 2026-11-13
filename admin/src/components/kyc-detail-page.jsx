@@ -170,6 +170,7 @@ export function KycDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [reasonAction, setReasonAction] = useState("");
   const [reason, setReason] = useState("");
+  const [documentsToResubmit, setDocumentsToResubmit] = useState([]);
   const [documentPreviews, setDocumentPreviews] = useState({});
   const [activeDocumentIndex, setActiveDocumentIndex] = useState(-1);
   const [zoom, setZoom] = useState(1);
@@ -284,6 +285,9 @@ export function KycDetailPage() {
       const actionPath = reasonAction === "reject" ? "reject" : "resubmission";
       await apiPatch(`/admin/kyc/${application._id}/${actionPath}`, {
         reason: reason.trim(),
+        ...(reasonAction === "resubmission" && documentsToResubmit.length > 0
+          ? { documentsToResubmit }
+          : {}),
       });
       toast.success(
         reasonAction === "reject"
@@ -292,6 +296,7 @@ export function KycDetailPage() {
       );
       setReasonAction("");
       setReason("");
+      setDocumentsToResubmit([]);
       await loadApplication();
     } catch (actionError) {
       toast.error(actionError.message || "Unable to update this application");
@@ -319,6 +324,9 @@ export function KycDetailPage() {
   const activePreview = activeDocument
     ? documentPreviews[String(activeDocument._id || activeDocument.id || "")]
     : null;
+  const isMissingKycFile = /requested file not found|missing from persistent storage/i.test(
+    activePreview?.error || ""
+  );
 
   const goToDocument = (direction) => {
     if (!documents.length) return;
@@ -327,6 +335,17 @@ export function KycDetailPage() {
     );
     setZoom(1);
     setRotation(0);
+  };
+
+  const requestMissingDocumentResubmission = () => {
+    if (!activeDocument?.documentType) return;
+    const type = activeDocument.documentType;
+    setActiveDocumentIndex(-1);
+    setReasonAction("resubmission");
+    setReason(
+      `The ${documentLabel(type)} file is missing from backend storage. Please upload this document again.`
+    );
+    setDocumentsToResubmit([type]);
   };
 
   if (loading) {
@@ -521,6 +540,7 @@ export function KycDetailPage() {
                   onClick={() => {
                     setReasonAction("resubmission");
                     setReason("");
+                    setDocumentsToResubmit([]);
                   }}
                   disabled={actionLoading}
                   className="gap-1.5 border-amber-500/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 font-semibold shadow-2xs text-xs h-9 px-3"
@@ -533,6 +553,7 @@ export function KycDetailPage() {
                   onClick={() => {
                     setReasonAction("reject");
                     setReason("");
+                    setDocumentsToResubmit([]);
                   }}
                   disabled={actionLoading}
                   className="gap-1.5 font-semibold shadow-xs text-xs h-9 px-3"
@@ -547,6 +568,7 @@ export function KycDetailPage() {
                 onClick={() => {
                   setReasonAction("resubmission");
                   setReason("");
+                  setDocumentsToResubmit([]);
                 }}
                 disabled={actionLoading}
                 className="gap-1.5 text-muted-foreground hover:text-amber-700 hover:border-amber-500/40 text-xs h-9 px-3"
@@ -877,6 +899,7 @@ export function KycDetailPage() {
           if (!open && !actionLoading) {
             setReasonAction("");
             setReason("");
+            setDocumentsToResubmit([]);
           }
         }}
       >
@@ -980,6 +1003,7 @@ export function KycDetailPage() {
                 onClick={() => {
                   setReasonAction("");
                   setReason("");
+                  setDocumentsToResubmit([]);
                 }}
                 disabled={actionLoading}
                 className="text-xs"
@@ -1108,11 +1132,26 @@ export function KycDetailPage() {
           {/* Viewer Preview Area */}
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4 sm:p-8">
             {activePreview?.error ? (
-              <div className="text-center space-y-2">
+              <div className="text-center space-y-3">
                 <AlertCircle className="size-8 text-rose-400 mx-auto" />
                 <p role="alert" className="text-sm text-rose-300">
                   {activePreview.error}
                 </p>
+                {isMissingKycFile && (
+                  <>
+                    <p className="max-w-md text-xs text-white/70">
+                      This older upload is no longer on the backend. Ask the wholesaler to upload it again.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={requestMissingDocumentResubmission}
+                      className="bg-amber-600 text-white hover:bg-amber-700"
+                    >
+                      Request this document again
+                    </Button>
+                  </>
+                )}
               </div>
             ) : !activePreview?.url ? (
               <div className="flex items-center gap-2 text-sm text-white/70">
