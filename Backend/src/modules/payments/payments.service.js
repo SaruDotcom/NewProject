@@ -24,6 +24,12 @@ const {
 const QR_DIRECTORY = path.join(env.UPLOAD_PATH, 'payment-qr');
 const REPORT_DIRECTORY = path.join(env.UPLOAD_PATH, 'payment-reports');
 const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
+const BANK_DETAIL_FIELDS = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branch'];
+const ACCOUNT_HOLDER_PATTERN = /^[\p{L}][\p{L}\s.'-]{1,99}$/u;
+const BANK_NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
+const ACCOUNT_NUMBER_PATTERN = /^\d{9,18}$/;
+const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const BRANCH_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
 const ADDITIONAL_PAYMENT_METHODS = ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'];
 const PAYMENT_OTP_LIMIT_RUPEES = 10000;
 const PAYMENT_OTP_TTL_MS = 5 * 60 * 1000;
@@ -49,10 +55,35 @@ function fileMimeType(file) {
   return detectedType;
 }
 
-function getEnabledPaymentMethods(settings = {}) {
-  const methods = new Set(Array.isArray(settings.additionalPaymentMethods) ? settings.additionalPaymentMethods : []);
-  if (settings.qrPaymentsEnabled || settings.upiIdPaymentsEnabled) methods.add('UPI');
+function getEnabledPaymentMethods(settings = {}, bankDetailsVerified = false) {
+  const methods = new Set(
+    bankDetailsVerified && Array.isArray(settings.additionalPaymentMethods)
+      ? settings.additionalPaymentMethods
+      : []
+  );
+  if (
+    settings.qrPaymentsEnabled ||
+    (settings.upiIdPaymentsEnabled && UPI_ID_PATTERN.test(String(settings.upiId || '')))
+  ) methods.add('UPI');
   return ['UPI', ...ADDITIONAL_PAYMENT_METHODS].filter((method) => methods.has(method));
+}
+
+function hasAnyBankDetails(details = {}) {
+  return BANK_DETAIL_FIELDS.some((field) => String(details[field] || '').trim());
+}
+
+function hasValidBankDetails(details = {}) {
+  return ACCOUNT_HOLDER_PATTERN.test(String(details.accountHolderName || '').trim()) &&
+    BANK_NAME_PATTERN.test(String(details.bankName || '').trim()) &&
+    ACCOUNT_NUMBER_PATTERN.test(String(details.accountNumber || '').trim()) &&
+    IFSC_PATTERN.test(String(details.ifscCode || '').trim().toUpperCase()) &&
+    BRANCH_PATTERN.test(String(details.branch || '').trim());
+}
+
+function getBankDetailsStatus(details, verified) {
+  if (!hasAnyBankDetails(details)) return 'NOT_ADDED';
+  if (!hasValidBankDetails(details)) return 'INCOMPLETE';
+  return verified ? 'VERIFIED' : 'UNVERIFIED';
 }
 
 function parseAdditionalPaymentMethods(value, fallback = []) {
@@ -144,13 +175,12 @@ async function getProfile(wholesalerId) {
 
 async function getBankDetails(profile) {
   const profileDetails = profile.bankDetails || {};
-  const fields = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branch'];
-  const needsKycFallback = fields.some((field) => !String(profileDetails[field] || '').trim());
+  const needsKycFallback = BANK_DETAIL_FIELDS.some((field) => !String(profileDetails[field] || '').trim());
   const kycApplication = needsKycFallback
     ? await KycApplication.findOne({ wholesalerId: profile.userId }).select('bankDetails').lean()
     : null;
   const kycDetails = kycApplication?.bankDetails || {};
-  return Object.fromEntries(fields.map((field) => [
+  return Object.fromEntries(BANK_DETAIL_FIELDS.map((field) => [
     field,
     String(profileDetails[field] || kycDetails[field] || ''),
   ]));
@@ -195,16 +225,22 @@ function getQrDataUrl(profile) {
 }
 
 class PaymentsService {
+  static async hasVerifiedBankDetails(profile) {
+    const bankDetails = await getBankDetails(profile);
+    return profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
+  }
+
   static async getSettings(wholesalerId) {
     const profile = await getProfile(wholesalerId);
     const bankDetails = await getBankDetails(profile);
+    const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const qrDataUrl = getQrDataUrl(profile);
     const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
     return {
       upiId: settings.upiId || '',
       accountName: settings.accountName || '',
-      bankDetails,
+      bankDetails: { ...bankDetails, isVerified: bankDetailsVerified },
       additionalPaymentMethods: settings.additionalPaymentMethods || [],
       paymentOtpLimit: Number(settings.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES),
       hasQrImage: Boolean(qrDataUrl),
@@ -235,11 +271,12 @@ class PaymentsService {
       accountNumber: String(payload.accountNumber || originalBankDetails.accountNumber).trim(),
       ifscCode: String(payload.ifscCode || originalBankDetails.ifscCode).trim().toUpperCase(),
       branch: String(payload.branch || originalBankDetails.branch).trim(),
-      isVerified: Boolean(profile.bankDetails?.isVerified),
     };
+    const bankDetailsChanged = BANK_DETAIL_FIELDS.some((field) => bankDetails[field] !== originalBankDetails[field]);
+    bankDetails.isVerified = !bankDetailsChanged && profile.bankDetails?.isVerified === true;
 
     if (upiId && !UPI_ID_PATTERN.test(upiId)) {
-      throw new BadRequestError('Enter a valid UPI ID, such as business@upi.', 'INVALID_UPI_ID');
+      throw new BadRequestError('Enter a valid UPI ID.', 'INVALID_UPI_ID');
     }
     if (!Number.isInteger(qrSessionMinutes) || qrSessionMinutes < 1 || qrSessionMinutes > 60) {
       throw new BadRequestError('QR display duration must be between 1 and 60 minutes.', 'INVALID_QR_SESSION_DURATION');
@@ -250,14 +287,17 @@ class PaymentsService {
     if (upiIdPaymentsEnabled && !upiId) {
       throw new BadRequestError('Enter a UPI ID before enabling UPI ID payments.', 'UPI_ID_REQUIRED');
     }
-    if (additionalPaymentMethods.length && (
-      bankDetails.accountHolderName.length < 2 ||
-      bankDetails.bankName.length < 2 ||
-      !/^\d{6,34}$/.test(bankDetails.accountNumber) ||
-      !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankDetails.ifscCode) ||
-      bankDetails.branch.length < 2
-    )) {
-      throw new BadRequestError('Complete valid bank details before enabling Net Banking, Cash Deposit, or Cheque.', 'BANK_DETAILS_REQUIRED');
+    if (hasAnyBankDetails(bankDetails) && !hasValidBankDetails(bankDetails)) {
+      throw new BadRequestError(
+        'Enter a valid account holder name, bank name, 9–18 digit account number, IFSC code, and branch name.',
+        'INVALID_BANK_DETAILS'
+      );
+    }
+    if (additionalPaymentMethods.length && (!hasValidBankDetails(bankDetails) || !bankDetails.isVerified)) {
+      throw new BadRequestError(
+        'Complete and verify bank details before enabling Net Banking, Cash Deposit, or Cheque.',
+        'BANK_DETAILS_VERIFICATION_REQUIRED'
+      );
     }
     const existingQrPath = current.qrImagePath
       ? path.join(QR_DIRECTORY, path.basename(current.qrImagePath))
@@ -364,7 +404,9 @@ class PaymentsService {
   static async getRetailerPaymentOptions(retailerId, requestedWholesalerId = null) {
     const { relationship, profile } = await this.resolveWholesalerProfile(retailerId, requestedWholesalerId);
     const bankDetails = await getBankDetails(profile);
+    const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
+    const upiIdIsValid = UPI_ID_PATTERN.test(String(settings.upiId || ''));
     const qrDataUrl = settings.qrPaymentsEnabled ? getQrDataUrl(profile) : '';
     const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
     return {
@@ -375,11 +417,12 @@ class PaymentsService {
       hasQrImage: Boolean(qrDataUrl),
       qrDataUrl,
       qrImageUrl,
-      upiIdPaymentsEnabled: Boolean(settings.upiIdPaymentsEnabled && settings.upiId),
-      upiId: settings.upiId || '',
+      upiIdPaymentsEnabled: Boolean(settings.upiIdPaymentsEnabled && upiIdIsValid),
+      upiId: upiIdIsValid ? settings.upiId : '',
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
-      paymentMethods: getEnabledPaymentMethods(settings),
-      bankDetails,
+      paymentMethods: getEnabledPaymentMethods(settings, bankDetailsVerified),
+      bankDetailsStatus: getBankDetailsStatus(bankDetails, bankDetailsVerified),
+      bankDetails: bankDetailsVerified ? bankDetails : null,
     };
   }
 
@@ -455,7 +498,9 @@ class PaymentsService {
 
     const profile = await getProfile(wholesalerId);
     const settings = profile.paymentSettings || {};
-    if (!getEnabledPaymentMethods(settings).includes(paymentMethod)) {
+    const bankDetails = await getBankDetails(profile);
+    const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
+    if (!getEnabledPaymentMethods(settings, bankDetailsVerified).includes(paymentMethod)) {
       throw new BadRequestError('This wholesaler has not enabled the selected payment method.', 'PAYMENT_METHOD_DISABLED');
     }
 

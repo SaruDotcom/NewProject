@@ -84,7 +84,7 @@ export default function KycPage() {
         city: application.registeredAddress?.city || profile.city || '',
         state: application.registeredAddress?.state || profile.state || '',
         pincode: application.registeredAddress?.pincode || profile.pincode || '',
-        accountHolderName: application.bankDetails?.accountHolderName || profile.businessName || '',
+        accountHolderName: application.bankDetails?.accountHolderName || '',
         accountNumber: application.bankDetails?.accountNumber || profile.accountNumber || '',
         ifscCode: application.bankDetails?.ifscCode || profile.ifscCode || '',
         bankName: application.bankDetails?.bankName || profile.bankName || '',
@@ -212,7 +212,25 @@ export default function KycPage() {
     const cleanIfsc = form.ifscCode.trim().toUpperCase();
     const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
     if (cleanIfsc && !ifscRegex.test(cleanIfsc)) {
-      setError('Please enter a valid 11-character Indian IFSC code (e.g. SBIN0001234 or PUNB0123400) or leave it empty.');
+      setError('Please enter a valid 11-character Indian IFSC code or leave it empty.');
+      return;
+    }
+
+    const cleanAccountHolderName = form.accountHolderName.trim();
+    if (cleanAccountHolderName && !/^[\p{L}][\p{L}\s.'-]{1,99}$/u.test(cleanAccountHolderName)) {
+      setError('Please enter a valid account holder name.');
+      return;
+    }
+
+    const cleanBankName = form.bankName.trim();
+    if (cleanBankName && !/^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u.test(cleanBankName)) {
+      setError('Please enter a valid bank name.');
+      return;
+    }
+
+    const cleanBranch = form.branch.trim();
+    if (cleanBranch && !/^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u.test(cleanBranch)) {
+      setError('Please enter a valid bank branch name.');
       return;
     }
 
@@ -240,11 +258,11 @@ export default function KycPage() {
         city: form.city.trim(),
         state: form.state.trim(),
         pincode: cleanPincode,
-        accountHolderName: form.accountHolderName.trim(),
+        accountHolderName: cleanAccountHolderName,
         accountNumber: cleanAccountNumber,
         ifscCode: cleanIfsc,
-        bankName: form.bankName.trim(),
-        branch: form.branch.trim(),
+        bankName: cleanBankName,
+        branch: cleanBranch,
       };
       Object.entries(formFields).forEach(([key, value]) => submission.append(key, value));
       documentSlots.forEach((slot) => {
@@ -409,7 +427,7 @@ export default function KycPage() {
                   <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md">Optional</span>
                 </div>
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
-                  <label className={fieldClass}>Account holder name (optional)<input className={inputClass} value={form.accountHolderName} onChange={changeField('accountHolderName')} placeholder="Optional account holder name" /></label>
+                  <label className={fieldClass}>Account holder name (optional)<input className={inputClass} value={form.accountHolderName} maxLength={100} onChange={changeField('accountHolderName')} placeholder="Enter account holder name" /></label>
                   <label className={fieldClass}>
                     Account number (optional)
                     <input
@@ -417,7 +435,7 @@ export default function KycPage() {
                       className={`${inputClass} font-mono`}
                       value={form.accountNumber}
                       onChange={(e) => setForm((curr) => ({ ...curr, accountNumber: e.target.value.replace(/\D/g, '').slice(0, 18) }))}
-                      placeholder="9 to 18 digits (optional)"
+                      placeholder="Enter 9 to 18 digits"
                       autoComplete="off"
                     />
                   </label>
@@ -428,12 +446,12 @@ export default function KycPage() {
                       className={`${inputClass} uppercase tracking-wider font-mono`}
                       value={form.ifscCode}
                       onChange={(e) => setForm((curr) => ({ ...curr, ifscCode: e.target.value.toUpperCase().slice(0, 11) }))}
-                      placeholder="e.g. SBIN0001234 (optional)"
+                      placeholder="Enter 11-character IFSC code"
                       autoComplete="off"
                     />
                   </label>
-                  <label className={fieldClass}>Bank name (optional)<input className={inputClass} value={form.bankName} onChange={changeField('bankName')} placeholder="Optional bank name" /></label>
-                  <label className={fieldClass}>Branch (optional)<input className={inputClass} value={form.branch} onChange={changeField('branch')} placeholder="Optional branch name" /></label>
+                  <label className={fieldClass}>Bank name (optional)<input className={inputClass} value={form.bankName} maxLength={100} onChange={changeField('bankName')} placeholder="Enter bank name" /></label>
+                  <label className={fieldClass}>Branch (optional)<input className={inputClass} value={form.branch} maxLength={100} onChange={changeField('branch')} placeholder="Enter branch name" /></label>
                 </div>
               </section>
             </fieldset>

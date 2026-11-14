@@ -34,6 +34,7 @@ const NotificationService = require('../../services/notification.service');
 const WalletService = require('../../services/wallet.service');
 const env = require('../../config/env');
 const { assertWholesalerAvailable } = require('../../services/wholesaler-access.service');
+const PaymentsService = require('../payments/payments.service');
 
 const normalizeOrderAddress = (address = {}) => ({
   street: address.addressLine1 || address.street || '',
@@ -264,8 +265,12 @@ class OrderService {
 
     // Check Wholesaler minimum order value
     const wholesalerProfile = await WholesalerProfile.findOne({ userId: wholesalerId });
-    if (['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'].includes(paymentMethod) &&
-      !wholesalerProfile?.paymentSettings?.additionalPaymentMethods?.includes(paymentMethod)) {
+    const usesBankPaymentMethod = ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'].includes(paymentMethod);
+    const bankDetailsVerified = usesBankPaymentMethod && wholesalerProfile
+      ? await PaymentsService.hasVerifiedBankDetails(wholesalerProfile)
+      : false;
+    if (usesBankPaymentMethod &&
+      (!wholesalerProfile?.paymentSettings?.additionalPaymentMethods?.includes(paymentMethod) || !bankDetailsVerified)) {
       throw new BadRequestError('This wholesaler has not enabled the selected payment method.', 'PAYMENT_METHOD_DISABLED');
     }
     if (wholesalerProfile?.minOrderValue && grandTotal < wholesalerProfile.minOrderValue) {

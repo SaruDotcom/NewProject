@@ -69,6 +69,12 @@ function getApiErrorCode(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+function getBankDetailsStatusMessage(status?: string): string {
+  if (status === "UNVERIFIED") return "Bank details are awaiting verification.";
+  if (status === "INCOMPLETE") return "Bank details are incomplete.";
+  return "Bank Details Not Added";
+}
+
 export function DashboardPage() {
   const { currentUser, wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
   const connectedProducts = products.filter((p) => p.wholesalerId === linkedWholesalerId);
@@ -319,11 +325,15 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
               {availableMethods.map((method) => <option key={method} value={method}>{method.replace(/_/g, " ")}</option>)}
             </select>
           </label>
-          {paymentMethod !== "UPI" && options?.bankDetails && (
+          {paymentMethod !== "UPI" && (
             <div className="rounded-lg border bg-background p-3 text-xs sm:col-span-2">
-              <b>Wholesaler bank details</b>
-              <p>{options.bankDetails.accountHolderName} · {options.bankDetails.bankName}</p>
-              <p>A/C {options.bankDetails.accountNumber} · IFSC {options.bankDetails.ifscCode} · {options.bankDetails.branch}</p>
+              {options?.bankDetails ? (
+                <>
+                  <b>Wholesaler bank details</b>
+                  <p>{options.bankDetails.accountHolderName} · {options.bankDetails.bankName}</p>
+                  <p>A/C {options.bankDetails.accountNumber} · IFSC {options.bankDetails.ifscCode} · {options.bankDetails.branch}</p>
+                </>
+              ) : <p>{getBankDetailsStatusMessage(options?.bankDetailsStatus)}</p>}
             </div>
           )}
           <label className="text-xs font-bold">Installment amount (₹)
@@ -2309,9 +2319,13 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
                     <b className="text-sm text-ink">{method.replace(/_/g, " ")}</b>
                     <p className="mt-1 text-xs text-muted-foreground">Pay using the wholesaler&apos;s bank account and submit the reference for verification.</p>
                     <div className="mt-3 rounded-lg border bg-background p-3 text-xs">
-                      <b>{paymentOptions?.bankDetails?.accountHolderName}</b>
-                      <p>{paymentOptions?.bankDetails?.bankName} · {paymentOptions?.bankDetails?.branch}</p>
-                      <p>A/C {paymentOptions?.bankDetails?.accountNumber} · IFSC {paymentOptions?.bankDetails?.ifscCode}</p>
+                      {paymentOptions?.bankDetails ? (
+                        <>
+                          <b>{paymentOptions.bankDetails.accountHolderName}</b>
+                          <p>{paymentOptions.bankDetails.bankName} · {paymentOptions.bankDetails.branch}</p>
+                          <p>A/C {paymentOptions.bankDetails.accountNumber} · IFSC {paymentOptions.bankDetails.ifscCode}</p>
+                        </>
+                      ) : <p>{getBankDetailsStatusMessage(paymentOptions?.bankDetailsStatus)}</p>}
                     </div>
                   </div>
                 </div>
@@ -2437,9 +2451,13 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
                 )}
                 {reportedOrder.paymentMethod === "UPI" ? renderQrSection() : (
                   <div className="rounded-xl border bg-background p-3 text-xs">
-                    <b>{paymentOptions?.bankDetails?.accountHolderName}</b>
-                    <p>{paymentOptions?.bankDetails?.bankName} · {paymentOptions?.bankDetails?.branch}</p>
-                    <p>A/C {paymentOptions?.bankDetails?.accountNumber} · IFSC {paymentOptions?.bankDetails?.ifscCode}</p>
+                    {paymentOptions?.bankDetails ? (
+                      <>
+                        <b>{paymentOptions.bankDetails.accountHolderName}</b>
+                        <p>{paymentOptions.bankDetails.bankName} · {paymentOptions.bankDetails.branch}</p>
+                        <p>A/C {paymentOptions.bankDetails.accountNumber} · IFSC {paymentOptions.bankDetails.ifscCode}</p>
+                      </>
+                    ) : <p>{getBankDetailsStatusMessage(paymentOptions?.bankDetailsStatus)}</p>}
                   </div>
                 )}
                 {!reportSubmitted ? (

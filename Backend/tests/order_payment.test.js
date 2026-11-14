@@ -224,6 +224,19 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
   });
 
   test('enabled bank methods show bank details and accept cheque reports', async () => {
+    await WholesalerProfile.updateOne(
+      { userId: wholesalerUser._id },
+      {
+        $set: {
+          'bankDetails.accountHolderName': 'Omni Supplies',
+          'bankDetails.bankName': 'Example Bank',
+          'bankDetails.accountNumber': '123456789012',
+          'bankDetails.ifscCode': 'EXAM0001234',
+          'bankDetails.branch': 'Bengaluru Main',
+          'bankDetails.isVerified': true,
+        },
+      }
+    );
     const settings = await request(app)
       .patch('/api/v1/wholesaler/payment-settings')
       .set('Authorization', `Bearer ${wholesalerToken}`)
@@ -239,6 +252,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
     expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['UPI', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE']));
+    expect(options.body.data.bankDetailsStatus).toBe('VERIFIED');
     expect(options.body.data.bankDetails).toMatchObject({
       accountHolderName: 'Omni Supplies',
       bankName: 'Example Bank',
@@ -305,6 +319,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
           'bankDetails.accountNumber': '',
           'bankDetails.ifscCode': originalBankDetails.ifscCode,
           'bankDetails.branch': originalBankDetails.branch,
+          'bankDetails.isVerified': true,
         },
       }
     );
@@ -313,11 +328,12 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .get('/api/v1/wholesaler/payment-settings')
       .set('Authorization', `Bearer ${wholesalerToken}`);
     expect(settings.status).toBe(200);
-    expect(settings.body.data.bankDetails).toEqual(originalBankDetails);
+    expect(settings.body.data.bankDetails).toMatchObject({ ...originalBankDetails, isVerified: true });
 
     const retailerOptions = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
+    expect(retailerOptions.body.data.bankDetailsStatus).toBe('VERIFIED');
     expect(retailerOptions.body.data.bankDetails).toEqual(originalBankDetails);
 
     const saved = await request(app)
@@ -325,9 +341,127 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .set('Authorization', `Bearer ${wholesalerToken}`)
       .field('accountNumber', '');
     expect(saved.status).toBe(200);
-    expect(saved.body.data.bankDetails).toEqual(originalBankDetails);
+    expect(saved.body.data.bankDetails).toMatchObject({ ...originalBankDetails, isVerified: true });
     const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
     expect(profile.bankDetails.accountNumber).toBe(originalBankDetails.accountNumber);
+  });
+
+  test('unverified or invalid bank details are not shared with retailers', async () => {
+    const emptyOptions = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(emptyOptions.body.data.bankDetailsStatus).toBe('NOT_ADDED');
+    expect(emptyOptions.body.data.bankDetails).toBeNull();
+
+    await request(app)
+      .patch('/api/v1/wholesaler/profile')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ bankDetails: { accountNumber: '123456789012' } });
+    const profileAfterGenericUpdate = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
+    expect(profileAfterGenericUpdate.bankDetails.accountNumber).toBe('');
+
+    const invalid = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', 'Omni Supplies')
+      .field('bankName', 'Example Bank')
+      .field('accountNumber', '12345ABC')
+      .field('ifscCode', 'INVALID')
+      .field('branch', 'Bengaluru Main');
+    expect(invalid.status).toBe(400);
+
+    const saved = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', 'Omni Supplies')
+      .field('bankName', 'Example Bank')
+      .field('accountNumber', '123456789012')
+      .field('ifscCode', 'EXAM0001234')
+      .field('branch', 'Bengaluru Main');
+    expect(saved.status).toBe(200);
+
+    const unverifiedOptions = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(unverifiedOptions.body.data.bankDetailsStatus).toBe('UNVERIFIED');
+    expect(unverifiedOptions.body.data.bankDetails).toBeNull();
+    expect(unverifiedOptions.body.data.paymentMethods).not.toContain('CHEQUE');
+    await WholesalerProfile.updateOne(
+      { userId: wholesalerUser._id },
+      { $set: { 'paymentSettings.additionalPaymentMethods': ['CHEQUE'] } }
+    );
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'CHEQUE',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+      });
+    expect(checkout.status).toBe(400);
+  });
+
+  test('changing a verified bank account removes retailer visibility until reverified', async () => {
+    await WholesalerProfile.updateOne(
+      { userId: wholesalerUser._id },
+      {
+        $set: {
+          'bankDetails.accountHolderName': 'Omni Supplies',
+          'bankDetails.bankName': 'Example Bank',
+          'bankDetails.accountNumber': '123456789012',
+          'bankDetails.ifscCode': 'EXAM0001234',
+          'bankDetails.branch': 'Bengaluru Main',
+          'bankDetails.isVerified': true,
+        },
+      }
+    );
+
+    const saved = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', 'Omni Supplies')
+      .field('bankName', 'Example Bank')
+      .field('accountNumber', '123456789013')
+      .field('ifscCode', 'EXAM0001234')
+      .field('branch', 'Bengaluru Main');
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.bankDetails.isVerified).toBe(false);
+
+    const options = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(options.body.data.bankDetailsStatus).toBe('UNVERIFIED');
+    expect(options.body.data.bankDetails).toBeNull();
+  });
+
+  test('payment settings reject malformed bank fields and UPI IDs', async () => {
+    const validDetails = {
+      accountHolderName: 'Omni Supplies',
+      bankName: 'Example Bank',
+      accountNumber: '123456789012',
+      ifscCode: 'EXAM0001234',
+      branch: 'Bengaluru Main',
+    };
+    const invalidFields = [
+      ['accountHolderName', 'A!'],
+      ['bankName', '?'],
+      ['accountNumber', '12345ABC'],
+      ['ifscCode', 'INVALID'],
+      ['branch', '!'],
+      ['upiId', 'not-an-upi-id'],
+    ];
+
+    for (const [field, value] of invalidFields) {
+      const requestBuilder = request(app)
+        .patch('/api/v1/wholesaler/payment-settings')
+        .set('Authorization', `Bearer ${wholesalerToken}`);
+      for (const [detail, detailValue] of Object.entries(validDetails)) {
+        requestBuilder.field(detail, detail === field ? value : detailValue);
+      }
+      if (field === 'upiId') requestBuilder.field('upiId', value);
+      const response = await requestBuilder;
+      expect(response.status).toBe(400);
+    }
   });
 
   test('high-value report approval requires an owner-only MSG91 code', async () => {

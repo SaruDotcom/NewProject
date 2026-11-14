@@ -73,7 +73,7 @@ class WholesalerPortalService {
 
   static async updateProfile(userId, payload, actor, req) {
     const allowedUser = ['name', 'phone'];
-    const allowedProfile = ['businessName', 'businessTagline', 'description', 'businessType', 'businessCategory', 'address', 'bankDetails', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
+    const allowedProfile = ['businessName', 'businessTagline', 'description', 'businessType', 'businessCategory', 'address', 'minOrderValue', 'activeStoreTheme', 'promotionalBanners'];
     const userUpdate = Object.fromEntries(allowedUser.filter((key) => payload[key] !== undefined).map((key) => [key, payload[key]]));
     
     if (userUpdate.phone) {

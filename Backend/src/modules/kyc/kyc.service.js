@@ -94,7 +94,22 @@ class KycService {
     const ifscCode = (kycData.ifscCode || kycData.bankDetails?.ifscCode || '').trim().toUpperCase();
     const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
     if (ifscCode && !ifscRegex.test(ifscCode)) {
-      throw new BadRequestError('Invalid IFSC code format. Must be a valid 11-character Indian IFSC code (e.g. SBIN0001234 or PUNB0123400).', 'INVALID_IFSC');
+      throw new BadRequestError('Invalid IFSC code format. Enter a valid 11-character Indian IFSC code.', 'INVALID_IFSC');
+    }
+
+    const accountHolderName = (kycData.accountHolderName || kycData.bankDetails?.accountHolderName || '').trim();
+    if (accountHolderName && !/^[\p{L}][\p{L}\s.'-]{1,99}$/u.test(accountHolderName)) {
+      throw new BadRequestError('Enter a valid account holder name.', 'INVALID_ACCOUNT_HOLDER_NAME');
+    }
+
+    const bankName = (kycData.bankName || kycData.bankDetails?.bankName || '').trim();
+    if (bankName && !/^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u.test(bankName)) {
+      throw new BadRequestError('Enter a valid bank name.', 'INVALID_BANK_NAME');
+    }
+
+    const branch = (kycData.branch || kycData.bankDetails?.branch || '').trim();
+    if (branch && !/^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u.test(branch)) {
+      throw new BadRequestError('Enter a valid bank branch name.', 'INVALID_BANK_BRANCH');
     }
 
     const gstSelected = String(kycData.hasGst) === 'true' || kycData.hasGst === true;
@@ -145,11 +160,11 @@ class KycService {
         pincode: kycData.pincode || '',
       },
       bankDetails: {
-        accountHolderName: (kycData.accountHolderName || kycData.bankDetails?.accountHolderName || '').trim(),
+        accountHolderName,
         accountNumber,
         ifscCode,
-        bankName: (kycData.bankName || kycData.bankDetails?.bankName || '').trim(),
-        branch: (kycData.branch || kycData.bankDetails?.branch || '').trim(),
+        bankName,
+        branch,
       },
       documents: documentIds,
       status: KYC_STATUS.SUBMITTED,

@@ -16,6 +16,7 @@ type PaymentSettings = {
     accountNumber: string;
     ifscCode: string;
     branch: string;
+    isVerified: boolean;
   };
   additionalPaymentMethods: string[];
   paymentOtpLimit: number;
@@ -25,6 +26,13 @@ type PaymentSettings = {
   qrSessionMinutes: number;
   qrDataUrl: string;
 };
+
+const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
+const ACCOUNT_HOLDER_PATTERN = /^[\p{L}][\p{L}\s.'-]{1,99}$/u;
+const BANK_NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
+const ACCOUNT_NUMBER_PATTERN = /^\d{9,18}$/;
+const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const BRANCH_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
 
 export default function PaymentSettingsPage() {
   const { profile } = useWholesaler();
@@ -72,12 +80,12 @@ export default function PaymentSettingsPage() {
     if (!data) return;
     setUpiId(data.upiId || '');
     setAccountName(data.accountName || '');
-    setBankDetails(data.bankDetails || {
-      accountHolderName: '',
-      bankName: '',
-      accountNumber: '',
-      ifscCode: '',
-      branch: '',
+    setBankDetails({
+      accountHolderName: data.bankDetails?.accountHolderName || '',
+      bankName: data.bankDetails?.bankName || '',
+      accountNumber: data.bankDetails?.accountNumber || '',
+      ifscCode: data.bankDetails?.ifscCode || '',
+      branch: data.bankDetails?.branch || '',
     });
     setAdditionalPaymentMethods(data.additionalPaymentMethods || []);
     setPaymentOtpLimit(Number(data.paymentOtpLimit ?? 10000));
@@ -88,18 +96,48 @@ export default function PaymentSettingsPage() {
 
   const saveSettings = async (event: React.FormEvent) => {
     event.preventDefault();
+    const cleanUpiId = upiId.trim();
+    if (cleanUpiId && !UPI_ID_PATTERN.test(cleanUpiId)) {
+      setMessage('Enter a valid UPI ID.');
+      return;
+    }
+    if (upiIdPaymentsEnabled && !cleanUpiId) {
+      setMessage('Enter a UPI ID before enabling UPI ID payments.');
+      return;
+    }
+    const cleanBankDetails = {
+      accountHolderName: bankDetails.accountHolderName.trim(),
+      bankName: bankDetails.bankName.trim(),
+      accountNumber: bankDetails.accountNumber.trim(),
+      ifscCode: bankDetails.ifscCode.trim().toUpperCase(),
+      branch: bankDetails.branch.trim(),
+    };
+    const hasAnyBankDetails = Object.values(cleanBankDetails).some(Boolean);
+    const validBankDetails = ACCOUNT_HOLDER_PATTERN.test(cleanBankDetails.accountHolderName) &&
+      BANK_NAME_PATTERN.test(cleanBankDetails.bankName) &&
+      ACCOUNT_NUMBER_PATTERN.test(cleanBankDetails.accountNumber) &&
+      IFSC_PATTERN.test(cleanBankDetails.ifscCode) &&
+      BRANCH_PATTERN.test(cleanBankDetails.branch);
+    if (hasAnyBankDetails && !validBankDetails) {
+      setMessage('Enter a valid account holder name, bank name, 9-18 digit account number, IFSC code, and branch name.');
+      return;
+    }
+    if (additionalPaymentMethods.length && (!validBankDetails || !settingsQuery.data?.bankDetails?.isVerified)) {
+      setMessage('Complete and verify bank details before enabling bank payment methods.');
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
       const payload = new FormData();
-      payload.append('upiId', upiId);
+      payload.append('upiId', cleanUpiId);
       payload.append('accountName', accountName);
       payload.append('qrPaymentsEnabled', String(qrPaymentsEnabled));
       payload.append('upiIdPaymentsEnabled', String(upiIdPaymentsEnabled));
       payload.append('qrSessionMinutes', String(qrSessionMinutes));
       payload.append('additionalPaymentMethods', JSON.stringify(additionalPaymentMethods));
       payload.append('paymentOtpLimit', String(paymentOtpLimit));
-      Object.entries(bankDetails).forEach(([key, value]) => payload.append(key, value));
+      Object.entries(cleanBankDetails).forEach(([key, value]) => payload.append(key, value));
       if (qrImage) payload.append('qrImage', qrImage);
       await api.updatePaymentSettings(payload);
       await queryClient.invalidateQueries({ queryKey });
@@ -181,7 +219,7 @@ export default function PaymentSettingsPage() {
         <section className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
           <label className="block text-sm font-semibold text-tradeflow-navy">
             UPI ID
-            <input value={upiId} onChange={(event) => setUpiId(event.target.value)} placeholder="business@upi" className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
+            <input value={upiId} onChange={(event) => setUpiId(event.target.value)} placeholder="Enter your UPI ID" className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal" />
           </label>
           <label className="block text-sm font-semibold text-tradeflow-navy">
             Account Name
@@ -215,6 +253,14 @@ export default function PaymentSettingsPage() {
           </fieldset>
           <fieldset className="space-y-3 rounded-xl border border-tradeflow-gray-200 p-4">
             <legend className="px-1 text-sm font-bold text-tradeflow-navy">Bank details shown to connected retailers</legend>
+            {!Object.values(bankDetails).some(Boolean) && (
+              <p className="text-sm text-gray-500">Bank Details Not Added</p>
+            )}
+            <p className="text-xs text-gray-500">
+              {settings?.bankDetails.isVerified
+                ? 'Verified bank details are shared with connected retailers.'
+                : 'Unverified bank details are not shared with retailers. No bank verification provider is configured.'}
+            </p>
             {[
               ['accountHolderName', 'Account Holder Name'],
               ['bankName', 'Bank Name'],
@@ -228,6 +274,8 @@ export default function PaymentSettingsPage() {
                   value={bankDetails[key as keyof typeof bankDetails]}
                   onChange={(event) => setBankDetails((current) => ({ ...current, [key]: event.target.value }))}
                   autoComplete="off"
+                  maxLength={key === 'accountNumber' ? 18 : key === 'ifscCode' ? 11 : 100}
+                  inputMode={key === 'accountNumber' ? 'numeric' : 'text'}
                   className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal"
                 />
               </label>

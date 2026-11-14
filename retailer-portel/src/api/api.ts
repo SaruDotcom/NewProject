@@ -715,13 +715,14 @@ export const api = {
       upiId: string;
       qrSessionMinutes: number;
       paymentMethods: string[];
+      bankDetailsStatus: 'NOT_ADDED' | 'INCOMPLETE' | 'UNVERIFIED' | 'VERIFIED';
       bankDetails: {
         accountHolderName: string;
         bankName: string;
         accountNumber: string;
         ifscCode: string;
         branch: string;
-      };
+      } | null;
     }>>(`/retailer/payment-options${wholesalerId ? `?wholesalerId=${encodeURIComponent(wholesalerId)}` : ''}`, { method: 'GET' }),
   createRetailerQrSession: (wholesalerId?: string) =>
     request<ApiEnvelope<{

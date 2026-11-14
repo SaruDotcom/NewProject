@@ -426,8 +426,6 @@ class WholesalerService {
         ...(updateData.pincode ? { pincode: updateData.pincode } : {}),
       };
     }
-    if (updateData.bankDetails) profile.bankDetails = { ...profile.bankDetails, ...updateData.bankDetails };
-
     await profile.save();
 
     if (profile.userId) {
