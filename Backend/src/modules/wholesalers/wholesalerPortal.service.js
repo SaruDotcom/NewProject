@@ -4,8 +4,8 @@ const {
   Inventory, InventoryTransaction, Product, Order, Earning, Payout,
   Payment,
 } = require('../../models');
-const { INVENTORY_TRANSACTION_TYPE, RELATIONSHIP_STATUS, ORDER_STATUS } = require('../../config/constants');
-const { BadRequestError, NotFoundError, ConflictError } = require('../../utils/errors');
+const { INVENTORY_TRANSACTION_TYPE, RELATIONSHIP_STATUS, ORDER_STATUS, ROLES } = require('../../config/constants');
+const { BadRequestError, NotFoundError, ConflictError, ForbiddenError } = require('../../utils/errors');
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const WholesalerReportsService = require('../../services/wholesalerReports.service');
@@ -13,6 +13,7 @@ const SupportService = require('../support/support.service');
 const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
 const { normalizeBusinessType, getPresetsForType } = require('../../config/businessTypeBanners');
 const { uploadBusinessLogo, deleteUploadedProductImage } = require('../../services/cloudinary.service');
+const NotificationService = require('../../services/notification.service');
 const logger = require('../../config/logger');
 const { assertWholesalerBusinessActivated } = require('../../services/wholesaler-access.service');
 
@@ -188,6 +189,221 @@ class WholesalerPortalService {
       retailers: retailers.map((row) => this.formatRetailerRelationship(row)),
       meta: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
     };
+  }
+
+  static async listRetailerConnectionRequests(userId, actor) {
+    await this.assertConnectionRequestOwner(userId, actor);
+    const relationships = await WholesalerRetailerRelationship.find({
+      wholesalerId: userId,
+      referralCode: { $exists: true, $ne: '' },
+      status: {
+        $in: [RELATIONSHIP_STATUS.PENDING, RELATIONSHIP_STATUS.ACTIVE, RELATIONSHIP_STATUS.REJECTED],
+      },
+    })
+      .populate('retailerId', 'name email phone')
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+    const retailerIds = relationships.map((row) => row.retailerId?._id).filter(Boolean);
+    const profiles = await RetailerProfile.find({ userId: { $in: retailerIds } })
+      .select('userId businessName ownerName')
+      .lean();
+    const profileByRetailerId = new Map(profiles.map((profile) => [String(profile.userId), profile]));
+
+    return relationships.map((row) => {
+      const retailer = row.retailerId || {};
+      const profile = profileByRetailerId.get(String(retailer._id)) || {};
+      return {
+        id: String(row._id),
+        retailerId: String(retailer._id || ''),
+        name: retailer.name || profile.ownerName || '',
+        businessName: profile.businessName || retailer.name || '',
+        phone: retailer.phone || '',
+        email: retailer.email || '',
+        requestDate: row.createdAt,
+        status: row.status === RELATIONSHIP_STATUS.ACTIVE ? 'APPROVED' : row.status,
+      };
+    });
+  }
+
+  static async reviewRetailerConnectionRequest(userId, relationshipId, action, actor, req) {
+    await this.assertConnectionRequestOwner(userId, actor);
+    if (!mongoose.isValidObjectId(relationshipId)) {
+      throw new BadRequestError('Invalid retailer connection request id');
+    }
+    if (!['approve', 'reject'].includes(action)) {
+      throw new BadRequestError('Action must be approve or reject');
+    }
+
+    const session = mongoose.connection?.client?.topology?.description?.type?.includes('ReplicaSet')
+      ? await mongoose.startSession()
+      : null;
+    if (session) session.startTransaction();
+
+    let relationship;
+    let retailerProfile;
+    let previousActive;
+    let profileAssociation;
+    let activated = false;
+    const now = new Date();
+    try {
+      let relationshipQuery = WholesalerRetailerRelationship.findOne({
+        _id: relationshipId,
+        wholesalerId: userId,
+        referralCode: { $exists: true, $ne: '' },
+      });
+      if (session) relationshipQuery = relationshipQuery.session(session);
+      relationship = await relationshipQuery;
+      if (!relationship) throw new NotFoundError('Retailer connection request not found');
+      if (relationship.status !== RELATIONSHIP_STATUS.PENDING) {
+        throw new ConflictError('Only pending retailer connection requests can be reviewed', 'REQUEST_NOT_PENDING');
+      }
+
+      if (action === 'reject') {
+        relationship.status = RELATIONSHIP_STATUS.REJECTED;
+        relationship.rejectedAt = now;
+        relationship.reviewedBy = actor._id;
+        await relationship.save(session ? { session } : undefined);
+      } else {
+        let profileQuery = RetailerProfile.findOne({ userId: relationship.retailerId });
+        if (session) profileQuery = profileQuery.session(session);
+        retailerProfile = await profileQuery;
+        if (!retailerProfile) throw new NotFoundError('Retailer profile not found');
+
+        const associationKeys = [
+          'assignedWholesalerId',
+          'wholesalerId',
+          'createdByWholesalerId',
+          'referralCodeUsed',
+          'wholesalerInfo',
+          'activeRelationshipId',
+        ];
+        profileAssociation = Object.fromEntries(
+          associationKeys.map((key) => [key, retailerProfile[key]]),
+        );
+
+        let activeQuery = WholesalerRetailerRelationship.findOne({
+          retailerId: relationship.retailerId,
+          status: RELATIONSHIP_STATUS.ACTIVE,
+        });
+        if (session) activeQuery = activeQuery.session(session);
+        previousActive = await activeQuery;
+        if (previousActive) {
+          const ended = await WholesalerRetailerRelationship.updateOne(
+            { _id: previousActive._id, status: RELATIONSHIP_STATUS.ACTIVE },
+            { $set: { status: RELATIONSHIP_STATUS.TERMINATED, terminatedAt: now } },
+            session ? { session } : {},
+          );
+          if (ended.modifiedCount !== 1) {
+            throw new ConflictError('The retailer connection changed. Please retry.', 'RELATIONSHIP_CHANGED');
+          }
+        }
+
+        relationship.status = RELATIONSHIP_STATUS.ACTIVE;
+        relationship.joinedAt = now;
+        relationship.approvedAt = now;
+        relationship.rejectedAt = null;
+        relationship.reviewedBy = actor._id;
+        await relationship.save(session ? { session } : undefined);
+        activated = true;
+
+        const ownerProfile = await WholesalerProfile.findOne({ userId, isDeleted: false })
+          .select('businessName')
+          .lean();
+        const owner = await User.findById(userId).select('name email phone').lean();
+        Object.assign(retailerProfile, {
+          assignedWholesalerId: userId,
+          wholesalerId: userId,
+          createdByWholesalerId: userId,
+          referralCodeUsed: relationship.referralCode,
+          wholesalerInfo: {
+            businessName: ownerProfile?.businessName || owner?.name || '',
+            ownerName: owner?.name || '',
+            email: owner?.email || '',
+            phone: owner?.phone || '',
+          },
+          activeRelationshipId: relationship._id,
+        });
+        await retailerProfile.save(session ? { session } : undefined);
+      }
+
+      if (session) await session.commitTransaction();
+    } catch (error) {
+      if (session?.inTransaction()) await session.abortTransaction();
+      if (!session) {
+        if (activated && relationship) {
+          await WholesalerRetailerRelationship.updateOne(
+            { _id: relationship._id, status: RELATIONSHIP_STATUS.ACTIVE },
+            { $set: { status: RELATIONSHIP_STATUS.PENDING, joinedAt: null, approvedAt: null, reviewedBy: null } },
+          );
+        }
+        if (previousActive) {
+          await WholesalerRetailerRelationship.updateOne(
+            { _id: previousActive._id, status: RELATIONSHIP_STATUS.TERMINATED },
+            { $set: { status: RELATIONSHIP_STATUS.ACTIVE }, $unset: { terminatedAt: 1 } },
+          );
+        }
+        if (retailerProfile && profileAssociation) {
+          const setFields = Object.fromEntries(
+            Object.entries(profileAssociation).filter(([, value]) => value !== undefined),
+          );
+          const unsetFields = Object.fromEntries(
+            Object.entries(profileAssociation)
+              .filter(([, value]) => value === undefined)
+              .map(([key]) => [key, 1]),
+          );
+          await RetailerProfile.updateOne(
+            { _id: retailerProfile._id },
+            {
+              ...(Object.keys(setFields).length ? { $set: setFields } : {}),
+              ...(Object.keys(unsetFields).length ? { $unset: unsetFields } : {}),
+            },
+          );
+        }
+      }
+      if (error.code === 11000) {
+        throw new ConflictError('The retailer connection changed. Please retry.', 'RELATIONSHIP_CHANGED');
+      }
+      throw error;
+    } finally {
+      if (session) await session.endSession();
+    }
+
+    const retailerId = relationship.retailerId;
+    await AuditService.log({
+      actorId: actor._id,
+      actorRole: actor.role,
+      action: 'UPDATE',
+      entityType: 'WholesalerRetailerRelationship',
+      entityId: relationship._id,
+      metadata: { reviewStatus: action === 'approve' ? 'APPROVED' : 'REJECTED' },
+      req,
+    });
+    await NotificationService.notify({
+      recipientId: retailerId,
+      title: action === 'approve' ? 'Wholesaler Connection Approved' : 'Wholesaler Connection Rejected',
+      message: action === 'approve'
+        ? 'Your request to connect with this wholesaler was approved. You can now place orders.'
+        : 'Your request to connect with this wholesaler was rejected. Contact the wholesaler for more information.',
+      data: { wholesalerId: userId, relationshipId: relationship._id, status: relationship.status },
+    });
+
+    return {
+      id: String(relationship._id),
+      retailerId: String(retailerId),
+      status: action === 'approve' ? 'APPROVED' : 'REJECTED',
+      reviewedAt: now,
+    };
+  }
+
+  static async assertConnectionRequestOwner(userId, actor) {
+    if (!actor || actor.role !== ROLES.WHOLESALER || String(actor._id) !== String(userId)) {
+      throw new ForbiddenError('Only the wholesaler owner can review retailer connection requests', 'OWNER_REQUIRED');
+    }
+    const profile = await WholesalerProfile.findOne({ userId, isDeleted: false }).select('_id').lean();
+    if (!profile) {
+      throw new ForbiddenError('Only the wholesaler owner can review retailer connection requests', 'OWNER_REQUIRED');
+    }
   }
 
   static async getRetailerDetails(userId, relationshipId) {

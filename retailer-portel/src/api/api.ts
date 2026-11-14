@@ -524,6 +524,14 @@ export const api = {
   getDashboard: () => request<ApiEnvelope<any>>('/retailer/dashboard', { method: 'GET' }),
 
   getConnectedWholesaler: () => request<ApiEnvelope<ApiWholesaler | null>>('/retailer/wholesaler', { method: 'GET' }),
+  getWholesalerConnectionStatus: (wholesalerId: string) =>
+    request<ApiEnvelope<{
+      relationshipId?: string;
+      wholesalerId: string;
+      status: 'NOT_REQUESTED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED' | 'TERMINATED';
+      requestedAt?: string;
+      reviewedAt?: string | null;
+    }>>(`/retailer/connection-status?wholesalerId=${encodeURIComponent(wholesalerId)}`, { method: 'GET' }),
   switchWholesalerByReferral: (referralCode: string) =>
     request<ApiEnvelope<any>>('/retailer/referral/switch', {
       method: 'POST',

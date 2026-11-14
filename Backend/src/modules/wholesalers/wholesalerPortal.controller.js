@@ -12,6 +12,20 @@ class WholesalerPortalController {
     const { retailers, meta } = await WholesalerPortalService.listRetailers(req.user._id, req.query);
     return ApiResponse.paginated(res, retailers, meta, 'Connected retailers retrieved');
   });
+  getRetailerConnectionRequests = asyncHandler(async (req, res) => {
+    const requests = await WholesalerPortalService.listRetailerConnectionRequests(req.user._id, req.user);
+    return ApiResponse.success(res, requests, 'Retailer connection requests retrieved');
+  });
+  reviewRetailerConnectionRequest = asyncHandler(async (req, res) => {
+    const result = await WholesalerPortalService.reviewRetailerConnectionRequest(
+      req.user._id,
+      req.params.id,
+      req.body.action,
+      req.user,
+      req,
+    );
+    return ApiResponse.success(res, result, 'Retailer connection request reviewed');
+  });
   getRetailerDetails = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.getRetailerDetails(req.user._id, req.params.id), 'Retailer details retrieved'));
   updateRetailerStatus = asyncHandler(async (req, res) => ApiResponse.success(res, await WholesalerPortalService.updateRetailerStatus(req.user._id, req.params.id, req.body.status, req.user, req), 'Retailer relationship updated'));
   listInventory = asyncHandler(async (req, res) => { const result = await WholesalerPortalService.listInventory(req.user._id, req.query); return ApiResponse.paginated(res, result.inventory, result.meta, 'Inventory retrieved'); });

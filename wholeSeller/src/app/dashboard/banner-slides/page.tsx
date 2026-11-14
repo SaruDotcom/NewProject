@@ -336,7 +336,7 @@ export default function BannerSlidesPage() {
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Retailer Promotional Banners & Offers</h1>
+            <h1 className="text-2xl font-extrabold text-tradeflow-navy"> Banners </h1>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-tradeflow-green-50 text-tradeflow-green border border-tradeflow-green/30">
               Synced to Retailer Homepage
             </span>

@@ -103,16 +103,6 @@
   border-bottom: 5px solid #D9A441;
 }
 
-.storefront-theme[data-store-theme="FESTIVE"] .storefront-featured-products article.group {
-  border-radius: 1.25rem;
-  box-shadow: 0 8px 24px rgb(92 31 45 / 10%);
-}
-
-.storefront-theme[data-store-theme="MINIMAL"] .storefront-featured-products article.group {
-  border-radius: 0.75rem;
-  box-shadow: none;
-}
-
 .storefront-theme-banner[data-store-theme="ROYAL"] .storefront-banner-overlay {
   background-image: linear-gradient(to right, #29234F, #44378B 55%, #6554C0);
 }

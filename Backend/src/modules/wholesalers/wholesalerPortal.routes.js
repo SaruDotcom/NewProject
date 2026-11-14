@@ -33,6 +33,8 @@ router.patch('/credit-policy', wholesalerController.updateCreditPolicy);
 router.patch('/retailers/:retailerId/credit-limit', wholesalerController.setRetailerCreditLimit);
 router.patch('/retailers/:retailerId/credit-policy', wholesalerController.updateRetailerCreditPolicy);
 router.get('/credit-overview', wholesalerController.getCreditOverview);
+router.get('/retailers/connection-requests', authorize(ROLES.WHOLESALER), Controller.getRetailerConnectionRequests);
+router.patch('/retailers/connection-requests/:id', authorize(ROLES.WHOLESALER), Controller.reviewRetailerConnectionRequest);
 router.get('/retailers', Controller.getConnectedRetailers);
 router.get('/retailers/:id', Controller.getRetailerDetails);
 router.patch('/retailers/:id/status', Controller.updateRetailerStatus);

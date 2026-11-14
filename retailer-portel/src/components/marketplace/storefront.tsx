@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@/lib/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tune, GridView, List, Star, Verified, LocationOn, LocalShipping, VerifiedUser, ChevronRight, ChevronLeft, Remove, Add, Search, HowToReg, Inventory2, Schedule, Store, Inventory, CheckCircle, HeadsetMic, CurrencyRupee, Business, Handshake, ShoppingCart, Favorite, FlashOn } from "@mui/icons-material";
-import { ProductCard, ProductGrid, ProductVisual, SectionHeading, StatusBadge, WholesalerCard, WholesalerLogo, money } from "./primitives";
+import { ProductGrid, SectionHeading, StatusBadge, WholesalerCard, WholesalerLogo, money } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -64,7 +64,7 @@ function Filters({
         {categoryOptions.map((category) => {
           const isChecked = category.id === "All" ? isAll : selectedCategories.includes(category.id);
           return (
-            <label key={category.id} className="flex min-h-7 cursor-pointer items-center gap-2 text-sm select-none hover:text-primary">
+            <label key={category.id} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-lg px-2 text-sm select-none hover:bg-muted/60 hover:text-primary">
               <Checkbox
                 checked={isChecked}
                 onCheckedChange={() => onToggleCategory(category.id)}
@@ -83,7 +83,7 @@ function Filters({
             { key: "lowStock" as const, label: "Low stock (≤ 20)" },
             { key: "verifiedSellers" as const, label: "Verified sellers" },
           ].map((item) => (
-            <label key={item.key} className="flex cursor-pointer items-center gap-2 text-sm select-none hover:text-primary">
+            <label key={item.key} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-sm select-none hover:bg-muted/60 hover:text-primary">
               <Checkbox
                 checked={availability[item.key]}
                 onCheckedChange={() => onToggleAvailability(item.key)}
@@ -102,12 +102,14 @@ function Filters({
             placeholder="Min ₹"
             value={minPrice}
             onChange={(e) => onMinPriceChange(e.target.value)}
+            className="rounded-lg border-border bg-white"
           />
           <Input
             type="number"
             placeholder="Max ₹"
             value={maxPrice}
             onChange={(e) => onMaxPriceChange(e.target.value)}
+            className="rounded-lg border-border bg-white"
           />
         </div>
       </div>
@@ -447,7 +449,7 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
         <div className="flex gap-2">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="outline" className="lg:hidden">
+              <Button variant="outline" className="h-10 rounded-xl lg:hidden">
                 <Tune /> Filters
               </Button>
             </SheetTrigger>
@@ -465,6 +467,7 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
             aria-label="Grid view"
             variant={!list ? "default" : "outline"}
             size="icon"
+            className="size-10 rounded-xl"
             onClick={() => setList(false)}
           >
             <GridView />
@@ -473,6 +476,7 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
             aria-label="List view"
             variant={list ? "default" : "outline"}
             size="icon"
+            className="size-10 rounded-xl"
             onClick={() => setList(true)}
           >
             <List />
@@ -480,17 +484,17 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
         </div>
       </div>
 
-      <div className="mt-6 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center">
+      <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-border/70 bg-white p-3 shadow-sm sm:flex-row sm:items-center">
         <Input
           placeholder="Search products..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="sm:max-w-md"
+          className="h-11 rounded-xl border-border bg-white sm:max-w-md"
         />
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value)}
-          className="h-9 border bg-background px-3 text-sm rounded-lg sm:ml-auto"
+          className="h-11 rounded-xl border border-border bg-white px-3 text-sm sm:ml-auto"
           aria-label="Sort products"
         >
           <option value="popular">Most popular</option>
@@ -545,8 +549,8 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
         </div>
       )}
 
-      <div className="mt-7 grid gap-6 lg:gap-8 lg:grid-cols-[240px_minmax(0,1fr)] items-start">
-        <aside className="hidden w-[240px] shrink-0 border-r pr-6 lg:block">
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-7">
+        <aside className="hidden w-full shrink-0 rounded-2xl border border-border/70 bg-white p-4 shadow-sm lg:block">
           <Filters {...filterProps} />
         </aside>
 
@@ -555,7 +559,9 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
             <ProductGrid
               products={shown.slice(0, visibleCount)}
               list={list}
-              className="grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-5"
+              className={list
+                ? "grid-cols-1 gap-3"
+                : "grid-cols-2 md:grid-cols-3 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 xl:gap-5"}
             />
           ) : (
             <div className="border border-dashed bg-card p-10 text-center rounded-2xl">
@@ -1784,17 +1790,11 @@ export function WholesalerCatalogPage({ wholesalerId }: { wholesalerId: string }
               </div>
 
               {/* Product Grid with Stagger Fade Animation */}
-              <div className="storefront-featured-products grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4 lg:gap-8">
-                {catProds.map((p, index) => (
-                  <div
-                    key={p.id}
-                    className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
-                    style={{ animationDelay: `${index * 60}ms` }}
-                  >
-                    <ProductCard product={p} premium />
-                  </div>
-                ))}
-              </div>
+              <ProductGrid
+                products={catProds}
+                premium
+                className="storefront-featured-products grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5"
+              />
             </section>
           ))
         ) : (

@@ -42,6 +42,7 @@ router.patch('/profile/business', validate(updateBusinessProfileSchema), retaile
 
 // Connected Wholesaler & Storefront
 router.get('/wholesaler', retailerController.getConnectedWholesaler);
+router.get('/connection-status', retailerController.getWholesalerConnectionStatus);
 router.get('/credit-info', retailerController.getCreditInfo);
 router.post('/credit-request', retailerController.requestCredit);
 router.get('/store', retailerController.getStore);

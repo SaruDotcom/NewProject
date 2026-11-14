@@ -112,6 +112,14 @@ class RetailerController {
     return ApiResponse.success(res, wholesaler, 'Connected wholesaler details retrieved');
   });
 
+  getWholesalerConnectionStatus = asyncHandler(async (req, res) => {
+    const status = await RetailerService.getWholesalerConnectionStatus(
+      req.user._id,
+      req.query.wholesalerId,
+    );
+    return ApiResponse.success(res, status, 'Wholesaler connection status retrieved');
+  });
+
   getStore = asyncHandler(async (req, res) => {
     const store = await RetailerService.getStore(req.user._id);
     return ApiResponse.success(res, store, 'Storefront retrieved successfully');

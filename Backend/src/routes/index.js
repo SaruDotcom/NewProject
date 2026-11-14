@@ -31,6 +31,7 @@ const wholesalerInviteRoutes = require('../modules/wholesaler-invites/wholesaler
 const subscriptionRoutes = require('../modules/subscriptions/subscriptions.routes');
 const paymentRoutes = require('../modules/payments/payments.routes');
 const khataBookRoutes = require('../modules/khata-book/khata-book.routes');
+const purchaseRoutes = require('../modules/purchases/purchases.routes');
 const reviewController = require('../modules/reviews/reviews.controller');
 
 // Health Check
@@ -86,6 +87,7 @@ router.use('/wholesaler/kyc', kycRoutes);
 router.use('/wholesaler/invite-links', invitationRoutes);
 router.use('/wholesaler/referral', referralRoutes.wholesalerRoutes);
 router.use('/wholesaler/khata-book', khataBookRoutes);
+router.use('/wholesaler/purchases', purchaseRoutes);
 router.get(
   '/wholesaler/retailers',
   authenticate,

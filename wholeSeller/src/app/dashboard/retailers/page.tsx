@@ -9,6 +9,16 @@ import api from '@/lib/api';
 import BusinessActivationNotice from '@/components/activation/BusinessActivationNotice';
 
 type RetailerReferral = { code: string; signupsEnabled: boolean; joinedCount: number };
+type RetailerConnectionRequest = {
+  id: string;
+  retailerId: string;
+  name: string;
+  businessName: string;
+  phone: string;
+  email: string;
+  requestDate: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+};
 type RetailerDetails = Retailer & {
   retailerId?: string;
   phone?: string;
@@ -138,6 +148,10 @@ export default function RetailersPage() {
   const [isReferralLoading, setIsReferralLoading] = useState(true);
   const [isReferralUpdating, setIsReferralUpdating] = useState(false);
   const [referralError, setReferralError] = useState('');
+  const [connectionRequests, setConnectionRequests] = useState<RetailerConnectionRequest[]>([]);
+  const [connectionRequestsLoading, setConnectionRequestsLoading] = useState(true);
+  const [connectionRequestError, setConnectionRequestError] = useState('');
+  const [reviewingRequestId, setReviewingRequestId] = useState('');
   const retailerPortalUrl = import.meta.env.VITE_RETAILER_URL?.trim() || '';
   let retailerAppOrigin = '';
   let retailerUrlError = '';
@@ -203,6 +217,36 @@ export default function RetailersPage() {
   const handleToggleSignups = () => {
     if (!referral) return;
     void updateReferral(() => api.setRetailerReferralEnabled(!referral.signupsEnabled));
+  };
+
+  const loadConnectionRequests = React.useCallback(async () => {
+    setConnectionRequestsLoading(true);
+    setConnectionRequestError('');
+    try {
+      const response = await api.getRetailerConnectionRequests();
+      setConnectionRequests(response.data || []);
+    } catch (error: unknown) {
+      setConnectionRequestError(error instanceof Error ? error.message : 'Unable to load retailer connection requests.');
+    } finally {
+      setConnectionRequestsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadConnectionRequests();
+  }, [loadConnectionRequests]);
+
+  const reviewConnectionRequest = async (id: string, action: 'approve' | 'reject') => {
+    setReviewingRequestId(id);
+    setConnectionRequestError('');
+    try {
+      await api.reviewRetailerConnectionRequest(id, action);
+      await loadConnectionRequests();
+    } catch (error: unknown) {
+      setConnectionRequestError(error instanceof Error ? error.message : 'Unable to review this connection request.');
+    } finally {
+      setReviewingRequestId('');
+    }
   };
 
   const filteredConnected = retailers.filter((r) => `${r.businessName} ${r.contactPerson} ${r.city}`.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -362,6 +406,81 @@ export default function RetailersPage() {
           </>
         ) : null}
       </div>
+
+      <section className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-tradeflow-gray-200 pb-3">
+          <div>
+            <h2 className="text-base font-extrabold text-tradeflow-navy">Retailer Connection Requests</h2>
+            <p className="mt-1 text-xs text-gray-500">Approve requests to connect retailers to your business.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadConnectionRequests()}
+            disabled={connectionRequestsLoading}
+            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold text-gray-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${connectionRequestsLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+        {connectionRequestError && <p role="alert" className="text-xs font-semibold text-red-600">{connectionRequestError}</p>}
+        {connectionRequestsLoading ? (
+          <p className="py-4 text-center text-xs text-gray-500">Loading connection requests...</p>
+        ) : connectionRequests.length === 0 ? (
+          <p className="py-6 text-center text-xs text-gray-500">No retailer connection requests yet.</p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {connectionRequests.map((request) => (
+              <article key={request.id} className="rounded-xl border border-tradeflow-gray-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-tradeflow-navy">{request.businessName || request.name}</h3>
+                    {request.businessName && request.name && request.businessName !== request.name && (
+                      <p className="mt-0.5 text-xs text-gray-600">{request.name}</p>
+                    )}
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${
+                    request.status === 'PENDING'
+                      ? 'bg-amber-50 text-amber-700'
+                      : request.status === 'APPROVED'
+                        ? 'bg-green-50 text-green-700'
+                        : 'bg-red-50 text-red-700'
+                  }`}>
+                    {request.status === 'APPROVED' ? 'Approved' : request.status === 'REJECTED' ? 'Rejected' : 'Pending'}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-1 text-xs text-gray-600">
+                  <p>{request.phone || 'Mobile not provided'}</p>
+                  <p className="break-all">{request.email || 'Email not provided'}</p>
+                  <p>Requested {request.requestDate ? new Date(request.requestDate).toLocaleString('en-IN') : 'date unavailable'}</p>
+                </div>
+                {request.status === 'PENDING' && (
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void reviewConnectionRequest(request.id, 'approve')}
+                      disabled={Boolean(reviewingRequestId)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      {reviewingRequestId === request.id ? 'Saving...' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reviewConnectionRequest(request.id, 'reject')}
+                      disabled={Boolean(reviewingRequestId)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-4 shadow-xs md:flex-row">
         <div className="flex items-center gap-2 text-xs font-extrabold text-tradeflow-navy">

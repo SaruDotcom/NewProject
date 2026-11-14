@@ -108,6 +108,108 @@ export interface KhataSummary {
   totalPending: number;
 }
 
+export type PurchaseUnit = 'KG' | 'BOX' | 'CARTON' | 'PIECES' | 'METER';
+export type PurchasePaymentMode = 'CASH' | 'UPI' | 'CHEQUE' | 'BANK_TRANSFER';
+
+export interface PurchaseSupplier {
+  _id: string;
+  name: string;
+  mobile: string;
+  address: string;
+  gstin: string;
+  openingBalance: number;
+  currentBalance: number;
+  isActive: boolean;
+  totalPurchases?: number;
+  totalPayments?: number;
+  purchaseReturns?: number;
+  nextDueDate?: string | null;
+}
+
+export interface PurchaseBillItem {
+  _id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: PurchaseUnit;
+  purchaseRate: number;
+  taxableAmount: number;
+  gstPercent: number;
+  gstAmount: number;
+  itemTotal: number;
+  stockAppliedQuantity: number;
+  returnedQuantity: number;
+  stockReturnedQuantity: number;
+}
+
+export interface PurchaseBill {
+  _id: string;
+  idempotencyKey: string;
+  supplierId: PurchaseSupplier | string;
+  billType: 'FULL' | 'QUICK';
+  invoiceNumber: string;
+  billDate: string;
+  dueDate: string | null;
+  items: PurchaseBillItem[];
+  subtotal: number;
+  gstTotal: number;
+  transportCharges: number;
+  loadingCharges: number;
+  discountType: 'AMOUNT' | 'PERCENT';
+  discountValue: number;
+  discountAmount: number;
+  totalAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  returnAmount: number;
+  refundedAmount: number;
+  paymentStatus: 'PAID' | 'PARTIAL' | 'UDHAAR';
+  paymentMode: PurchasePaymentMode | '';
+  stockUpdateEnabled: boolean;
+  status: 'ACTIVE' | 'CANCELLED';
+  revision: number;
+  notes: string;
+  createdAt: string;
+}
+
+export interface PurchaseLedgerEntry {
+  _id: string;
+  type: string;
+  amount: number;
+  balanceAfter: number;
+  effectiveDate: string;
+  notes: string;
+  actorId?: { name?: string; email?: string } | string;
+}
+
+export interface PurchaseBillInput {
+  billType: 'FULL' | 'QUICK';
+  supplierId: string;
+  idempotencyKey: string;
+  invoiceNumber: string;
+  billDate: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    unit: PurchaseUnit;
+    purchaseRate: number;
+    gstPercent: number;
+  }>;
+  transportCharges: number;
+  loadingCharges: number;
+  discountType: 'AMOUNT' | 'PERCENT';
+  discountValue: number;
+  paymentAmount: number;
+  paymentMode: PurchasePaymentMode | '';
+  paymentDate?: string;
+  dueDate?: string | null;
+  notes: string;
+  stockUpdateEnabled: boolean;
+  sellingPriceUpdates?: Array<{ productId: string; retailerPrice: number }>;
+  expectedRevision?: number;
+  confirmPaymentRefund?: boolean;
+}
+
 export interface KhataEntryInput {
   date: string;
   productName: string;
@@ -332,6 +434,7 @@ function getWholesalerResources(path: string): string[] {
   if (path.startsWith('/wholesaler/banners') || path.startsWith('/wholesaler/store-theme')) return ['banners', 'products'];
   if (path.startsWith('/wholesaler/profile')) return ['profile', 'kyc'];
   if (path.startsWith('/wholesaler/khata-book')) return ['khata-book'];
+  if (path.startsWith('/wholesaler/purchases')) return ['purchases', 'inventory', 'products'];
   if (path.startsWith('/wholesaler/referral')) return ['referral'];
   if (path.startsWith('/wholesaler/kyc')) return ['kyc', 'profile'];
   if (path.startsWith('/wholesaler/coupons')) return ['coupons'];
@@ -765,6 +868,27 @@ export const api = {
   getConnectedRetailers: () =>
     request<{ success: boolean; data: any[] }>('/wholesaler/retailers', { method: 'GET' }),
 
+  getRetailerConnectionRequests: () =>
+    request<{
+      success: boolean;
+      data: Array<{
+        id: string;
+        retailerId: string;
+        name: string;
+        businessName: string;
+        phone: string;
+        email: string;
+        requestDate: string;
+        status: 'PENDING' | 'APPROVED' | 'REJECTED';
+      }>;
+    }>('/wholesaler/retailers/connection-requests', { method: 'GET' }),
+
+  reviewRetailerConnectionRequest: (id: string, action: 'approve' | 'reject') =>
+    request<{ success: boolean; data: { id: string; status: 'APPROVED' | 'REJECTED' } }>(
+      `/wholesaler/retailers/connection-requests/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify({ action }) },
+    ),
+
   getRetailerDetails: (relationshipId: string) =>
     request<{ success: boolean; data: any }>(`/wholesaler/retailers/${relationshipId}`, { method: 'GET' }),
 
@@ -1188,6 +1312,158 @@ export const api = {
   },
 
   // Wholesaler Coupons & Offers
+  getPurchaseSummary: () =>
+    request<{ success: boolean; data: { totalPurchases: number; totalPaid: number; totalOutstanding: number; overduePayments: number; totalReturns: number } }>(
+      '/wholesaler/purchases/summary',
+      { method: 'GET' }
+    ),
+
+  getPurchaseSuppliers: (search = '') => {
+    const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+    return request<{ success: boolean; data: PurchaseSupplier[] }>(
+      `/wholesaler/purchases/suppliers${query}`,
+      { method: 'GET' }
+    );
+  },
+
+  createPurchaseSupplier: (data: {
+    name: string;
+    mobile: string;
+    address: string;
+    gstin: string;
+    openingBalance: number;
+  }) =>
+    request<{ success: boolean; data: PurchaseSupplier }>('/wholesaler/purchases/suppliers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updatePurchaseSupplier: (id: string, data: Partial<Pick<PurchaseSupplier, 'name' | 'mobile' | 'address' | 'gstin'>>) =>
+    request<{ success: boolean; data: PurchaseSupplier }>(`/wholesaler/purchases/suppliers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deactivatePurchaseSupplier: (id: string) =>
+    request<{ success: boolean }>(`/wholesaler/purchases/suppliers/${id}`, { method: 'DELETE' }),
+
+  getPurchaseSupplier: (id: string) =>
+    request<{ success: boolean; data: PurchaseSupplier }>(`/wholesaler/purchases/suppliers/${id}`, { method: 'GET' }),
+
+  getPurchaseSupplierLedger: (id: string, filters: { from?: string; to?: string; page?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') query.set(key, String(value));
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return request<{ success: boolean; data: { supplier: PurchaseSupplier; items: PurchaseLedgerEntry[]; meta: { page: number; limit: number; total: number; totalPages: number } } }>(
+      `/wholesaler/purchases/suppliers/${id}/ledger${suffix}`,
+      { method: 'GET' }
+    );
+  },
+
+  getPurchaseSupplierPayments: (id: string) =>
+    request<{ success: boolean; data: any[] }>(`/wholesaler/purchases/suppliers/${id}/payments`, { method: 'GET' }),
+
+  createPurchaseSupplierPayment: (id: string, data: {
+    amount: number;
+    paymentDate: string;
+    paymentMode: PurchasePaymentMode;
+    notes: string;
+    idempotencyKey: string;
+  }) =>
+    request<{ success: boolean; data: any }>(`/wholesaler/purchases/suppliers/${id}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  reversePurchaseSupplierPayment: (id: string, reason: string) =>
+    request<{ success: boolean; data: any }>(`/wholesaler/purchases/payments/${id}/reverse`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  getPurchaseBills: (filters: {
+    from?: string;
+    to?: string;
+    supplierId?: string;
+    status?: 'ACTIVE' | 'CANCELLED' | 'ALL';
+    billType?: 'FULL' | 'QUICK';
+    search?: string;
+    page?: number;
+    limit?: number;
+  } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') query.set(key, String(value));
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return request<{ success: boolean; data: { items: PurchaseBill[]; meta: { page: number; limit: number; total: number; totalPages: number } } }>(
+      `/wholesaler/purchases/bills${suffix}`,
+      { method: 'GET' }
+    );
+  },
+
+  checkDuplicatePurchaseBill: (supplierId: string, invoiceNumber: string, excludeId?: string) => {
+    const query = new URLSearchParams({ supplierId, invoiceNumber });
+    if (excludeId) query.set('excludeId', excludeId);
+    return request<{ success: boolean; data: { duplicate: boolean; bill: Pick<PurchaseBill, '_id' | 'invoiceNumber' | 'billDate' | 'totalAmount' | 'status'> | null } }>(
+      `/wholesaler/purchases/bills/duplicate?${query.toString()}`,
+      { method: 'GET' }
+    );
+  },
+
+  getPurchaseBill: (id: string) =>
+    request<{ success: boolean; data: PurchaseBill }>(`/wholesaler/purchases/bills/${id}`, { method: 'GET' }),
+
+  createPurchaseBill: (data: PurchaseBillInput) =>
+    request<{ success: boolean; data: PurchaseBill }>('/wholesaler/purchases/bills', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updatePurchaseBill: (id: string, data: PurchaseBillInput) =>
+    request<{ success: boolean; data: PurchaseBill }>(`/wholesaler/purchases/bills/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  cancelPurchaseBill: (id: string, reason: string) =>
+    request<{ success: boolean; data: PurchaseBill }>(`/wholesaler/purchases/bills/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  getPurchaseReturns: (filters: { supplierId?: string; status?: 'ACTIVE' | 'CANCELLED' | 'ALL'; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') query.set(key, String(value));
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return request<{ success: boolean; data: any[] }>(`/wholesaler/purchases/returns${suffix}`, { method: 'GET' });
+  },
+
+  createPurchaseReturn: (data: {
+    purchaseBillId: string;
+    returnDate: string;
+    items: Array<{ billItemId: string; quantity: number }>;
+    reason: 'DAMAGED' | 'WRONG_PRODUCT' | 'EXCESS_QUANTITY' | 'OTHER';
+    refundStatus: 'REFUNDED' | 'ADJUSTED' | 'PENDING';
+    refundMode?: PurchasePaymentMode | '';
+    notes: string;
+    idempotencyKey: string;
+  }) =>
+    request<{ success: boolean; data: any }>('/wholesaler/purchases/returns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  cancelPurchaseReturn: (id: string, reason: string) =>
+    request<{ success: boolean; data: any }>(`/wholesaler/purchases/returns/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
   getWholesalerCoupons: () =>
     request<{ success: boolean; data: any[] }>('/wholesaler/coupons', { method: 'GET' }),
 

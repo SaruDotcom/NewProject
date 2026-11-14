@@ -435,23 +435,18 @@ class AuthService {
         wholesalerId: targetWholesalerId,
         retailerId: user._id,
         referralCode: referral.profile.retailerReferralCode,
-        status: RELATIONSHIP_STATUS.ACTIVE,
+        status: RELATIONSHIP_STATUS.PENDING,
+        joinedAt: null,
+        approvedAt: null,
       });
 
-      retailerProfile.assignedWholesalerId = targetWholesalerId;
-      retailerProfile.wholesalerId = targetWholesalerId;
-      retailerProfile.createdByWholesalerId = targetWholesalerId;
-      retailerProfile.activeRelationshipId = relationship._id;
       retailerProfile.referralCodeUsed = referral.profile.retailerReferralCode;
-      retailerProfile.wholesalerInfo = {
-        businessName: referral.profile.businessName || '',
-      };
       await retailerProfile.save();
 
       await NotificationService.notify({
         recipientId: targetWholesalerId,
-        title: 'New Retailer Joined via Referral',
-        message: `${retailerProfile.businessName} has registered using your referral link/code.`,
+        title: 'New Retailer Connection Request',
+        message: `${retailerProfile.businessName} requested to connect. Contact: ${user.phone || 'not provided'}; email: ${user.email || 'not provided'}.`,
         data: { retailerId: user._id, relationshipId: relationship._id },
       });
     }

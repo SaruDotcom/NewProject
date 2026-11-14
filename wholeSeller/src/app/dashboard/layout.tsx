@@ -9,6 +9,10 @@ import { getWholesalerId, wholesalerQueryKeys } from '@/lib/query-client';
 import { SuperAdminHelpModal } from '@/components/layout/SuperAdminHelpModal';
 import { PhoneCall, Headphones, HelpCircle } from 'lucide-react';
 
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
+
 function DashboardGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -26,9 +30,10 @@ function DashboardGuard({ children }: { children: React.ReactNode }) {
     try {
       const result = await queryClient.fetchQuery({
         queryKey: wholesalerQueryKeys.resource(getWholesalerId(), 'profile'),
-        queryFn: () => api.getMe(signal),
+        queryFn: () => api.getMe(),
         staleTime: 0,
       });
+      if (signal.aborted || getAuthToken() !== token) return;
       if (!result?.success || !result?.data) {
         clearAuthToken();
         navigate('/login', { replace: true });
@@ -36,7 +41,11 @@ function DashboardGuard({ children }: { children: React.ReactNode }) {
       }
       setStatus('allowed');
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted || getAuthToken() !== token) return;
+      if (isAbortError(error)) {
+        setStatus('error');
+        return;
+      }
       console.error('Unable to validate the saved login.', error);
       if (error instanceof ApiError) {
         clearAuthToken();

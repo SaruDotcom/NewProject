@@ -39,6 +39,15 @@ const wholesalerRetailerRelationshipSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     terminatedAt: {
       type: Date,
     },

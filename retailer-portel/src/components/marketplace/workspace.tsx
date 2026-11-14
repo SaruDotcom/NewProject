@@ -1668,28 +1668,47 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     if (cartProduct?.wholesalerId) return String(cartProduct.wholesalerId);
     return "";
   }, [linkedWholesaler, products, cart]);
+  const connectionStatusQuery = useQuery({
+    queryKey: retailerQueryKeys.resource(
+      currentUser?.id || "unknown",
+      `connection-status-${currentWholesalerId || "default"}`,
+    ),
+    queryFn: async () => (await api.getWholesalerConnectionStatus(currentWholesalerId)).data,
+    enabled: Boolean(currentUser?.id && currentWholesalerId),
+    refetchInterval: (query) => query.state.data?.status === "PENDING" ? 5000 : false,
+  });
+  const connectionStatus = connectionStatusQuery.data?.status;
   const hasActiveWholesalerConnection = Boolean(
-    currentWholesalerId && relationships[currentWholesalerId] === "Connected",
+    currentWholesalerId &&
+    (connectionStatus === "APPROVED" ||
+      (!connectionStatus && relationships[currentWholesalerId] === "Connected")),
   );
+  const connectionMessage = connectionStatus === "PENDING"
+    ? "Your connection request is pending owner approval. Your cart is preserved, and ordering will be available after approval."
+    : connectionStatus === "REJECTED"
+      ? "Your connection request was rejected. Contact the wholesaler for more information; your cart is preserved."
+      : connectionStatusQuery.isError
+        ? "We could not verify your connection. Please retry before placing an order; your cart is preserved."
+        : "Your account is not connected to this wholesaler. Your cart is preserved; submit a connection request before ordering.";
 
   const creditQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "credit"),
     queryFn: async () => (await api.getCreditInfo())?.data ?? null,
-    enabled: Boolean(currentUser?.id),
+    enabled: Boolean(currentUser?.id && hasActiveWholesalerConnection),
     refetchInterval: 15000,
   });
-  const creditInfo = creditQuery.data;
+  const creditInfo = hasActiveWholesalerConnection ? creditQuery.data : undefined;
   const loadingCredit = creditQuery.isLoading;
 
   const paymentOptionsQuery = useQuery({
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", `payment-options-${currentWholesalerId || "default"}`),
     queryFn: async () => (await api.getRetailerPaymentOptions(currentWholesalerId || undefined)).data,
-    enabled: Boolean(currentUser?.id),
+    enabled: Boolean(currentUser?.id && hasActiveWholesalerConnection),
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: "always",
   });
-  const paymentOptions = paymentOptionsQuery.data;
+  const paymentOptions = hasActiveWholesalerConnection ? paymentOptionsQuery.data : undefined;
 
   // Persistent QR image source:
   // Prioritizes session image, falls back to saved QR from payment options
@@ -1794,10 +1813,10 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
       const res = await api.getCoupons();
       return (res?.data || []) as any[];
     },
-    enabled: Boolean(currentUser?.id),
+    enabled: Boolean(currentUser?.id && hasActiveWholesalerConnection),
     staleTime: 30_000,
   });
-  const availableCoupons = couponsQuery.data || [];
+  const availableCoupons = hasActiveWholesalerConnection ? couponsQuery.data || [] : [];
   const loadingCoupons = couponsQuery.isLoading;
 
   const handleApplyCoupon = useCallback(async (codeToApply?: string) => {
@@ -1913,7 +1932,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
       paymentMethod: paymentMode,
       couponCode: appliedCoupon?.code || undefined,
     })).data,
-    enabled: Boolean(currentUser?.id && checkoutItems.length),
+    enabled: Boolean(currentUser?.id && checkoutItems.length && hasActiveWholesalerConnection),
     staleTime: 0,
   });
   const quote = quoteQuery.data;
@@ -1977,7 +1996,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
 
   const handlePlaceOrder = async () => {
     if (!hasActiveWholesalerConnection) {
-      toast.error("Your account is not connected to this wholesaler. Your cart is preserved; contact the wholesaler to connect before ordering.");
+      toast.error(connectionMessage);
       return;
     }
     if (!agreedToTerms) {
@@ -2221,7 +2240,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
       <p className="mt-1 text-sm text-muted-foreground">Select delivery address and payment method.</p>
       {!hasActiveWholesalerConnection && (
         <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          Your account is not connected to this wholesaler. Your cart is preserved; contact the wholesaler to connect before ordering.
+          {connectionMessage}
         </p>
       )}
 

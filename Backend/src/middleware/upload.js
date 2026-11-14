@@ -60,13 +60,15 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
     files: 10,
   },
   fileFilter,
 });
+
+const kycUpload = upload;
 
 // Product images and business logos use memory storage for their upload providers.
 const productImageUpload = multer({
@@ -131,6 +133,7 @@ const shippingDocumentUpload = multer({
 });
 
 module.exports = upload;
+module.exports.kycUpload = kycUpload;
 module.exports.productImageUpload = productImageUpload;
 module.exports.businessLogoUpload = businessLogoUpload;
 module.exports.shippingDocumentUpload = shippingDocumentUpload;

@@ -24,6 +24,7 @@ const CouponsPage = lazy(() => import('./app/dashboard/coupons/page'));
 const SupportPage = lazy(() => import('./app/dashboard/support/page'));
 const PaymentSettingsPage = lazy(() => import('./app/dashboard/payment-settings/page'));
 const KhataBookPage = lazy(() => import('./app/dashboard/khata-book/page'));
+const PurchasesPage = lazy(() => import('./app/dashboard/purchases/page'));
 const StoreThemePage = lazy(() => import('./app/dashboard/store-theme/page'));
 
 const LandingPage = lazy(() => import('./app/landing/page'));
@@ -110,6 +111,7 @@ export function App() {
           <Route path="payment-settings" element={<PaymentSettingsPage />} />
           <Route path="store-theme" element={<StoreThemePage />} />
           <Route path="khata-book" element={<KhataBookPage />} />
+          <Route path="purchases" element={<PurchasesPage />} />
           <Route path="coupons" element={<CouponsPage />} />
           <Route path="wallet" element={<WalletPage />} />
           <Route path="profile" element={<WholesalerProfilePage />} />

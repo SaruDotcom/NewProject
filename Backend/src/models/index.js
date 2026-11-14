@@ -38,6 +38,11 @@ const WholesalerSubscription = require('./WholesalerSubscription');
 const SubscriptionPayment = require('./SubscriptionPayment');
 const RetailerCheckoutPayment = require('./RetailerCheckoutPayment');
 const KhataEntry = require('./KhataEntry');
+const Supplier = require('./Supplier');
+const PurchaseBill = require('./PurchaseBill');
+const PurchasePayment = require('./PurchasePayment');
+const PurchaseReturn = require('./PurchaseReturn');
+const SupplierLedgerEntry = require('./SupplierLedgerEntry');
 
 module.exports = {
   User,
@@ -80,4 +85,9 @@ module.exports = {
   SubscriptionPayment,
   RetailerCheckoutPayment,
   KhataEntry,
+  Supplier,
+  PurchaseBill,
+  PurchasePayment,
+  PurchaseReturn,
+  SupplierLedgerEntry,
 };

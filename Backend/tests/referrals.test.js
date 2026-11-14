@@ -454,44 +454,44 @@ describe('Wholesaler referral-only retailer registration', () => {
 
     expect(response.status).toBe(200);
     expect(String(response.body.data.relationship.wholesalerId)).toBe(String(wholesaler._id));
+    expect(response.body.data.relationship.status).toBe('PENDING');
+    const duplicateRequest = await request(app)
+      .post('/api/v1/retailer/referral/switch')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ referralCode });
+    expect(duplicateRequest.status).toBe(200);
+    expect(await WholesalerRetailerRelationship.countDocuments({
+      retailerId: retailer._id,
+      wholesalerId: wholesaler._id,
+      status: 'PENDING',
+    })).toBe(1);
+    const requestStatus = await request(app)
+      .get(`/api/v1/retailer/connection-status?wholesalerId=${wholesaler._id}`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(requestStatus.status).toBe(200);
+    expect(requestStatus.body.data.status).toBe('PENDING');
     const connectedResponse = await request(app)
       .get('/api/v1/retailer/wholesaler')
       .set('Authorization', `Bearer ${retailerToken}`);
     expect(connectedResponse.status).toBe(200);
-    expect(String(connectedResponse.body.data.id)).toBe(String(wholesaler._id));
-    const previous = await WholesalerRetailerRelationship.findById(previousRelationship._id);
-    const active = await WholesalerRetailerRelationship.find({
+    expect(String(connectedResponse.body.data.id)).toBe(String(previousWholesaler._id));
+    const previousBeforeApproval = await WholesalerRetailerRelationship.findById(previousRelationship._id);
+    const activeBeforeApproval = await WholesalerRetailerRelationship.find({
       retailerId: retailer._id,
       status: 'ACTIVE',
     });
-    const updatedProfile = await RetailerProfile.findById(retailerProfile._id);
+    const profileBeforeApproval = await RetailerProfile.findById(retailerProfile._id);
     const cart = await Cart.findOne({ retailerId: retailer._id });
 
-    expect(previous.status).toBe('TERMINATED');
-    expect(previous.terminatedAt).toBeInstanceOf(Date);
-    expect(active).toHaveLength(1);
-    expect(String(active[0].wholesalerId)).toBe(String(wholesaler._id));
-    expect(String(updatedProfile.activeRelationshipId)).toBe(String(active[0]._id));
-    expect(String(updatedProfile.assignedWholesalerId)).toBe(String(wholesaler._id));
+    expect(previousBeforeApproval.status).toBe('ACTIVE');
+    expect(activeBeforeApproval).toHaveLength(1);
+    expect(String(activeBeforeApproval[0].wholesalerId)).toBe(String(previousWholesaler._id));
+    expect(String(profileBeforeApproval.activeRelationshipId)).toBe(String(previousRelationship._id));
+    expect(String(profileBeforeApproval.assignedWholesalerId)).toBe(String(previousWholesaler._id));
     expect(cart.wholesalerId.toString()).toBe(String(previousWholesaler._id));
     expect(cart.items).toHaveLength(1);
     expect(cart.items[0].name).toBe('Preserved cart item');
     expect(cart.grandTotal).toBe(118);
-
-    await WholesalerProfile.updateOne(
-      { _id: wholesalerProfile._id },
-      { $set: { retailerSignupsEnabled: false } },
-    );
-    const repeatResponse = await request(app)
-      .post('/api/v1/retailer/referral/switch')
-      .set('Authorization', `Bearer ${retailerToken}`)
-      .send({ referralCode });
-
-    expect(repeatResponse.status).toBe(200);
-    expect(await WholesalerRetailerRelationship.countDocuments({
-      retailerId: retailer._id,
-      status: 'ACTIVE',
-    })).toBe(1);
 
     const checkoutPayload = {
       wholesalerId: String(wholesaler._id),
@@ -505,6 +505,66 @@ describe('Wholesaler referral-only retailer registration', () => {
         pincode: '411001',
       },
     };
+    const pendingQuote = await request(app)
+      .post('/api/v1/retailer/checkout/quote')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send(checkoutPayload);
+    expect(pendingQuote.status).toBe(403);
+    const pendingCheckout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send(checkoutPayload);
+    expect(pendingCheckout.status).toBe(403);
+
+    const retailerCannotReview = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/connection-requests/${response.body.data.relationship._id}`)
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ action: 'approve' });
+    expect(retailerCannotReview.status).toBe(403);
+
+    const ownerRequests = await request(app)
+      .get('/api/v1/wholesaler/retailers/connection-requests')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    const pendingRequest = ownerRequests.body.data.find((item) => item.retailerId === String(retailer._id));
+    expect(pendingRequest).toBeDefined();
+    const approval = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/connection-requests/${pendingRequest.id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'approve' });
+    expect(approval.status).toBe(200);
+
+    const approvedStatus = await request(app)
+      .get(`/api/v1/retailer/connection-status?wholesalerId=${wholesaler._id}`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(approvedStatus.body.data.status).toBe('APPROVED');
+    const previous = await WholesalerRetailerRelationship.findById(previousRelationship._id);
+    const active = await WholesalerRetailerRelationship.find({
+      retailerId: retailer._id,
+      status: 'ACTIVE',
+    });
+    const updatedProfile = await RetailerProfile.findById(retailerProfile._id);
+    expect(previous.status).toBe('TERMINATED');
+    expect(previous.terminatedAt).toBeInstanceOf(Date);
+    expect(active).toHaveLength(1);
+    expect(String(active[0].wholesalerId)).toBe(String(wholesaler._id));
+    expect(String(updatedProfile.activeRelationshipId)).toBe(String(active[0]._id));
+    expect(String(updatedProfile.assignedWholesalerId)).toBe(String(wholesaler._id));
+    expect((await Cart.findOne({ retailerId: retailer._id })).grandTotal).toBe(118);
+
+    await WholesalerProfile.updateOne(
+      { _id: wholesalerProfile._id },
+      { $set: { retailerSignupsEnabled: false } },
+    );
+    const repeatResponse = await request(app)
+      .post('/api/v1/retailer/referral/switch')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ referralCode });
+    expect(repeatResponse.status).toBe(200);
+    expect(await WholesalerRetailerRelationship.countDocuments({
+      retailerId: retailer._id,
+      status: 'ACTIVE',
+    })).toBe(1);
+
     const quote = await request(app)
       .post('/api/v1/retailer/checkout/quote')
       .set('Authorization', `Bearer ${retailerToken}`)
@@ -518,6 +578,72 @@ describe('Wholesaler referral-only retailer registration', () => {
       .send({ ...checkoutPayload, expectedQuoteHash: quote.body.data.quoteHash });
     expect(checkout.status).toBe(201);
     expect(checkout.body.data.order).toMatchObject({ grandTotal: 118 });
+  });
+
+  test('only the wholesaler owner can reject a connection request', async () => {
+    const registration = await request(app).post('/api/v1/auth/register').send({
+      name: 'Rejected Retailer',
+      businessName: 'Rejected Store',
+      city: 'Pune',
+      state: 'Maharashtra',
+      address: '1 Market Road',
+      pincode: '411001',
+      email: 'rejected-retailer@example.test',
+      phone: '9567890199',
+      password: 'Password@123',
+      role: ROLES.RETAILER,
+      referralCode,
+    });
+    expect(registration.status).toBe(201);
+    const retailer = await User.findOne({ email: 'rejected-retailer@example.test' });
+    const relationship = await WholesalerRetailerRelationship.findOne({ retailerId: retailer._id });
+
+    const retailerLogin = await request(app).post('/api/v1/auth/login').send({
+      email: retailer.email,
+      password: 'Password@123',
+      role: ROLES.RETAILER,
+    });
+    const retailerToken = retailerLogin.body.data.token;
+    const unauthorizedReview = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/connection-requests/${relationship._id}`)
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ action: 'reject' });
+    expect(unauthorizedReview.status).toBe(403);
+
+    const staffUser = await User.create({
+      name: 'Wholesaler Staff',
+      email: 'connection-request-staff@example.test',
+      passwordHash: await User.hashPassword('Password@123'),
+      role: ROLES.WHOLESALER,
+      status: USER_STATUS.ACTIVE,
+    });
+    const staffToken = AuthService.generateTokens(staffUser).accessToken;
+    const staffRequests = await request(app)
+      .get('/api/v1/wholesaler/retailers/connection-requests')
+      .set('Authorization', `Bearer ${staffToken}`);
+    expect(staffRequests.status).toBe(403);
+    const staffReview = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/connection-requests/${relationship._id}`)
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({ action: 'reject' });
+    expect(staffReview.status).toBe(403);
+
+    const rejection = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/connection-requests/${relationship._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'reject' });
+    expect(rejection.status).toBe(200);
+    expect(rejection.body.data.status).toBe('REJECTED');
+
+    const status = await request(app)
+      .get(`/api/v1/retailer/connection-status?wholesalerId=${wholesaler._id}`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(status.body.data.status).toBe('REJECTED');
+    expect((await WholesalerRetailerRelationship.findById(relationship._id)).status).toBe('REJECTED');
+    const connected = await request(app)
+      .get('/api/v1/retailer/wholesaler')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(connected.body.data).toBeNull();
   });
 
   test('public referral categories retain wholesaler-specific images and return replacements', async () => {
@@ -753,8 +879,9 @@ describe('Wholesaler referral-only retailer registration', () => {
 
     expect(retailer.phone).toBe('9123456789');
     expect(retailer.loginId).toBe('RETAILER01');
-    expect(String(retailer.retailerProfile.assignedWholesalerId)).toBe(String(wholesaler._id));
+    expect(retailer.retailerProfile.assignedWholesalerId).toBeUndefined();
     expect(String(relationship.wholesalerId)).toBe(String(wholesaler._id));
+    expect(relationship.status).toBe('PENDING');
     expect(relationship.referralCode).toBe(referralCode);
     expect(retailer.retailerProfile.referralCodeUsed).toBe(referralCode);
     expect(retailer.retailerProfile.utmSource).toBe('facebook');
@@ -763,6 +890,11 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(retailer.retailerProfile.utmTerm).toBe('wholesale');
     expect(retailer.retailerProfile.utmContent).toBe('banner-a');
     expect(retailer.retailerProfile.firstLandingAt.toISOString()).toBe('2026-10-20T10:00:00.000Z');
+    const initialApproval = await request(app)
+      .patch(`/api/v1/wholesaler/retailers/connection-requests/${relationship._id}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ action: 'approve' });
+    expect(initialApproval.status).toBe(200);
 
     const duplicateMobile = await request(app).post('/api/v1/auth/register').send({
       ...payload,
@@ -796,13 +928,45 @@ describe('Wholesaler referral-only retailer registration', () => {
       expect(login.status).toBe(200);
       expect(login.body.data.token).toBeTruthy();
 
+      const requestStatus = await request(app)
+        .get(`/api/v1/retailer/connection-status?wholesalerId=${wholesaler._id}`)
+        .set('Authorization', `Bearer ${login.body.data.token}`);
+      expect(requestStatus.status).toBe(200);
+      expect(requestStatus.body.data.status).toBe('PENDING');
+
       const linkedWholesaler = await request(app)
         .get('/api/v1/retailer/wholesaler')
         .set('Authorization', `Bearer ${login.body.data.token}`);
       expect(linkedWholesaler.status).toBe(200);
-      expect(linkedWholesaler.body.data.businessName).toBe('Safe Business Name');
-      expect(linkedWholesaler.body.data.businessTagline).toBe('Quality wholesale, delivered');
-      expect(linkedWholesaler.body.data.name).toBe('Private Owner Name');
+      expect(linkedWholesaler.body.data).toBeNull();
+
+      const pendingRetailer = await User.findOne({ email: brandingPayload.email });
+      const pendingRelationship = await WholesalerRetailerRelationship.findOne({ retailerId: pendingRetailer._id });
+      const ownerRequests = await request(app)
+        .get('/api/v1/wholesaler/retailers/connection-requests')
+        .set('Authorization', `Bearer ${wholesalerToken}`);
+      expect(ownerRequests.status).toBe(200);
+      expect(ownerRequests.body.data).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: String(pendingRelationship._id),
+          phone: '9567890123',
+          email: brandingPayload.email,
+          status: 'PENDING',
+        }),
+      ]));
+      const approval = await request(app)
+        .patch(`/api/v1/wholesaler/retailers/connection-requests/${pendingRelationship._id}`)
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({ action: 'approve' });
+      expect(approval.status).toBe(200);
+
+      const connectedWholesaler = await request(app)
+        .get('/api/v1/retailer/wholesaler')
+        .set('Authorization', `Bearer ${login.body.data.token}`);
+      expect(connectedWholesaler.status).toBe(200);
+      expect(connectedWholesaler.body.data.businessName).toBe('Safe Business Name');
+      expect(connectedWholesaler.body.data.businessTagline).toBe('Quality wholesale, delivered');
+      expect(connectedWholesaler.body.data.name).toBe('Private Owner Name');
     expect(duplicateMobile.status).toBe(409);
     expect(duplicateMobile.body.code).toBe('PHONE_ALREADY_EXISTS');
 

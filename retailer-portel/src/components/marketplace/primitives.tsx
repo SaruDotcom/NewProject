@@ -126,7 +126,10 @@ export function ProductCard({
 }) {
   const { wishlist, toggleWishlist, addToCart, addRecentlyViewed } = useStore();
   const isWishlisted = wishlist.includes(product.id);
-  const discount = Math.round((1 - product.price / product.mrp) * 100);
+  const discount =
+    product.mrp > product.price && product.mrp > 0
+      ? Math.round((1 - product.price / product.mrp) * 100)
+      : 0;
 
   const getProductImage = () => {
     if (product.imageUrl) return product.imageUrl;
@@ -138,22 +141,23 @@ export function ProductCard({
 
   if (list) {
     return (
-      <article className="group relative flex flex-col sm:flex-row h-full overflow-hidden rounded-xl border border-border/80 bg-card shadow-2xs transition-all duration-200 hover:border-emerald-600/40 hover:shadow-md">
+      <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-600/30 hover:shadow-md sm:flex-row">
         {/* Product Image */}
         <Link
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="relative block sm:w-52 shrink-0 aspect-square sm:aspect-auto overflow-hidden bg-slate-50/70 dark:bg-muted/20 p-3.5 flex items-center justify-center cursor-pointer"
+          className="relative flex aspect-[4/5] w-full shrink-0 items-center justify-center overflow-hidden bg-slate-50 p-3 cursor-pointer sm:w-40"
         >
           {productImg ? (
             <ProductImage
               src={productImg}
               alt={product.name}
-              className="size-full object-contain mix-blend-multiply dark:mix-blend-normal transition-transform duration-300 group-hover:scale-105"
+              className="size-full object-contain"
+              placeholderClassName="rounded-lg border-0 bg-transparent"
             />
           ) : (
-            <ProductVisual index={product.image} name={product.name} className="size-full transition-transform duration-300 group-hover:scale-105" />
+            <ProductVisual index={product.image} name={product.name} className="size-full bg-transparent" />
           )}
 
           {/* Small Stock Availability Badge */}
@@ -176,6 +180,15 @@ export function ProductCard({
               {discount}% OFF
             </span>
           )}
+          {product.rating > 0 && (
+            <span
+              className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-slate-700 shadow-sm"
+              aria-label={`Rated ${product.rating} out of 5`}
+            >
+              <Star className="size-3 fill-amber-400 text-amber-400" />
+              {product.rating.toFixed(1)}
+            </span>
+          )}
         </Link>
 
         {/* Wishlist Button */}
@@ -192,22 +205,26 @@ export function ProductCard({
         </button>
 
         {/* Content Body */}
-        <div className="flex flex-1 flex-col justify-between p-4 sm:p-5">
+        <div className="flex min-w-0 flex-1 flex-col justify-between p-3 sm:p-4">
           <div>
+            <p className="mb-1 h-4 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+              {product.category}
+            </p>
             <Link
               to="/products/$productId"
               params={{ productId: product.id }}
               onClick={() => addRecentlyViewed(product.id)}
-              className="font-bold text-base text-ink hover:text-emerald-600 transition-colors line-clamp-2"
+              className="block min-h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-emerald-600"
+              title={product.name}
             >
               {product.name}
             </Link>
 
             {/* Selling Price */}
-            <div className="mt-2.5 flex flex-wrap items-baseline gap-2">
-              <strong className="text-xl font-black text-ink">{money(product.price)}</strong>
-              <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>
-              {discount > 0 && <span className="text-xs font-bold text-emerald-600">Save {discount}%</span>}
+            <div className="mt-2 flex min-h-7 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <strong className="text-sm font-black text-ink sm:text-lg">{money(product.price)}</strong>
+              {discount > 0 && <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>}
+              {discount > 0 && <span className="text-[11px] font-bold text-emerald-700">{discount}% off</span>}
             </div>
           </div>
 
@@ -227,7 +244,7 @@ export function ProductCard({
             <Button
               disabled={product.stock <= 0}
               size="sm"
-              className="h-9 w-full sm:flex-1 rounded-lg font-semibold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap px-3"
+              className="h-9 w-full sm:flex-1 rounded-lg bg-green-600 px-2 font-semibold text-[11px] text-white shadow-2xs transition-all hover:bg-green-700 active:scale-95 cursor-pointer sm:px-3 sm:text-xs"
               onClick={() => addToCart(product.id)}
             >
               <ShoppingCart className="size-3.5 shrink-0" />
@@ -241,22 +258,23 @@ export function ProductCard({
 
   // Grid Card: Amazon & Myntra Clean Minimal Design
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-xl">
+    <article className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-600/30 hover:shadow-md">
       {/* Product Image Area */}
       <Link
         to="/products/$productId"
         params={{ productId: product.id }}
         onClick={() => addRecentlyViewed(product.id)}
-        className="relative block aspect-square w-full overflow-hidden bg-gradient-to-br from-slate-50 to-white p-3 sm:p-4 flex items-center justify-center cursor-pointer"
+        className="relative flex aspect-[4/5] w-full items-center justify-center overflow-hidden bg-slate-50 p-3 cursor-pointer"
       >
         {productImg ? (
           <ProductImage
             src={productImg}
             alt={product.name}
-            className="size-full object-contain mix-blend-multiply dark:mix-blend-normal transition-transform duration-300 group-hover:scale-105"
+            className="size-full object-contain"
+            placeholderClassName="rounded-lg border-0 bg-transparent"
           />
         ) : (
-          <ProductVisual index={product.image} name={product.name} className="size-full transition-transform duration-300 group-hover:scale-105" />
+          <ProductVisual index={product.image} name={product.name} className="size-full bg-transparent" />
         )}
 
         {/* Small Stock Availability Badge */}
@@ -279,6 +297,15 @@ export function ProductCard({
             {discount}% OFF
           </span>
         )}
+        {product.rating > 0 && (
+          <span
+            className="absolute bottom-2.5 right-2.5 z-10 inline-flex items-center gap-1 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-slate-700 shadow-sm pointer-events-none"
+            aria-label={`Rated ${product.rating} out of 5`}
+          >
+            <Star className="size-3 fill-amber-400 text-amber-400" />
+            {product.rating.toFixed(1)}
+          </span>
+        )}
       </Link>
 
       {/* Wishlist Button (Top-Right) */}
@@ -296,7 +323,7 @@ export function ProductCard({
 
       {/* Product Details (Clean & Minimal) */}
       <div className="flex flex-1 flex-col p-3 sm:p-4">
-        <p className="mb-1 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        <p className="mb-1 h-4 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
           {product.category}
         </p>
         {/* Product Name */}
@@ -304,18 +331,11 @@ export function ProductCard({
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="block h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-primary"
+          className="block min-h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-emerald-600"
           title={product.name}
         >
           {product.name}
         </Link>
-
-        {product.rating > 0 && (
-          <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground" aria-label={`Rated ${product.rating} out of 5`}>
-            <Star className="size-3.5 fill-amber-400 text-amber-400" />
-            <span>{product.rating.toFixed(1)}</span>
-          </div>
-        )}
 
         {/* Selling Price */}
         <div className="mt-2 flex min-h-7 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
@@ -346,7 +366,7 @@ export function ProductCard({
           <Button
             disabled={product.stock <= 0}
             size="sm"
-            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg font-semibold text-[11px] sm:text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs !gap-1 sm:!gap-1.5 transition-all active:scale-95 !px-1.5 sm:!px-2 cursor-pointer"
+            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg bg-green-600 px-1.5 font-semibold text-[11px] text-white shadow-2xs !gap-1 sm:!gap-1.5 transition-all hover:bg-green-700 active:scale-95 sm:!px-2 sm:text-xs cursor-pointer"
             onClick={() => addToCart(product.id)}
           >
             <ShoppingCart className="!size-3.5 shrink-0" />
@@ -370,9 +390,9 @@ export function ProductGrid({
   className?: string;
 }) {
   const gridClassName = list
-    ? cn("grid gap-3", className)
+    ? cn("grid grid-cols-1 gap-3", className)
     : cn(
-        "grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5",
+        "grid auto-rows-fr grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5",
         className,
       );
 

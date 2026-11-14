@@ -32,6 +32,7 @@ const { generateReference } = require('../utils/crypto');
 const { assertWholesalerAvailable, WHOLESALER_UNAVAILABLE_MESSAGE } = require('./wholesaler-access.service');
 const { ROLES, RELATIONSHIP_STATUS } = require('../config/constants');
 const ReferralService = require('../modules/referrals/referrals.service');
+const NotificationService = require('./notification.service');
 
 const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 
@@ -1426,6 +1427,26 @@ class RetailerService {
     return InvitationService.acceptInvitation(token, retailerUser, req);
   }
 
+  static async getWholesalerConnectionStatus(retailerId, wholesalerId) {
+    assertObjectId(wholesalerId, 'Wholesaler ID');
+    const relationship = await WholesalerRetailerRelationship.findOne({
+      retailerId,
+      wholesalerId,
+    }).sort({ createdAt: -1 });
+
+    if (!relationship) {
+      return { wholesalerId: String(wholesalerId), status: 'NOT_REQUESTED' };
+    }
+
+    return {
+      relationshipId: String(relationship._id),
+      wholesalerId: String(relationship.wholesalerId),
+      status: relationship.status === RELATIONSHIP_STATUS.ACTIVE ? 'APPROVED' : relationship.status,
+      requestedAt: relationship.createdAt,
+      reviewedAt: relationship.approvedAt || relationship.rejectedAt || null,
+    };
+  }
+
   static async switchWholesalerByReferral(retailerUser, referralCode) {
     if (retailerUser.role !== ROLES.RETAILER) {
       throw new ForbiddenError('Only retailers can switch wholesaler connections.', 'FORBIDDEN_ROLE');
@@ -1441,18 +1462,6 @@ class RetailerService {
     }
 
     const targetWholesalerId = wholesaler._id;
-    const retailerWholesalerUpdate = {
-      assignedWholesalerId: targetWholesalerId,
-      wholesalerId: targetWholesalerId,
-      createdByWholesalerId: targetWholesalerId,
-      referralCodeUsed: wholesalerProfile.retailerReferralCode,
-      wholesalerInfo: {
-        businessName: wholesalerProfile.businessName || wholesaler.name || '',
-        ownerName: wholesaler.name || '',
-        email: wholesaler.email || '',
-        phone: wholesaler.phone || '',
-      },
-    };
     const currentRelationship = await WholesalerRetailerRelationship.findOne({
       retailerId: retailerUser._id,
       status: RELATIONSHIP_STATUS.ACTIVE,
@@ -1469,114 +1478,44 @@ class RetailerService {
     }
 
     if (currentRelationship && String(currentRelationship.wholesalerId) === String(targetWholesalerId)) {
-      currentRelationship.referralCode = wholesalerProfile.retailerReferralCode;
-      await currentRelationship.save();
-      const profileUpdate = await RetailerProfile.updateOne(
-        { _id: retailerProfile._id },
-        { $set: { ...retailerWholesalerUpdate, activeRelationshipId: currentRelationship._id } },
-      );
-      if (profileUpdate.matchedCount !== 1) {
-        throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
-      }
       return {
         message: 'You are already connected to this wholesaler.',
         relationship: currentRelationship,
       };
     }
 
-    const now = new Date();
-    const relationshipData = {
+    let relationship = await WholesalerRetailerRelationship.findOne({
+      wholesalerId: targetWholesalerId,
+      retailerId: retailerUser._id,
+      status: RELATIONSHIP_STATUS.PENDING,
+      referralCode: wholesalerProfile.retailerReferralCode,
+    });
+    if (relationship) {
+      return {
+        message: 'Your connection request is awaiting wholesaler approval.',
+        relationship,
+      };
+    }
+
+    relationship = await WholesalerRetailerRelationship.create({
       wholesalerId: targetWholesalerId,
       retailerId: retailerUser._id,
       referralCode: wholesalerProfile.retailerReferralCode,
-      status: RELATIONSHIP_STATUS.ACTIVE,
-      joinedAt: now,
-      approvedAt: now,
-    };
-    let session = null;
-    const topologyType = mongoose.connection?.client?.topology?.description?.type;
-    if (topologyType && topologyType.includes('ReplicaSet')) {
-      session = await mongoose.startSession();
-      session.startTransaction();
-    }
+      status: RELATIONSHIP_STATUS.PENDING,
+      joinedAt: null,
+      approvedAt: null,
+    });
+    retailerProfile.referralCodeUsed = wholesalerProfile.retailerReferralCode;
+    await retailerProfile.save();
 
-    let relationship;
-    try {
-      const options = session ? { session } : {};
-      if (currentRelationship) {
-        const ended = await WholesalerRetailerRelationship.updateOne(
-          { _id: currentRelationship._id, status: RELATIONSHIP_STATUS.ACTIVE },
-          { $set: { status: RELATIONSHIP_STATUS.TERMINATED, terminatedAt: now } },
-          options,
-        );
-        if (ended.modifiedCount !== 1) {
-          throw new ConflictError('The retailer connection changed. Please retry the invitation.', 'RELATIONSHIP_CHANGED');
-        }
-      }
+    await NotificationService.notify({
+      recipientId: targetWholesalerId,
+      title: 'New Retailer Connection Request',
+      message: `${retailerProfile.businessName} requested to connect. Contact: ${retailerUser.phone || 'not provided'}; email: ${retailerUser.email || 'not provided'}.`,
+      data: { retailerId: retailerUser._id, relationshipId: relationship._id },
+    });
 
-      relationship = await WholesalerRetailerRelationship.create(
-        [{ ...relationshipData }],
-        options,
-      ).then(([created]) => created);
-
-      const updatedProfile = await RetailerProfile.updateOne(
-        { userId: retailerUser._id },
-        { $set: { ...retailerWholesalerUpdate, activeRelationshipId: relationship._id } },
-        options,
-      );
-      if (updatedProfile.matchedCount !== 1) {
-        throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
-      }
-
-      if (session) await session.commitTransaction();
-    } catch (error) {
-      if (session?.inTransaction()) await session.abortTransaction();
-      if (!session) {
-        if (relationship) {
-          await WholesalerRetailerRelationship.deleteOne({ _id: relationship._id });
-        }
-        if (currentRelationship) {
-          await WholesalerRetailerRelationship.updateOne(
-            { _id: currentRelationship._id },
-            { $set: { status: RELATIONSHIP_STATUS.ACTIVE }, $unset: { terminatedAt: 1 } },
-          );
-        }
-        const associationFields = {
-          assignedWholesalerId: retailerProfile.assignedWholesalerId,
-          wholesalerId: retailerProfile.wholesalerId,
-          createdByWholesalerId: retailerProfile.createdByWholesalerId,
-          referralCodeUsed: retailerProfile.referralCodeUsed,
-          wholesalerInfo: retailerProfile.wholesalerInfo,
-          activeRelationshipId: retailerProfile.activeRelationshipId,
-        };
-        const restoreProfile = Object.fromEntries(
-          Object.entries(associationFields).filter(([, value]) => value !== undefined),
-        );
-        const unsetProfile = Object.fromEntries(
-          Object.entries(associationFields)
-            .filter(([, value]) => value === undefined)
-            .map(([key]) => [key, 1]),
-        );
-        await RetailerProfile.updateOne(
-          { _id: retailerProfile._id },
-          {
-            ...(Object.keys(restoreProfile).length ? { $set: restoreProfile } : {}),
-            ...(Object.keys(unsetProfile).length ? { $unset: unsetProfile } : {}),
-          },
-        );
-      }
-      if (error.code === 11000) {
-        throw new ConflictError('The retailer connection changed. Please retry the invitation.', 'RELATIONSHIP_CHANGED');
-      }
-      throw error;
-    } finally {
-      if (session) await session.endSession();
-    }
-
-    return {
-      message: 'Successfully switched to the invited wholesaler.',
-      relationship,
-    };
+    return { message: 'Your connection request is awaiting wholesaler approval.', relationship };
   }
 }
 
