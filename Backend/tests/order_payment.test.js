@@ -1,6 +1,4 @@
 const request = require('supertest');
-const fs = require('fs');
-const path = require('path');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
@@ -294,7 +292,25 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(evidence.status).toBe(200);
     expect(evidence.headers['content-type']).toContain('application/pdf');
     expect(evidence.body.subarray(0, 5).toString()).toBe('%PDF-');
-    await fs.promises.unlink(path.join(env.UPLOAD_PATH, 'payment-reports', path.basename(savedReport.screenshotPath)));
+    expect(savedReport.screenshotPath).toMatch(/^gridfs:[a-f0-9]{24}$/i);
+
+    const missingLegacyReport = await Payment.create({
+      orderId: checkout.body.data.order._id,
+      retailerId: retailerUser._id,
+      wholesalerId: wholesalerUser._id,
+      amount: 1,
+      isReport: true,
+      screenshotPath: 'missing-legacy-receipt.pdf',
+    });
+    const reports = await request(app)
+      .get('/api/v1/wholesaler/payment-reports')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    const missingLegacyReportData = reports.body.data.find((item) => String(item._id) === String(missingLegacyReport._id));
+    expect(missingLegacyReportData.screenshotAvailable).toBe(false);
+    const missingEvidence = await request(app)
+      .get(`/api/v1/wholesaler/payment-reports/${missingLegacyReport._id}/screenshot`)
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(missingEvidence.status).toBe(404);
   });
 
   test('payment settings restore missing bank fields from the original KYC details', async () => {

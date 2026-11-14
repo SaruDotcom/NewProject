@@ -3725,7 +3725,7 @@ export function AuthPage({
                 {mode === "register"
                   ? "Direct Wholesale, Zero Middlemen."
                   : mode === "login"
-                    ? "Welcome Back to Your Store."
+                    ? "Welcome  to Your Store."
                     : "Secure Account Recovery."}
               </h2>
               <p className="mt-2.5 text-xs sm:text-sm leading-relaxed text-slate-300">

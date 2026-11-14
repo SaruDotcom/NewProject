@@ -75,8 +75,14 @@ module.exports = {
     return ApiResponse.success(res, report, 'Payment reversal recorded');
   }),
 
-  getScreenshot: asyncHandler(async (req, res) => {
-    const filePath = await PaymentsService.getScreenshotPath(req.params.reportId, req.user, req);
-    return res.sendFile(filePath);
+  getScreenshot: asyncHandler(async (req, res, next) => {
+    const evidence = await PaymentsService.getScreenshot(req.params.reportId, req.user, req);
+    res.setHeader('Content-Type', evidence.contentType);
+    if (evidence.filePath) return res.sendFile(evidence.filePath);
+    evidence.stream.on('error', (error) => {
+      if (res.headersSent) res.destroy(error);
+      else next(error);
+    });
+    return evidence.stream.pipe(res);
   }),
 };

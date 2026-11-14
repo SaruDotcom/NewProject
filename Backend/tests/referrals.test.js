@@ -1,4 +1,5 @@
 const request = require('supertest');
+const mongoose = require('mongoose');
 const app = require('../src/app');
 const { setupTestDB, clearDatabase } = require('./setup');
 const {
@@ -9,6 +10,7 @@ const {
   WholesalerRetailerRelationship,
   Category,
   Product,
+  Inventory,
   Cart,
   Coupon,
 } = require('../src/models');
@@ -370,7 +372,8 @@ describe('Wholesaler referral-only retailer registration', () => {
       .toEqual(['Staples']);
   });
 
-  test('authenticated retailer invite switches wholesaler and preserves the previous relationship', async () => {
+  test('authenticated retailer referral switches wholesaler and preserves the cart', async () => {
+    const category = await Category.create({ name: 'Referral Checkout', slug: 'referral-checkout' });
     const previousWholesaler = await User.create({
       name: 'Previous Wholesaler',
       email: 'previous-wholesaler@example.test',
@@ -401,12 +404,48 @@ describe('Wholesaler referral-only retailer registration', () => {
     await Cart.create({
       retailerId: retailer._id,
       wholesalerId: previousWholesaler._id,
-      items: [],
+      items: [{
+        productId: new mongoose.Types.ObjectId(),
+        name: 'Preserved cart item',
+        sku: 'PRESERVED-1',
+        quantity: 1,
+        pricePerUnit: 100,
+        subtotal: 100,
+        gstRate: 18,
+        gstAmount: 18,
+        total: 118,
+      }],
       subtotal: 100,
       tax: 18,
       grandTotal: 118,
     });
-    const retailerToken = AuthService.generateTokens(retailer).accessToken;
+    const checkoutProduct = await Product.create({
+      wholesalerId: wholesaler._id,
+      name: 'Referral checkout product',
+      slug: 'referral-checkout-product',
+      sku: 'REF-CHECKOUT-1',
+      wholesalePrice: 100,
+      stock: 10,
+      moq: 1,
+      gst: 18,
+      categoryId: category._id,
+      status: 'ACTIVE',
+    });
+    await Inventory.create({
+      productId: checkoutProduct._id,
+      wholesalerId: wholesaler._id,
+      available: 10,
+      reserved: 0,
+      sold: 0,
+    });
+    const publicReferral = await request(app).get(`/api/v1/referral/${referralCode}`);
+    expect(publicReferral.status).toBe(200);
+    expect(String(publicReferral.body.data.wholesaler.id)).toBe(String(wholesaler._id));
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: retailer.email, password: 'Password@123' });
+    expect(login.status).toBe(200);
+    const retailerToken = login.body.data.token;
 
     const response = await request(app)
       .post('/api/v1/retailer/referral/switch')
@@ -415,6 +454,11 @@ describe('Wholesaler referral-only retailer registration', () => {
 
     expect(response.status).toBe(200);
     expect(String(response.body.data.relationship.wholesalerId)).toBe(String(wholesaler._id));
+    const connectedResponse = await request(app)
+      .get('/api/v1/retailer/wholesaler')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(connectedResponse.status).toBe(200);
+    expect(String(connectedResponse.body.data.id)).toBe(String(wholesaler._id));
     const previous = await WholesalerRetailerRelationship.findById(previousRelationship._id);
     const active = await WholesalerRetailerRelationship.find({
       retailerId: retailer._id,
@@ -429,8 +473,51 @@ describe('Wholesaler referral-only retailer registration', () => {
     expect(String(active[0].wholesalerId)).toBe(String(wholesaler._id));
     expect(String(updatedProfile.activeRelationshipId)).toBe(String(active[0]._id));
     expect(String(updatedProfile.assignedWholesalerId)).toBe(String(wholesaler._id));
-    expect(cart.wholesalerId.toString()).toBe(String(wholesaler._id));
-    expect(cart.grandTotal).toBe(0);
+    expect(cart.wholesalerId.toString()).toBe(String(previousWholesaler._id));
+    expect(cart.items).toHaveLength(1);
+    expect(cart.items[0].name).toBe('Preserved cart item');
+    expect(cart.grandTotal).toBe(118);
+
+    await WholesalerProfile.updateOne(
+      { _id: wholesalerProfile._id },
+      { $set: { retailerSignupsEnabled: false } },
+    );
+    const repeatResponse = await request(app)
+      .post('/api/v1/retailer/referral/switch')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ referralCode });
+
+    expect(repeatResponse.status).toBe(200);
+    expect(await WholesalerRetailerRelationship.countDocuments({
+      retailerId: retailer._id,
+      status: 'ACTIVE',
+    })).toBe(1);
+
+    const checkoutPayload = {
+      wholesalerId: String(wholesaler._id),
+      items: [{ productId: String(checkoutProduct._id), quantity: 1 }],
+      paymentMethod: 'UPI',
+      idempotencyKey: 'referral-checkout-flow',
+      shippingAddress: {
+        addressLine1: '1 Market Road',
+        city: 'Pune',
+        state: 'Maharashtra',
+        pincode: '411001',
+      },
+    };
+    const quote = await request(app)
+      .post('/api/v1/retailer/checkout/quote')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send(checkoutPayload);
+    expect(quote.status).toBe(200);
+    expect(quote.body.data).toMatchObject({ subtotal: 100, tax: 18, grandTotal: 118 });
+
+    const checkout = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({ ...checkoutPayload, expectedQuoteHash: quote.body.data.quoteHash });
+    expect(checkout.status).toBe(201);
+    expect(checkout.body.data.order).toMatchObject({ grandTotal: 118 });
   });
 
   test('public referral categories retain wholesaler-specific images and return replacements', async () => {

@@ -1431,26 +1431,59 @@ class RetailerService {
       throw new ForbiddenError('Only retailers can switch wholesaler connections.', 'FORBIDDEN_ROLE');
     }
 
-    const { profile: wholesalerProfile, wholesaler } = await ReferralService.resolveActiveCode(referralCode);
+    const { profile: wholesalerProfile, wholesaler } = await ReferralService.resolveActiveCode(
+      referralCode,
+      { requireSignupsEnabled: false },
+    );
     const retailerProfile = await RetailerProfile.findOne({ userId: retailerUser._id });
     if (!retailerProfile) {
       throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
     }
 
     const targetWholesalerId = wholesaler._id;
+    const retailerWholesalerUpdate = {
+      assignedWholesalerId: targetWholesalerId,
+      wholesalerId: targetWholesalerId,
+      createdByWholesalerId: targetWholesalerId,
+      referralCodeUsed: wholesalerProfile.retailerReferralCode,
+      wholesalerInfo: {
+        businessName: wholesalerProfile.businessName || wholesaler.name || '',
+        ownerName: wholesaler.name || '',
+        email: wholesaler.email || '',
+        phone: wholesaler.phone || '',
+      },
+    };
     const currentRelationship = await WholesalerRetailerRelationship.findOne({
       retailerId: retailerUser._id,
       status: RELATIONSHIP_STATUS.ACTIVE,
     });
 
+    if (
+      wholesalerProfile.retailerSignupsEnabled === false &&
+      (!currentRelationship || String(currentRelationship.wholesalerId) !== String(targetWholesalerId))
+    ) {
+      throw new ForbiddenError(
+        'This wholesaler has temporarily paused new retailer sign-ups.',
+        'SIGNUPS_PAUSED',
+      );
+    }
+
     if (currentRelationship && String(currentRelationship.wholesalerId) === String(targetWholesalerId)) {
+      currentRelationship.referralCode = wholesalerProfile.retailerReferralCode;
+      await currentRelationship.save();
+      const profileUpdate = await RetailerProfile.updateOne(
+        { _id: retailerProfile._id },
+        { $set: { ...retailerWholesalerUpdate, activeRelationshipId: currentRelationship._id } },
+      );
+      if (profileUpdate.matchedCount !== 1) {
+        throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
+      }
       return {
         message: 'You are already connected to this wholesaler.',
         relationship: currentRelationship,
       };
     }
 
-    const wholesalerUser = await User.findById(targetWholesalerId).select('name email phone').lean();
     const now = new Date();
     const relationshipData = {
       wholesalerId: targetWholesalerId,
@@ -1460,18 +1493,6 @@ class RetailerService {
       joinedAt: now,
       approvedAt: now,
     };
-    const retailerWholesalerUpdate = {
-      assignedWholesalerId: targetWholesalerId,
-      wholesalerId: targetWholesalerId,
-      createdByWholesalerId: targetWholesalerId,
-      referralCodeUsed: wholesalerProfile.retailerReferralCode,
-      wholesalerInfo: {
-        businessName: wholesalerProfile.businessName || wholesalerUser?.name || '',
-        ownerName: wholesalerUser?.name || '',
-        email: wholesalerUser?.email || '',
-        phone: wholesalerUser?.phone || '',
-      },
-    };
     let session = null;
     const topologyType = mongoose.connection?.client?.topology?.description?.type;
     if (topologyType && topologyType.includes('ReplicaSet')) {
@@ -1480,10 +1501,6 @@ class RetailerService {
     }
 
     let relationship;
-    let previousCart = null;
-    if (!session) {
-      previousCart = await Cart.findOne({ retailerId: retailerUser._id }).lean();
-    }
     try {
       const options = session ? { session } : {};
       if (currentRelationship) {
@@ -1510,20 +1527,6 @@ class RetailerService {
       if (updatedProfile.matchedCount !== 1) {
         throw new NotFoundError('Retailer profile not found', 'RETAILER_PROFILE_NOT_FOUND');
       }
-
-      await Cart.updateOne(
-        { retailerId: retailerUser._id },
-        {
-          $set: {
-            wholesalerId: targetWholesalerId,
-            items: [],
-            subtotal: 0,
-            tax: 0,
-            grandTotal: 0,
-          },
-        },
-        options,
-      );
 
       if (session) await session.commitTransaction();
     } catch (error) {
@@ -1561,20 +1564,6 @@ class RetailerService {
             ...(Object.keys(unsetProfile).length ? { $unset: unsetProfile } : {}),
           },
         );
-        if (previousCart) {
-          await Cart.updateOne(
-            { _id: previousCart._id },
-            {
-              $set: {
-                wholesalerId: previousCart.wholesalerId,
-                items: previousCart.items,
-                subtotal: previousCart.subtotal,
-                tax: previousCart.tax,
-                grandTotal: previousCart.grandTotal,
-              },
-            },
-          );
-        }
       }
       if (error.code === 11000) {
         throw new ConflictError('The retailer connection changed. Please retry the invitation.', 'RELATIONSHIP_CHANGED');

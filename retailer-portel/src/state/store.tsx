@@ -797,6 +797,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       typeof window !== "undefined"
         ? getReferralAttributionFromUrl(new URL(window.location.href))
         : null;
+    if (urlAttribution) saveReferralAttribution(urlAttribution, true);
     const storedAttribution = getStoredReferralAttribution();
     const activeReferral = urlAttribution || storedAttribution;
     const shouldShowLoading = !silent || Boolean(urlAttribution);
@@ -806,6 +807,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     let requestedReferralWholesaler: ApiWholesaler | null = null;
     let requestedReferralProducts: ApiProduct[] = [];
+    let connectedByReferral = false;
     if (token && activeReferral) {
       try {
         const response = await api.getReferral(activeReferral.code);
@@ -819,6 +821,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           : Array.isArray((productsResponse as any)?.data?.products)
             ? (productsResponse as any).data.products
             : [];
+        await api.switchWholesalerByReferral(activeReferral.code);
+        connectedByReferral = true;
       } catch (error) {
         setProducts([]);
         setCategories([]);
@@ -961,13 +965,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...(staleTime !== undefined && { staleTime }),
         });
 
+      if (connectedByReferral) {
+        await Promise.all(
+          ["wholesaler", "products", "categories", "cart", "dashboard"].map((resource) =>
+            queryClient.invalidateQueries({
+              queryKey: retailerQueryKeys.resource(userId, resource),
+            }),
+          ),
+        );
+      }
+
       // Sync guest cart items only when the authenticated account can access their catalog.
       let guestCartSync = guestCartSyncRef.current;
       if (!guestCartSync) {
         guestCartSync = (async () => {
           const guestCart = readLocalCart();
           const unsyncedGuestCart: CartLine[] = [];
+          const referralProductIds = activeReferral
+            ? new Set(requestedReferralProducts.map((item) => String(item._id || item.id || "")))
+            : null;
           for (const line of guestCart) {
+            if (referralProductIds && !referralProductIds.has(line.productId)) {
+              unsyncedGuestCart.push(line);
+              continue;
+            }
             try {
               await api.addToCart(line.productId, line.quantity, line.color);
             } catch (error) {
@@ -1084,14 +1105,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (loadProducts) setProducts(nextProducts);
 
       if (loadCart) {
+        const catalogProductIds = new Set(nextProducts.map((product) => product.id));
+        const isInActiveCatalog = (line: CartLine) =>
+          !loadProducts || catalogProductIds.has(line.productId);
         if (cartRes) {
-          const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string; quantity: number; color?: string }> } }).data?.items || []) as Array<{ productId: string; quantity: number; color?: string }>;
+          const cartItems = ((cartRes as { data?: { items?: Array<{ productId: string | { _id?: string; id?: string }; quantity: number; color?: string }> } }).data?.items || []) as Array<{ productId: string | { _id?: string; id?: string }; quantity: number; color?: string }>;
           const mappedCart = cartItems.map((item) => ({
-            productId: String(item.productId),
+            productId: String(
+              typeof item.productId === "object"
+                ? item.productId?._id || item.productId?.id || ""
+                : item.productId,
+            ),
             quantity: Number(item.quantity || 0),
             ...(item.color ? { color: item.color } : {}),
-          }));
-          for (const line of unsyncedGuestCart) {
+          })).filter(isInActiveCatalog);
+          for (const line of unsyncedGuestCart.filter(isInActiveCatalog)) {
             const existing = mappedCart.find(
               (item) => item.productId === line.productId && String(item.color || "") === String(line.color || ""),
             );
@@ -1102,8 +1130,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           cartRef.current = mappedCart;
           saveLocalCart(unsyncedGuestCart);
         } else {
-          const preservedCart = cartRef.current.length ? [...cartRef.current] : [];
+          const preservedCart = (cartRef.current.length ? [...cartRef.current] : []).filter(isInActiveCatalog);
           for (const line of guestCart) {
+            if (!isInActiveCatalog(line)) continue;
             const existing = preservedCart.find(
               (item) => item.productId === line.productId && String(item.color || "") === String(line.color || ""),
             );

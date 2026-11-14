@@ -988,7 +988,7 @@ export default function CategoriesPage() {
 
               <div>
                 <label htmlFor="category-parent" className="mb-1 block font-bold text-gray-700">
-                  Parent Category (Max 3-Level Depth)
+                  Parent Category 
                 </label>
                 <select
                   id="category-parent"
@@ -1011,7 +1011,7 @@ export default function CategoriesPage() {
               {/* Cover Image Upload (with Preset Options) */}
               <div>
                 <label className="block font-bold text-gray-700 mb-1">
-                  Category Cover Image (Drag & Drop or Preset)
+                  Category Cover Image 
                 </label>
                 <div
                   className="border-2 border-dashed border-tradeflow-green/30 hover:border-tradeflow-green rounded-xl bg-[#FAF9F6] p-4 text-center cursor-pointer hover:bg-tradeflow-green-50/50 transition"

@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
+const { pipeline } = require('stream/promises');
+const { Readable } = require('stream');
 const env = require('../../config/env');
 const logger = require('../../config/logger');
 const {
@@ -23,6 +25,8 @@ const {
 
 const QR_DIRECTORY = path.join(env.UPLOAD_PATH, 'payment-qr');
 const REPORT_DIRECTORY = path.join(env.UPLOAD_PATH, 'payment-reports');
+const EVIDENCE_BUCKET_NAME = 'paymentEvidence';
+const EVIDENCE_KEY_PREFIX = 'gridfs:';
 const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
 const BANK_DETAIL_FIELDS = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branch'];
 const ACCOUNT_HOLDER_PATTERN = /^[\p{L}][\p{L}\s.'-]{1,99}$/u;
@@ -45,6 +49,56 @@ const FILE_SIGNATURES = {
 function ensureDirectories() {
   fs.mkdirSync(QR_DIRECTORY, { recursive: true });
   fs.mkdirSync(REPORT_DIRECTORY, { recursive: true });
+}
+
+function getEvidenceBucket() {
+  if (!mongoose.connection.db) {
+    throw new Error('Payment evidence storage is unavailable before the database connects');
+  }
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: EVIDENCE_BUCKET_NAME });
+}
+
+function getEvidenceFileId(storageKey) {
+  if (!String(storageKey || '').startsWith(EVIDENCE_KEY_PREFIX)) return null;
+  const rawId = String(storageKey).slice(EVIDENCE_KEY_PREFIX.length);
+  return mongoose.Types.ObjectId.isValid(rawId) ? new mongoose.Types.ObjectId(rawId) : null;
+}
+
+async function getScreenshotAvailability(storageKeys) {
+  const fileIds = storageKeys.map(getEvidenceFileId).filter(Boolean);
+  const existingGridFsIds = new Set();
+  if (fileIds.length) {
+    if (!mongoose.connection.db) {
+      throw new Error('Payment evidence storage is unavailable before the database connects');
+    }
+    const files = await mongoose.connection.db
+      .collection(`${EVIDENCE_BUCKET_NAME}.files`)
+      .find({ _id: { $in: fileIds } }, { projection: { _id: 1 } })
+      .toArray();
+    files.forEach((file) => existingGridFsIds.add(String(file._id)));
+  }
+
+  return storageKeys.map((storageKey) => {
+    if (!storageKey) return false;
+    const fileId = getEvidenceFileId(storageKey);
+    if (String(storageKey).startsWith(EVIDENCE_KEY_PREFIX)) {
+      return Boolean(fileId && existingGridFsIds.has(String(fileId)));
+    }
+    return fs.existsSync(path.resolve(REPORT_DIRECTORY, path.basename(storageKey)));
+  });
+}
+
+async function removeScreenshot(storageKey) {
+  const fileId = getEvidenceFileId(storageKey);
+  if (fileId) {
+    const bucket = getEvidenceBucket();
+    if (await bucket.find({ _id: fileId }).hasNext()) await bucket.delete(fileId);
+    return;
+  }
+  if (!storageKey) return;
+  await fs.promises.unlink(path.resolve(REPORT_DIRECTORY, path.basename(storageKey))).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
 }
 
 function fileMimeType(file) {
@@ -452,10 +506,30 @@ class PaymentsService {
   static async saveScreenshot(file) {
     if (!file) return '';
     const mimeType = fileMimeType(file);
-    ensureDirectories();
-    const filename = `${crypto.randomUUID()}.${mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]}`;
-    await fs.promises.writeFile(path.join(REPORT_DIRECTORY, filename), file.buffer, { flag: 'wx' });
-    return filename;
+    const bucket = getEvidenceBucket();
+    const filename = `payment-evidence-${crypto.randomUUID()}`;
+    const uploadStream = bucket.openUploadStream(filename, {
+      contentType: mimeType,
+      metadata: { kind: 'payment-evidence' },
+    });
+
+    try {
+      await pipeline(Readable.from(file.buffer), uploadStream);
+    } catch (error) {
+      try {
+        if (await bucket.find({ _id: uploadStream.id }).hasNext()) {
+          await bucket.delete(uploadStream.id);
+        }
+      } catch (cleanupError) {
+        logger.error('Unable to remove incomplete payment evidence upload', {
+          fileId: String(uploadStream.id),
+          error: cleanupError.message,
+        });
+      }
+      throw error;
+    }
+
+    return `${EVIDENCE_KEY_PREFIX}${uploadStream.id}`;
   }
 
   static async createPaymentReport(retailerId, payload, file, req) {
@@ -590,8 +664,8 @@ class PaymentsService {
         });
       }
       if (screenshotPath) {
-        await fs.promises.unlink(path.join(REPORT_DIRECTORY, screenshotPath)).catch((cleanupError) => {
-          if (cleanupError.code !== 'ENOENT') logger.error('Failed to remove an uncommitted payment screenshot', { cleanupError });
+        await removeScreenshot(screenshotPath).catch((cleanupError) => {
+          logger.error('Failed to remove an uncommitted payment screenshot', { cleanupError });
         });
       }
       if (error.code === 11000) throw new ConflictError('This UPI transaction/reference ID has already been reported.', 'DUPLICATE_TRANSACTION_REFERENCE');
@@ -599,12 +673,15 @@ class PaymentsService {
     }
   }
 
-  static serializeReport(report) {
+  static async serializeReport(report) {
     const item = report.toObject ? report.toObject() : report;
+    const [screenshotAvailable] = await getScreenshotAvailability([
+      report.screenshotPath || item.screenshotPath,
+    ]);
     delete item.screenshotPath;
     return {
       ...item,
-      screenshotAvailable: Boolean(report.screenshotPath || item.screenshotPath),
+      screenshotAvailable,
     };
   }
 
@@ -615,8 +692,9 @@ class PaymentsService {
       reversesPaymentId: { $in: items.map((item) => item._id) },
     });
     const reversedSet = new Set(reversedIds.map(String));
-    return items.map((item) => {
-      const screenshotAvailable = Boolean(item.screenshotPath);
+    const screenshotAvailability = await getScreenshotAvailability(items.map((item) => item.screenshotPath));
+    return items.map((item, index) => {
+      const screenshotAvailable = screenshotAvailability[index];
       delete item.screenshotPath;
       return { ...item, screenshotAvailable, wasReversed: reversedSet.has(String(item._id)) };
     });
@@ -634,8 +712,9 @@ class PaymentsService {
       reversesPaymentId: { $in: items.map((item) => item._id) },
     });
     const reversedSet = new Set(reversedIds.map(String));
-    return items.map((item) => {
-      const screenshotAvailable = Boolean(item.screenshotPath);
+    const screenshotAvailability = await getScreenshotAvailability(items.map((item) => item.screenshotPath));
+    return items.map((item, index) => {
+      const screenshotAvailable = screenshotAvailability[index];
       delete item.screenshotPath;
       return { ...item, screenshotAvailable, wasReversed: reversedSet.has(String(item._id)) };
     });
@@ -649,8 +728,9 @@ class PaymentsService {
       .sort({ createdAt: -1 })
       .limit(500)
       .lean();
-    return items.map((item) => {
-      const screenshotAvailable = Boolean(item.screenshotPath);
+    const screenshotAvailability = await getScreenshotAvailability(items.map((item) => item.screenshotPath));
+    return items.map((item, index) => {
+      const screenshotAvailable = screenshotAvailability[index];
       delete item.screenshotPath;
       return { ...item, screenshotAvailable };
     });
@@ -1223,16 +1303,35 @@ class PaymentsService {
     return this.serializeReport(reversal);
   }
 
-  static async getScreenshotPath(reportId, user, req) {
+  static async getScreenshot(reportId, user, req) {
     validateObjectId(reportId, 'payment report ID');
     const filter = { _id: reportId, isReport: true };
     if (user.role === 'RETAILER') filter.retailerId = user._id;
     else if (user.role === 'WHOLESALER') filter.wholesalerId = user._id;
     else if (user.role !== 'SUPER_ADMIN') throw new ForbiddenError('You are not allowed to view payment evidence.');
-    const report = await Payment.findOne(filter).select('screenshotPath retailerId wholesalerId');
+    const report = await Payment.findOne(filter).select('screenshotPath evidenceMimeType retailerId wholesalerId');
     if (!report || !report.screenshotPath) throw new NotFoundError('Payment screenshot not found.');
-    const filePath = path.resolve(REPORT_DIRECTORY, path.basename(report.screenshotPath));
-    if (!fs.existsSync(filePath)) throw new NotFoundError('Payment screenshot not found.');
+
+    let evidence;
+    const fileId = getEvidenceFileId(report.screenshotPath);
+    if (String(report.screenshotPath).startsWith(EVIDENCE_KEY_PREFIX)) {
+      if (!fileId) throw new NotFoundError('Payment screenshot not found.');
+      const bucket = getEvidenceBucket();
+      const file = await bucket.find({ _id: fileId }).next();
+      if (!file) throw new NotFoundError('Payment screenshot not found.');
+      evidence = {
+        stream: bucket.openDownloadStream(fileId),
+        contentType: file.contentType || report.evidenceMimeType || 'application/octet-stream',
+      };
+    } else {
+      const filePath = path.resolve(REPORT_DIRECTORY, path.basename(report.screenshotPath));
+      if (!fs.existsSync(filePath)) throw new NotFoundError('Payment screenshot not found.');
+      evidence = {
+        filePath,
+        contentType: report.evidenceMimeType || 'application/octet-stream',
+      };
+    }
+
     await AuditService.log({
       actorId: user._id,
       actorRole: user.role,
@@ -1241,7 +1340,7 @@ class PaymentsService {
       entityId: report._id,
       req,
     });
-    return filePath;
+    return evidence;
   }
 }
 
