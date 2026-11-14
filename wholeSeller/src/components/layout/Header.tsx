@@ -7,14 +7,12 @@ import {
   X,
   ArrowRight,
   Check,
-  MessageSquare,
   Headphones,
   PhoneCall,
   Menu,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import BusinessLogo from '@/components/BusinessLogo';
-import { FeedbackModal } from './FeedbackModal';
 import { SuperAdminHelpModal } from './SuperAdminHelpModal';
 
 interface HeaderProps {
@@ -26,7 +24,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
   const { profile, notifications, markNotificationsRead } = useWholesaler();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -78,17 +75,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
         >
           <Plus className="w-4 h-4 text-white" />
           <span className="hidden sm:inline">Add Product</span>
-        </button>
-
-        {/* Feedback Button - hidden on small screens, accessible in sidebar */}
-        <button
-          type="button"
-          onClick={() => setShowFeedbackModal(true)}
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-tradeflow-navy-hover text-white border border-tradeflow-navy-hover rounded-xl text-xs font-medium hover:bg-tradeflow-navy-pressed hover:border-tradeflow-green/30 transition-colors"
-          title="Submit Feedback & Review"
-        >
-          <MessageSquare className="w-3.5 h-3.5 text-[#78716C]" />
-          <span>Feedback</span>
         </button>
 
         {/* Notifications Icon & Popover */}
@@ -189,7 +175,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
           )}
         </div>
       </div>
-      <FeedbackModal isOpen={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} />
       <SuperAdminHelpModal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} />
     </header>
   );

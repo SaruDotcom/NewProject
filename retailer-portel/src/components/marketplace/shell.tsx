@@ -18,8 +18,6 @@ import {
   KeyboardArrowDown,
   Menu as MenuIcon,
   ChevronRight,
-  CheckCircle,
-  RateReview,
   LocalOffer,
   SupportAgent,
   ReceiptLong,
@@ -32,7 +30,6 @@ import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
 import { money, TradeFlowMark, WholesalerLogo } from "./primitives";
-import { FeedbackModal } from "./FeedbackModal";
 
 const primary = [
   { to: "/" as const, label: "Home" },
@@ -45,10 +42,9 @@ const primary = [
 const account = [
   { to: "/profile" as const, label: "My Account", icon: Person },
   { to: "/dashboard" as const, label: "Dashboard", icon: Dashboard },
+  { to: "/purchase-accounts" as const, label: "Purchase & Accounts", icon: ReceiptLong },
   { to: "/coupons" as const, label: "Coupons", icon: LocalOffer },
   { to: "/orders" as const, label: "Orders", icon: Assignment },
-  { to: "/reviews" as const, label: "Partner Reviews", icon: RateReview },
-  { to: "/transactions" as const, label: "Transactions History", icon: ReceiptLong },
   { to: "/wishlist" as const, label: "Wishlist", icon: Favorite },
   {
     to: "/notifications" as const,
@@ -188,7 +184,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
   const authenticated = isLoggedIn && Boolean(token);
   const isAuthRoute = ["/login", "/register", "/forgot-password"].includes(path) || /^\/r\/[^/]+$/.test(path);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const safeRetailerProfile = retailerProfile ?? null;
   const retailerOwnerName = safeRetailerProfile?.ownerName?.trim() || "Retailer";
   const retailerBusinessName = safeRetailerProfile?.businessName?.trim() || "Your business";
@@ -289,14 +284,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                   ))}
                   <button
                     type="button"
-                    onClick={() => setFeedbackModalOpen(true)}
-                    className="w-full text-left flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-accent min-h-[40px] text-amber-600 font-bold"
-                  >
-                    <RateReview className="size-4 text-amber-500" />
-                    Give Feedback & Review
-                  </button>
-                  <button
-                    type="button"
                     onClick={handleSignOut}
                     className="w-full text-left mt-1 flex items-center gap-3 rounded-xl border-t px-3 py-2.5 text-sm font-bold text-primary hover:bg-accent min-h-[44px]"
                   >
@@ -382,17 +369,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
                               <span>{item.label}</span>
                             </Link>
                           ))}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMobileMenuOpen(false);
-                              setFeedbackModalOpen(true);
-                            }}
-                            className="w-full text-left flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-bold text-amber-600 hover:bg-accent min-h-[44px]"
-                          >
-                            <RateReview className="size-4 text-amber-500" />
-                            <span>Give Feedback & Review</span>
-                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -526,7 +502,6 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <AddToCartModal />
-      <FeedbackModal open={feedbackModalOpen} onOpenChange={setFeedbackModalOpen} />
     </div>
   );
 }

@@ -7,6 +7,10 @@ module.exports = {
     const review = await ReviewsService.create(req.user, req.body);
     return ApiResponse.success(res, review, 'Review submitted successfully', 201);
   }),
+  updateOwn: asyncHandler(async (req, res) => {
+    const review = await ReviewsService.updateOwn(req.user, req.params.id, req.body);
+    return ApiResponse.success(res, review, 'Review updated successfully');
+  }),
   listReceived: asyncHandler(async (req, res) => {
     const reviews = await ReviewsService.listReceived(req.user);
     return ApiResponse.success(res, reviews, 'Reviews retrieved');

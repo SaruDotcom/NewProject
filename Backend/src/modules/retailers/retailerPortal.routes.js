@@ -31,7 +31,8 @@ router.use(authenticate, authorize(ROLES.RETAILER));
 
 // Dashboard
 router.get('/dashboard', retailerController.getDashboard);
-router.get('/reviews', reviewController.listReceived);
+router.get('/reviews', reviewController.listSubmitted);
+router.patch('/reviews/:id', reviewController.updateOwn);
 router.get('/review-partners', reviewController.listPartners);
 
 // Profile

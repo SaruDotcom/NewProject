@@ -338,12 +338,6 @@ export interface WholesalerSubscription {
   renewalDate: string;
 }
 
-export interface ReviewPartner {
-  id: string;
-  name: string;
-  role: string;
-}
-
 export interface PartnerReview {
   id: string;
   title?: string;
@@ -353,16 +347,6 @@ export interface PartnerReview {
   isRead: boolean;
   readAt?: string | null;
   reviewer: { id: string; name: string; role: string };
-}
-
-export interface SubmittedPartnerReview {
-  id: string;
-  title?: string;
-  comment: string;
-  rating: number;
-  status: string;
-  createdAt: string;
-  recipient: { id: string; name: string; role: string };
 }
 
 export interface SubscriptionPaymentRecord {
@@ -1063,23 +1047,11 @@ export const api = {
   getReceivedReviews: () =>
     request<{ success: boolean; data: PartnerReview[] }>('/wholesaler/reviews', { method: 'GET' }),
 
-  getSubmittedReviews: () =>
-    request<{ success: boolean; data: SubmittedPartnerReview[] }>('/wholesaler/reviews/submitted', { method: 'GET' }),
-
   markReviewAsRead: (reviewId: string) =>
     request<{ success: boolean; data: { id: string; isRead: boolean; readAt: string } }>(
       `/wholesaler/reviews/${encodeURIComponent(reviewId)}/read`,
       { method: 'PATCH' },
     ),
-
-  getReviewPartners: () =>
-    request<{ success: boolean; data: ReviewPartner[] }>('/wholesaler/review-partners', { method: 'GET' }),
-
-  submitPartnerReview: (data: { recipientId: string; title?: string; comment: string; rating: number }) =>
-    request<{ success: boolean; data: any }>('/reviews', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
 
   submitFeedback: (data: { title?: string; comment: string; rating: number; productId?: string }) =>
     request<{ success: boolean; data: any }>('/support/tickets', {

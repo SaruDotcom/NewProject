@@ -28,8 +28,12 @@ function invoiceItem(item) {
   const igstAmount = Number(item.igstAmount ?? (item.igst ? Number(item.gstAmount || 0) : 0));
   return {
     name: text(item.name) || 'Product',
+    description: text(item.description),
     hsnCode: text(item.hsnCode) || '-',
     quantity: Number(item.quantity || 0),
+    unit: text(item.unit),
+    pricePerUnit: Number(item.pricePerUnit || 0),
+    gstRate: Number(item.gstRate || 0),
     taxableValue,
     cgstAmount,
     sgstAmount,
@@ -80,33 +84,33 @@ class InvoiceService {
     document.fillColor('#4B5563').fontSize(9).font('Helvetica').text(invoiceNumber, 40, 66);
     document.text(`Invoice date: ${new Date(invoiceDate).toLocaleDateString('en-IN')}`, 350, 42, { width: 220, align: 'right' });
     document.text(`Order number: ${text(order.orderNumber)}`, 350, 56, { width: 220, align: 'right' });
-    document.moveTo(40, 86).lineTo(572, 86).strokeColor('#D7DEE5').stroke();
+    document.text(`Bilty / LR: ${text(order.shippingDetails?.biltyNumber) || 'Not provided'}`, 350, 70, { width: 220, align: 'right' });
+    document.moveTo(40, 91).lineTo(572, 91).strokeColor('#D7DEE5').stroke();
 
     const sellerAddress = formatAddress(sellerProfile?.address);
-    document.fillColor('#12304A').font('Helvetica-Bold').fontSize(10).text('SELLER', 40, 100);
-    document.fillColor('#1F2937').font('Helvetica-Bold').fontSize(11).text(sellerName, 40, 117, { width: 250 });
+    document.fillColor('#12304A').font('Helvetica-Bold').fontSize(10).text('SELLER', 40, 104);
+    document.fillColor('#1F2937').font('Helvetica-Bold').fontSize(11).text(sellerName, 40, 121, { width: 250 });
     document.font('Helvetica').fontSize(9).fillColor('#4B5563')
-      .text(sellerAddress || '-', 40, 133, { width: 245 })
-      .text(`GSTIN: ${text(sellerProfile?.gstin) || 'Not provided'}`, 40, 165, { width: 245 })
-      .text(`Contact: ${text(sellerUser?.phone) || text(sellerUser?.email) || '-'}`, 40, 179, { width: 245 });
+      .text(sellerAddress || '-', 40, 137, { width: 245 })
+      .text(`GSTIN: ${text(sellerProfile?.gstin) || 'Not provided'}`, 40, 169, { width: 245 })
+      .text(`Contact: ${text(sellerUser?.phone) || text(sellerUser?.email) || '-'}`, 40, 183, { width: 245 });
 
-    document.fillColor('#12304A').font('Helvetica-Bold').fontSize(10).text('BILL TO', 310, 100);
-    document.fillColor('#1F2937').font('Helvetica-Bold').fontSize(11).text(customerName, 310, 117, { width: 260 });
+    document.fillColor('#12304A').font('Helvetica-Bold').fontSize(10).text('BILL TO', 310, 104);
+    document.fillColor('#1F2937').font('Helvetica-Bold').fontSize(11).text(customerName, 310, 121, { width: 260 });
     document.font('Helvetica').fontSize(9).fillColor('#4B5563')
-      .text(customerAddress || '-', 310, 133, { width: 260 })
-      .text(`GSTIN: ${text(retailerProfile?.gstin) || 'Not provided'}`, 310, 165, { width: 260 })
-      .text(`Contact: ${text(order.billingAddress?.phone || order.shippingAddress?.phone || retailerUser?.phone) || text(retailerUser?.email) || '-'}`, 310, 179, { width: 260 });
+      .text(customerAddress || '-', 310, 137, { width: 260 })
+      .text(`GSTIN: ${text(retailerProfile?.gstin) || 'Not provided'}`, 310, 169, { width: 260 })
+      .text(`Contact: ${text(order.billingAddress?.phone || order.shippingAddress?.phone || retailerUser?.phone) || text(retailerUser?.email) || '-'}`, 310, 183, { width: 260 });
 
-    let y = 214;
+    let y = 218;
     const columns = [
-      { title: 'Product', width: 126, align: 'left' },
-      { title: 'HSN', width: 42, align: 'left' },
-      { title: 'Qty', width: 32, align: 'right' },
+      { title: 'Product / HSN', width: 130, align: 'left' },
+      { title: 'Qty / Unit', width: 50, align: 'right' },
+      { title: 'Rate', width: 55, align: 'right' },
       { title: 'Taxable', width: 65, align: 'right' },
-      { title: 'CGST', width: 48, align: 'right' },
-      { title: 'SGST', width: 48, align: 'right' },
-      { title: 'IGST', width: 48, align: 'right' },
-      { title: 'Total', width: 78, align: 'right' },
+      { title: 'GST %', width: 40, align: 'right' },
+      { title: 'GST Amt', width: 58, align: 'right' },
+      { title: 'Total', width: 82, align: 'right' },
     ];
     const drawTableHeader = () => {
       document.rect(40, y, 532, 25).fill('#12304A');
@@ -125,42 +129,53 @@ class InvoiceService {
         y = 40;
         drawTableHeader();
       }
-      const rowHeight = 34;
+      const rowHeight = 38;
       if (index % 2 === 0) document.rect(40, y, 532, rowHeight).fill('#F5F8FA');
       const values = [
-        item.name,
-        item.hsnCode,
-        String(item.quantity),
+        `${item.name}${item.description ? `\n${item.description}` : ''}\nHSN: ${item.hsnCode}`,
+        `${item.quantity}${item.unit ? ` ${item.unit}` : ''}`,
+        Number(item.pricePerUnit).toFixed(2),
         Number(item.taxableValue).toFixed(2),
-        Number(item.cgstAmount).toFixed(2),
-        Number(item.sgstAmount).toFixed(2),
-        Number(item.igstAmount).toFixed(2),
+        `${Number(item.gstRate).toFixed(2)}%`,
+        Number(item.cgstAmount + item.sgstAmount + item.igstAmount).toFixed(2),
         Number(item.total).toFixed(2),
       ];
       let x = 46;
       columns.forEach((column, columnIndex) => {
         document.fillColor('#1F2937').font('Helvetica').fontSize(7.5)
-          .text(values[columnIndex], x, y + 8, { width: column.width, height: 22, align: column.align, ellipsis: true });
+          .text(values[columnIndex], x, y + 5, { width: column.width, height: 30, align: column.align, ellipsis: true });
         x += column.width;
       });
       y += rowHeight;
     });
 
-    if (y > 650) {
+    if (y > 590) {
       document.addPage();
       y = 40;
     } else {
       y += 14;
     }
+    const cgstTotal = items.reduce((sum, item) => sum + item.cgstAmount, 0);
+    const sgstTotal = items.reduce((sum, item) => sum + item.sgstAmount, 0);
+    const igstTotal = items.reduce((sum, item) => sum + item.igstAmount, 0);
+    const paidAmount = order.isCreditOrder
+      ? Number(order.creditPaidAmount || 0)
+      : Number.isSafeInteger(order.directPaidPaise)
+        ? order.directPaidPaise / 100
+        : order.paymentStatus === 'PAID' ? Number(order.grandTotal || 0) : 0;
     const totals = [
       ['Subtotal', money(order.subtotal)],
       ['Discount', `- ${money(order.discount)}`],
-      ['GST', money(order.tax)],
-      ['Shipping', money(order.shipping)],
+      ['CGST', money(cgstTotal)],
+      ['SGST', money(sgstTotal)],
+      ['IGST', money(igstTotal)],
+      ['Transport / shipping', money(order.shipping)],
       ['Grand Total', money(order.grandTotal)],
+      ['Amount Paid', money(paidAmount)],
+      ['Remaining Balance', money(Math.max(0, Number(order.grandTotal || 0) - paidAmount))],
     ];
     totals.forEach(([label, amount]) => {
-      const isTotal = label === 'Grand Total';
+      const isTotal = label === 'Grand Total' || label === 'Remaining Balance';
       document.fillColor(isTotal ? '#12304A' : '#4B5563')
         .font(isTotal ? 'Helvetica-Bold' : 'Helvetica')
         .fontSize(isTotal ? 11 : 9)

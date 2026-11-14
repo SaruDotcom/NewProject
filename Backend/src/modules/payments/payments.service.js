@@ -539,6 +539,12 @@ class PaymentsService {
       throw new BadRequestError('Enter a valid payment transaction/reference ID.', 'INVALID_TRANSACTION_REFERENCE');
     }
     const paymentDetails = String(payload.paymentDetails || '').trim();
+    const notes = String(payload.notes || '').trim();
+    if (notes.length > 500) throw new BadRequestError('Payment notes must not exceed 500 characters.', 'PAYMENT_NOTES_TOO_LONG');
+    const reportedPaymentDate = payload.paymentDate ? new Date(payload.paymentDate) : new Date();
+    if (Number.isNaN(reportedPaymentDate.getTime()) || reportedPaymentDate.getTime() > Date.now() + 5 * 60 * 1000) {
+      throw new BadRequestError('Enter a valid payment date that is not in the future.', 'INVALID_PAYMENT_DATE');
+    }
     const creditRepayment = payload.type === 'CREDIT_REPAYMENT';
     const paymentMethod = String(payload.paymentMethod || 'UPI').toUpperCase();
     if (!['UPI', ...ADDITIONAL_PAYMENT_METHODS].includes(paymentMethod)) {
@@ -553,6 +559,9 @@ class PaymentsService {
     let wholesalerId;
 
     if (creditRepayment) {
+      if (payload.orderId && !/^[0-9a-fA-F]{24}$/.test(String(payload.orderId))) {
+        throw new BadRequestError('A valid order ID is required.', 'INVALID_ORDER_ID');
+      }
       const relationship = await WholesalerRetailerRelationship.findOne({
         retailerId,
         ...(payload.wholesalerId ? { wholesalerId: payload.wholesalerId } : {}),
@@ -560,6 +569,18 @@ class PaymentsService {
       });
       if (!relationship) throw new ForbiddenError('No active wholesaler is connected to this retailer.', 'NO_ACTIVE_WHOLESALER');
       wholesalerId = relationship.wholesalerId;
+      if (payload.orderId) {
+        order = await Order.findOne({
+          _id: payload.orderId,
+          retailerId,
+          wholesalerId,
+          isCreditOrder: true,
+          orderStatus: { $nin: ['CANCELLED', 'RETURNED', 'REFUNDED'] },
+          creditPaymentStatus: { $in: ['PENDING', 'OVERDUE'] },
+        });
+        if (!order) throw new NotFoundError('Outstanding credit invoice not found for this retailer.');
+        relatedOrderIds = [order._id];
+      }
     } else {
       const orderId = String(payload.orderId || '');
       if (!/^[0-9a-fA-F]{24}$/.test(orderId)) throw new BadRequestError('A valid order ID is required.', 'INVALID_ORDER_ID');
@@ -583,29 +604,79 @@ class PaymentsService {
       const currentOutstandingPaise = Number.isSafeInteger(relForOutstanding?.currentOutstandingPaise)
         ? relForOutstanding.currentOutstandingPaise
         : Math.round(Number(relForOutstanding?.currentOutstandingAmount || 0) * 100);
-      if (amountPaise > currentOutstandingPaise) {
+      const pendingCreditReports = await Payment.find({
+        retailerId,
+        wholesalerId,
+        isReport: true,
+        isCreditRepayment: true,
+        status: { $in: ['PENDING', 'PROCESSING'] },
+      }).select('amountPaise amount');
+      const pendingCreditPaise = pendingCreditReports.reduce(
+        (sum, payment) => sum + (payment.amountPaise || Math.round(Number(payment.amount || 0) * 100)),
+        0,
+      );
+      if (amountPaise > currentOutstandingPaise - pendingCreditPaise) {
         throw new BadRequestError('Repayment amount cannot exceed the current outstanding balance.', 'REPAYMENT_EXCEEDS_OUTSTANDING');
       }
-      const openOrders = await Order.find({
+      const openOrders = order ? [order] : await Order.find({
         retailerId,
         wholesalerId,
         isCreditOrder: true,
+        orderStatus: { $nin: ['CANCELLED', 'RETURNED', 'REFUNDED'] },
         creditPaymentStatus: { $in: ['PENDING', 'OVERDUE'] },
       }).sort({ creditDueDate: 1, createdAt: 1 }).select('_id grandTotal creditPaidAmount');
-      relatedOrderIds = openOrders
-        .filter((item) => Math.round(Number(item.grandTotal || 0) * 100) > Math.round(Number(item.creditPaidAmount || 0) * 100))
-        .map((item) => item._id);
+      if (!order) {
+        relatedOrderIds = openOrders
+          .filter((item) => Math.round(Number(item.grandTotal || 0) * 100) > Math.round(Number(item.creditPaidAmount || 0) * 100))
+          .map((item) => item._id);
+      }
       if (!relatedOrderIds.length) throw new BadRequestError('No outstanding credit orders were found.', 'NO_OUTSTANDING_CREDIT');
-      order = openOrders.find((item) => String(item._id) === String(relatedOrderIds[0]));
+      if (!order) order = openOrders.find((item) => String(item._id) === String(relatedOrderIds[0]));
+      if (payload.orderId) {
+        const orderOutstandingPaise = Math.max(
+          0,
+          Math.round(Number(order.grandTotal || 0) * 100) - Math.round(Number(order.creditPaidAmount || 0) * 100),
+        );
+        const pendingForOrder = await Payment.find({
+          retailerId,
+          wholesalerId,
+          isReport: true,
+          isCreditRepayment: true,
+          creditOrderSpecific: true,
+          relatedOrderIds: order._id,
+          status: { $in: ['PENDING', 'PROCESSING'] },
+        }).select('amountPaise amount');
+        const pendingForOrderPaise = pendingForOrder.reduce(
+          (sum, payment) => sum + (payment.amountPaise || Math.round(Number(payment.amount || 0) * 100)),
+          0,
+        );
+        if (amountPaise > orderOutstandingPaise - pendingForOrderPaise) {
+          throw new BadRequestError('Repayment amount cannot exceed the selected invoice balance.', 'REPAYMENT_EXCEEDS_INVOICE_BALANCE');
+        }
+      }
     } else {
       if (order.isCreditOrder) throw new BadRequestError('Use the credit repayment option for credit orders.', 'CREDIT_REPAYMENT_REQUIRED');
-      if (order.paymentStatus === 'PAID') throw new BadRequestError('This order is already paid.', 'ORDER_ALREADY_PAID');
-      if (order.paymentMethod !== paymentMethod) {
-        throw new BadRequestError('The reported payment method must match the order payment method.', 'ORDER_PAYMENT_METHOD_MISMATCH');
+      if (['CANCELLED', 'RETURNED', 'REFUNDED'].includes(String(order.orderStatus).toUpperCase())) {
+        throw new BadRequestError('Payments cannot be submitted for a cancelled or returned order.', 'ORDER_NOT_PAYABLE');
       }
-      const verifiedReports = await Payment.find({ orderId: order._id, isReport: true, status: 'PAID' }).select('amountPaise amount');
+      if (order.paymentStatus === 'PAID') throw new BadRequestError('This order is already paid.', 'ORDER_ALREADY_PAID');
+      const verifiedReports = await Payment.find({
+        orderId: order._id,
+        isReport: true,
+        isCreditRepayment: { $ne: true },
+        isReversal: { $ne: true },
+        status: 'PAID',
+      }).select('amountPaise amount');
       const paidPaise = verifiedReports.reduce((sum, payment) => sum + (payment.amountPaise || Math.round(Number(payment.amount || 0) * 100)), 0);
-      const remainingPaise = Math.max(0, Math.round(Number(order.grandTotal) * 100) - paidPaise);
+      const directPaidPaise = Number.isSafeInteger(order.directPaidPaise) ? order.directPaidPaise : paidPaise;
+      const pendingReports = await Payment.find({
+        orderId: order._id,
+        isReport: true,
+        isCreditRepayment: { $ne: true },
+        status: { $in: ['PENDING', 'PROCESSING'] },
+      }).select('amountPaise amount');
+      const pendingPaise = pendingReports.reduce((sum, payment) => sum + (payment.amountPaise || Math.round(Number(payment.amount || 0) * 100)), 0);
+      const remainingPaise = Math.max(0, Math.round(Number(order.grandTotal) * 100) - directPaidPaise - pendingPaise);
       if (amountPaise > remainingPaise) {
         throw new BadRequestError('Reported amount cannot exceed the remaining order balance.', 'PAYMENT_EXCEEDS_ORDER_BALANCE');
       }
@@ -625,10 +696,13 @@ class PaymentsService {
         status: 'PENDING',
         paymentMethod,
         transactionReference,
+        reportedPaymentDate,
         paymentDetails,
+        notes,
         transactionReferenceKey: referenceKey,
         isReport: true,
         isCreditRepayment: creditRepayment,
+        creditOrderSpecific: creditRepayment && Boolean(payload.orderId),
         relatedOrderIds,
         screenshotPath,
         evidenceMimeType: file ? fileMimeType(file) : '',

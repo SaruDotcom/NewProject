@@ -149,6 +149,22 @@ export type PartnerReview = {
   reviewer: { id: string; name: string; role: string };
 };
 
+export type RetailerReview = {
+  id: string;
+  orderId: string;
+  title?: string;
+  comment: string;
+  rating: number;
+  categoryRatings: {
+    productQuality?: number;
+    packaging?: number;
+    delivery?: number;
+    communication?: number;
+  };
+  createdAt: string;
+  recipient: { id: string; name: string; role: string };
+};
+
 export type ApiOrder = {
   _id?: string;
   id?: string;
@@ -746,6 +762,8 @@ export const api = {
     transactionReference: string;
     paymentMethod?: string;
     paymentDetails?: string;
+    paymentDate?: string;
+    notes?: string;
     type?: 'CREDIT_REPAYMENT';
     screenshot?: File;
   }) => {
@@ -755,12 +773,24 @@ export const api = {
     formData.append('transactionReference', payload.transactionReference);
     if (payload.paymentMethod) formData.append('paymentMethod', payload.paymentMethod);
     if (payload.paymentDetails) formData.append('paymentDetails', payload.paymentDetails);
+    if (payload.paymentDate) formData.append('paymentDate', payload.paymentDate);
+    if (payload.notes) formData.append('notes', payload.notes);
     if (payload.type) formData.append('type', payload.type);
     if (payload.screenshot) formData.append('screenshot', payload.screenshot);
     return request<ApiEnvelope<any>>('/retailer/payments/reports', { method: 'POST', body: formData });
   },
   getRetailerPaymentReports: () =>
     request<ApiEnvelope<any[]>>('/retailer/payments/reports', { method: 'GET' }),
+  getPaymentReportScreenshot: async (reportId: string) => {
+    const response = await fetch(buildApiUrl(`/retailer/payments/reports/${encodeURIComponent(reportId)}/screenshot`), {
+      headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {},
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.message || 'Unable to load payment proof.');
+    }
+    return response.blob();
+  },
   requestCredit: () =>
     request<ApiEnvelope<{ creditStatus: string }>>('/retailer/credit-request', {
       method: 'POST',
@@ -780,12 +810,14 @@ export const api = {
     return response.blob();
   },
 
-  getReturns: () => request<ApiEnvelope<any[]>>('/retailer/returns', { method: 'GET' }),
+  getReturns: (params?: Record<string, string | number | boolean | null | undefined>) =>
+    request<ApiEnvelope<any[]>>(`/retailer/returns${buildQueryString(params)}`, { method: 'GET' }),
 
   createReturn: (payload: { orderId: string; items: { productId: string; quantity: number }[]; reason: string; note?: string; images?: string[] }) =>
     request<ApiEnvelope<any>>('/retailer/returns', { method: 'POST', body: JSON.stringify(payload) }),
 
-  getOrderById: (orderId: string) => request<ApiEnvelope<{ order: any; payment?: any }>>(`/retailer/orders/${orderId}`, { method: 'GET' }),
+  getOrderById: (orderId: string) =>
+    request<ApiEnvelope<{ order: any; payment?: any; invoice?: any }>>(`/retailer/orders/${orderId}`, { method: 'GET' }),
 
   cancelOrder: (orderId: string, reason: string, note?: string) =>
     request<ApiEnvelope<any>>(`/retailer/orders/${orderId}/cancel`, {
@@ -813,15 +845,34 @@ export const api = {
 
   getNotifications: () => request<ApiEnvelope<any[]>>('/retailer/notifications', { method: 'GET' }),
   getReceivedReviews: () => request<ApiEnvelope<PartnerReview[]>>('/retailer/reviews', { method: 'GET' }),
+  getSubmittedReviews: () => request<ApiEnvelope<RetailerReview[]>>('/retailer/reviews', { method: 'GET' }),
   getReviewPartners: () => request<ApiEnvelope<ReviewPartner[]>>('/retailer/review-partners', { method: 'GET' }),
-  submitPartnerReview: (payload: { recipientId: string; title?: string; comment: string; rating: number }) =>
+  submitPartnerReview: (payload: {
+    recipientId: string;
+    orderId: string;
+    title?: string;
+    comment: string;
+    rating: number;
+    categoryRatings: Required<RetailerReview['categoryRatings']>;
+  }) =>
     request<ApiEnvelope<any>>('/reviews', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePartnerReview: (reviewId: string, payload: {
+    title?: string;
+    comment: string;
+    rating: number;
+    categoryRatings: Required<RetailerReview['categoryRatings']>;
+  }) =>
+    request<ApiEnvelope<any>>(`/retailer/reviews/${encodeURIComponent(reviewId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
 
   markNotificationRead: (notificationId: string) => request<ApiEnvelope<any>>(`/retailer/notifications/${notificationId}/read`, { method: 'PATCH' }),
 
   markNotificationsRead: () => request<ApiEnvelope<any>>('/retailer/notifications/read-all', { method: 'PATCH' }),
 
-  getPayments: () => request<ApiEnvelope<any[]>>('/retailer/payments', { method: 'GET' }),
+  getPayments: (params?: Record<string, string | number | boolean | null | undefined>) =>
+    request<ApiEnvelope<any[]>>(`/retailer/payments${buildQueryString(params)}`, { method: 'GET' }),
 
   getTransactions: (params?: Record<string, string | number | boolean | null | undefined>) =>
     request<ApiEnvelope<{

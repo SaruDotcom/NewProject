@@ -926,8 +926,39 @@ class RetailerService {
     if (!order) {
       throw new NotFoundError('Order not found or does not belong to you');
     }
-    const payment = await Payment.findOne({ orderId: order._id });
-    return { order, payment };
+    const wholesalerId = order.wholesalerId?._id || order.wholesalerId;
+    const [payment, sellerProfile, sellerUser, retailerProfile, retailerUser] = await Promise.all([
+      Payment.findOne({ orderId: order._id, retailerId }).select('-screenshotPath').lean(),
+      WholesalerProfile.findOne({ userId: wholesalerId }).select('businessName businessLogoUrl address gstin').lean(),
+      User.findById(wholesalerId).select('name email phone').lean(),
+      RetailerProfile.findOne({ userId: retailerId }).select('businessName ownerName address gstin').lean(),
+      User.findById(retailerId).select('name email phone').lean(),
+    ]);
+    const invoiceAvailable = order.orderStatus === 'DELIVERED';
+    return {
+      order,
+      payment,
+      invoice: {
+        available: invoiceAvailable,
+        number: invoiceAvailable ? `INV-${order.orderNumber}` : null,
+        date: order.invoiceIssuedAt || order.updatedAt || order.createdAt,
+        seller: {
+          businessName: sellerProfile?.businessName || sellerUser?.name || '',
+          logo: sellerProfile?.businessLogoUrl || '',
+          phone: sellerUser?.phone || '',
+          email: sellerUser?.email || '',
+          address: sellerProfile?.address || {},
+          gstin: sellerProfile?.gstin || '',
+        },
+        buyer: {
+          businessName: retailerProfile?.businessName || retailerProfile?.ownerName || retailerUser?.name || '',
+          phone: order.billingAddress?.phone || order.shippingAddress?.phone || retailerUser?.phone || '',
+          email: retailerUser?.email || '',
+          address: order.billingAddress || order.shippingAddress || retailerProfile?.address || {},
+          gstin: retailerProfile?.gstin || '',
+        },
+      },
+    };
   }
 
   static async cancelOrder(retailerId, orderId, reason, note, user, req = null) {
@@ -1151,7 +1182,13 @@ class RetailerService {
     const filter = { retailerId };
 
     const [payments, total] = await Promise.all([
-      Payment.find(filter).populate('orderId').sort(sort).skip(skip).limit(limit).lean(),
+      Payment.find(filter)
+        .select('-screenshotPath -approvalOtpHash -approvalOtpExpiresAt -approvalOtpAttempts -approvalOtpSentAt -approvalOtpVerifiedAt')
+        .populate('orderId')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
       Payment.countDocuments(filter),
     ]);
 

@@ -17,11 +17,10 @@ const DashboardPage = lazy(() => import("@/components/marketplace/workspace").th
 const NotificationsPage = lazy(() => import("@/components/marketplace/workspace").then(({ NotificationsPage }) => ({ default: NotificationsPage })));
 const OrderDetailsPage = lazy(() => import("@/components/marketplace/workspace").then(({ OrderDetailsPage }) => ({ default: OrderDetailsPage })));
 const OrdersPage = lazy(() => import("@/components/marketplace/workspace").then(({ OrdersPage }) => ({ default: OrdersPage })));
-const TransactionsHistoryPage = lazy(() => import("@/components/marketplace/workspace").then(({ TransactionsHistoryPage }) => ({ default: TransactionsHistoryPage })));
 const ProfilePage = lazy(() => import("@/components/marketplace/workspace").then(({ ProfilePage }) => ({ default: ProfilePage })));
 const SettingsPage = lazy(() => import("@/components/marketplace/workspace").then(({ SettingsPage }) => ({ default: SettingsPage })));
 const WishlistPage = lazy(() => import("@/components/marketplace/workspace").then(({ WishlistPage }) => ({ default: WishlistPage })));
-const PartnerReviewsPage = lazy(() => import("@/components/marketplace/PartnerReviewsPage").then(({ PartnerReviewsPage }) => ({ default: PartnerReviewsPage })));
+const PurchaseAccountsPage = lazy(() => import("@/components/marketplace/purchase-accounts").then(({ PurchaseAccountsPage }) => ({ default: PurchaseAccountsPage })));
 
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
@@ -223,9 +222,10 @@ function RouterView() {
 
   // Protected workspace views
   if (path === "/dashboard") return <DashboardPage />;
-  if (path === "/reviews") return <PartnerReviewsPage />;
+  if (path === "/purchase-accounts") return <PurchaseAccountsPage />;
+  if (path === "/reviews") return <PurchaseAccountsPage initialTab="feedback" />;
   if (path === "/orders") return <OrdersPage />;
-  if (path === "/transactions") return <TransactionsHistoryPage />;
+  if (path === "/transactions") return <PurchaseAccountsPage initialTab="ledger" />;
   if (path.startsWith("/orders/")) return <OrderDetailsPage orderId={decodeURIComponent(path.split("/")[2] ?? "")} />;
   if (path === "/notifications") return <NotificationsPage />;
   if (path === "/support") return <HelpSupportPage />;

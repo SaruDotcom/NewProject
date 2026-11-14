@@ -178,7 +178,9 @@ class OrderService {
       calculatedOrderItems.push({
         productId: product._id,
         name: product.name || product.title,
+        description: product.description || '',
         sku: product.sku,
+        unit: product.unit || '',
         imageUrl: product.imageUrl || (product.images && product.images[0]) || '',
         quantity,
         pricePerUnit: unitPrice,

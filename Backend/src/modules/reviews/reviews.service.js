@@ -5,63 +5,117 @@ const {
   WholesalerProfile,
   RetailerProfile,
   WholesalerRetailerRelationship,
+  Order,
 } = require('../../models');
 const { RELATIONSHIP_STATUS, ROLES } = require('../../config/constants');
-const { BadRequestError, ForbiddenError } = require('../../utils/errors');
+const { BadRequestError, ConflictError, ForbiddenError } = require('../../utils/errors');
+
+const CATEGORY_KEYS = ['productQuality', 'packaging', 'delivery', 'communication'];
+
+function normalizeReview({ title = '', comment = '', rating, categoryRatings = {} }) {
+  const normalizedComment = String(comment).trim();
+  const normalizedTitle = String(title).trim();
+  const numericRating = Number(rating);
+  if (!normalizedComment || normalizedComment.length > 2000) {
+    throw new BadRequestError('Review comment must contain 1 to 2000 characters');
+  }
+  if (normalizedTitle.length > 120) throw new BadRequestError('Review title must not exceed 120 characters');
+  if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+    throw new BadRequestError('Rating must be a whole number from 1 to 5');
+  }
+  const normalizedRatings = {};
+  for (const key of CATEGORY_KEYS) {
+    const value = Number(categoryRatings[key]);
+    if (!Number.isInteger(value) || value < 1 || value > 5) {
+      throw new BadRequestError(`Choose a ${key} rating from 1 to 5`);
+    }
+    normalizedRatings[key] = value;
+  }
+  return { normalizedComment, normalizedTitle, numericRating, normalizedRatings };
+}
 
 class ReviewsService {
-  static async create(user, { recipientId, title = '', comment = '', rating } = {}) {
+  static async create(user, { recipientId, orderId, title = '', comment = '', rating, categoryRatings } = {}) {
     const reviewerRole = String(user.role || '').toUpperCase();
-    const recipientRole = reviewerRole === ROLES.RETAILER
-      ? ROLES.WHOLESALER
-      : reviewerRole === ROLES.WHOLESALER
-        ? ROLES.RETAILER
-        : null;
-
-    if (!recipientRole) throw new ForbiddenError('Only retailers and wholesalers can submit partner reviews');
-    if (!mongoose.isValidObjectId(recipientId)) throw new BadRequestError('A valid review recipient is required');
-
-    const normalizedComment = String(comment).trim();
-    const normalizedTitle = String(title).trim();
-    const numericRating = Number(rating);
-    if (!normalizedComment || normalizedComment.length > 2000) {
-      throw new BadRequestError('Review comment must contain 1 to 2000 characters');
+    if (reviewerRole !== ROLES.RETAILER) {
+      throw new ForbiddenError('Only retailers can review wholesalers');
     }
-    if (normalizedTitle.length > 120) throw new BadRequestError('Review title must not exceed 120 characters');
-    if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
-      throw new BadRequestError('Rating must be a whole number from 1 to 5');
+    if (!mongoose.isValidObjectId(orderId)) throw new BadRequestError('A delivered order is required for a review');
+    if (!mongoose.isValidObjectId(recipientId)) throw new BadRequestError('A valid wholesaler is required');
+
+    const order = await Order.findOne({
+      _id: orderId,
+      retailerId: user._id,
+      wholesalerId: recipientId,
+      orderStatus: 'DELIVERED',
+      isDemo: { $ne: true },
+    }).select('_id wholesalerId');
+    if (!order) throw new ForbiddenError('Reviews can only be submitted for your delivered orders');
+    if (await Review.exists({ userId: user._id, orderId: order._id, isDeleted: false })) {
+      throw new ConflictError('A review has already been submitted for this order.', 'ORDER_REVIEW_EXISTS');
     }
 
-    const relationship = reviewerRole === ROLES.RETAILER
-      ? await WholesalerRetailerRelationship.exists({
-          retailerId: user._id,
-          wholesalerId: recipientId,
-          status: RELATIONSHIP_STATUS.ACTIVE,
-        })
-      : await WholesalerRetailerRelationship.exists({
-          wholesalerId: user._id,
-          retailerId: recipientId,
-          status: RELATIONSHIP_STATUS.ACTIVE,
-        });
-    if (!relationship) throw new ForbiddenError('Reviews can only be submitted for an active business partner');
+    const values = normalizeReview({ title, comment, rating, categoryRatings });
+    try {
+      return await Review.create({
+        userId: user._id,
+        userRole: ROLES.RETAILER,
+        recipientId: order.wholesalerId,
+        recipientRole: ROLES.WHOLESALER,
+        wholesalerId: order.wholesalerId,
+        orderId: order._id,
+        title: values.normalizedTitle,
+        comment: values.normalizedComment,
+        rating: values.numericRating,
+        categoryRatings: values.normalizedRatings,
+        status: 'approved',
+      });
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new ConflictError('A review has already been submitted for this order.', 'ORDER_REVIEW_EXISTS');
+      }
+      throw error;
+    }
+  }
 
-    return Review.create({
+  static async updateOwn(user, reviewId, payload = {}) {
+    if (String(user.role || '').toUpperCase() !== ROLES.RETAILER) {
+      throw new ForbiddenError('Only retailers can edit wholesaler reviews');
+    }
+    if (!mongoose.isValidObjectId(reviewId)) throw new BadRequestError('A valid review ID is required');
+    const review = await Review.findOne({
+      _id: reviewId,
       userId: user._id,
-      userRole: reviewerRole,
-      recipientId,
-      recipientRole,
-      ...(recipientRole === ROLES.WHOLESALER ? { wholesalerId: recipientId } : {}),
-      title: normalizedTitle,
-      comment: normalizedComment,
-      rating: numericRating,
-      status: 'approved',
+      userRole: ROLES.RETAILER,
+      recipientRole: ROLES.WHOLESALER,
+      isDeleted: false,
     });
+    if (!review) throw new ForbiddenError('This review is not available to your account');
+    const order = await Order.findOne({
+      _id: review.orderId,
+      retailerId: user._id,
+      wholesalerId: review.recipientId,
+      orderStatus: 'DELIVERED',
+      isDemo: { $ne: true },
+    }).select('_id');
+    if (!order) throw new ForbiddenError('Reviews can only be edited for your delivered orders');
+
+    const values = normalizeReview(payload);
+    review.title = values.normalizedTitle;
+    review.comment = values.normalizedComment;
+    review.rating = values.numericRating;
+    review.categoryRatings = values.normalizedRatings;
+    await review.save();
+    return review;
   }
 
   static async listReceived(user) {
+    const userRole = String(user.role || '').toUpperCase();
+    if (userRole === ROLES.RETAILER) return [];
     const reviews = await Review.find({
       recipientId: user._id,
-      recipientRole: String(user.role).toUpperCase(),
+      recipientRole: userRole,
+      userRole: ROLES.RETAILER,
       status: 'approved',
       isDeleted: false,
     })
@@ -98,41 +152,37 @@ class ReviewsService {
 
   static async listSubmitted(user) {
     const userRole = String(user.role || '').toUpperCase();
-    if (![ROLES.RETAILER, ROLES.WHOLESALER].includes(userRole)) {
-      throw new ForbiddenError('Submitted reviews are not available for this account');
+    if (userRole !== ROLES.RETAILER) {
+      throw new ForbiddenError('Only retailer reviews are available');
     }
 
     const reviews = await Review.find({
       userId: user._id,
-      userRole,
+      userRole: ROLES.RETAILER,
+      recipientRole: ROLES.WHOLESALER,
       isDeleted: false,
     })
       .populate('recipientId', 'name email role')
       .sort({ createdAt: -1 })
       .lean();
-    const recipientIds = reviews
-      .filter((review) => review.recipientRole === ROLES.RETAILER)
-      .map((review) => review.recipientId?._id)
-      .filter(Boolean);
-    const retailerProfiles = await RetailerProfile.find({ userId: { $in: recipientIds } })
-      .select('userId businessName ownerName')
+    const recipientIds = reviews.map((review) => review.recipientId?._id).filter(Boolean);
+    const wholesalerProfiles = await WholesalerProfile.find({ userId: { $in: recipientIds } })
+      .select('userId businessName')
       .lean();
-    const retailerNames = new Map(
-      retailerProfiles.map((profile) => [String(profile.userId), profile.businessName || profile.ownerName]),
-    );
+    const wholesalerNames = new Map(wholesalerProfiles.map((profile) => [String(profile.userId), profile.businessName]));
 
     return reviews.map((review) => ({
       id: String(review._id),
       title: review.title,
       comment: review.comment,
       rating: review.rating,
+      categoryRatings: review.categoryRatings || {},
+      orderId: review.orderId ? String(review.orderId) : '',
       status: review.status,
       createdAt: review.createdAt,
       recipient: {
         id: review.recipientId?._id ? String(review.recipientId._id) : '',
-        name: review.recipientRole === ROLES.RETAILER
-          ? retailerNames.get(String(review.recipientId?._id)) || review.recipientId?.name || 'Retailer'
-          : review.recipientId?.name || 'Business partner',
+        name: wholesalerNames.get(String(review.recipientId?._id)) || review.recipientId?.name || 'Wholesaler',
         role: review.recipientRole || review.recipientId?.role || '',
       },
     }));

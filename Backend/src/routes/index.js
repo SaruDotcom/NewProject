@@ -115,7 +115,7 @@ const adminController = require('../modules/admins/admins.controller');
 router.post(
   '/reviews',
   authenticate,
-  authorize(ROLES.RETAILER, ROLES.WHOLESALER),
+  authorize(ROLES.RETAILER),
   reviewController.create
 );
 router.use('/kyc', kycRoutes);
