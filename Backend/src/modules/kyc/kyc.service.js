@@ -21,6 +21,10 @@ const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
 const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
+const {
+  bankDetailsMatch,
+  hasValidBankDetails,
+} = require('../../services/bank-details.service');
 const logger = require('../../config/logger');
 
 const maskAccountNumber = (accountNumber) => {
@@ -201,7 +205,7 @@ class KycService {
         gstStatus: hasGst ? 'REGISTERED' : 'UNREGISTERED',
         pan: kycData.pan,
         address: applicationPayload.registeredAddress,
-        bankDetails: applicationPayload.bankDetails,
+        bankDetails: { ...applicationPayload.bankDetails, isVerified: false },
         kycStatus: KYC_STATUS.SUBMITTED,
         kycApplicationId: application._id,
       }
@@ -428,10 +432,22 @@ class KycService {
     });
     await application.save();
 
-    // Mark Wholesaler Profile and User as active & verified
+    const profile = await WholesalerProfile.findOne({ userId: application.wholesalerId })
+      .select('bankDetails')
+      .lean();
+    const bankDetailsVerified = Boolean(
+      hasValidBankDetails(application.bankDetails) &&
+      bankDetailsMatch(profile?.bankDetails, application.bankDetails)
+    );
+
+    // Mark the bank details verified only when the approved KYC matches the saved account.
     await WholesalerProfile.findOneAndUpdate(
       { userId: application.wholesalerId },
-      { kycStatus: KYC_STATUS.APPROVED, isVerified: true }
+      {
+        kycStatus: KYC_STATUS.APPROVED,
+        isVerified: true,
+        'bankDetails.isVerified': bankDetailsVerified,
+      }
     );
 
     await User.findByIdAndUpdate(application.wholesalerId, { status: 'ACTIVE' });
@@ -443,7 +459,11 @@ class KycService {
       entityType: 'KycApplication',
       entityId: application._id,
       before: { status: previousStatus },
-      after: { status: KYC_STATUS.APPROVED, reviewedBy: adminUser._id },
+      after: {
+        status: KYC_STATUS.APPROVED,
+        reviewedBy: adminUser._id,
+        bankDetailsVerified,
+      },
       req,
     });
 

@@ -8,6 +8,12 @@ const env = require('../../config/env');
 const logger = require('../../config/logger');
 const CloudinaryService = require('../../services/cloudinary.service');
 const {
+  BANK_DETAIL_FIELDS,
+  hasAnyBankDetails,
+  hasValidBankDetails,
+  isBankDetailsVerified,
+} = require('../../services/bank-details.service');
+const {
   Order,
   Payment,
   User,
@@ -31,12 +37,6 @@ const QR_KEY_PREFIX = 'gridfs:payment-qr:';
 const EVIDENCE_BUCKET_NAME = 'paymentEvidence';
 const EVIDENCE_KEY_PREFIX = 'gridfs:';
 const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
-const BANK_DETAIL_FIELDS = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branch'];
-const ACCOUNT_HOLDER_PATTERN = /^[\p{L}][\p{L}\s.'-]{1,99}$/u;
-const BANK_NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
-const ACCOUNT_NUMBER_PATTERN = /^\d{9,18}$/;
-const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-const BRANCH_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
 const ADDITIONAL_PAYMENT_METHODS = ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'];
 const PAYMENT_OTP_LIMIT_RUPEES = 10000;
 const PAYMENT_OTP_TTL_MS = 5 * 60 * 1000;
@@ -202,18 +202,6 @@ function getEnabledPaymentMethods(settings = {}, bankDetailsVerified = false) {
   return ['UPI', ...ADDITIONAL_PAYMENT_METHODS].filter((method) => methods.has(method));
 }
 
-function hasAnyBankDetails(details = {}) {
-  return BANK_DETAIL_FIELDS.some((field) => String(details[field] || '').trim());
-}
-
-function hasValidBankDetails(details = {}) {
-  return ACCOUNT_HOLDER_PATTERN.test(String(details.accountHolderName || '').trim()) &&
-    BANK_NAME_PATTERN.test(String(details.bankName || '').trim()) &&
-    ACCOUNT_NUMBER_PATTERN.test(String(details.accountNumber || '').trim()) &&
-    IFSC_PATTERN.test(String(details.ifscCode || '').trim().toUpperCase()) &&
-    BRANCH_PATTERN.test(String(details.branch || '').trim());
-}
-
 function maskAccountNumber(accountNumber) {
   const value = String(accountNumber || '');
   return value ? `••••••••${value.slice(-4)}` : '';
@@ -366,13 +354,13 @@ async function getQrDataUrl(profile) {
 class PaymentsService {
   static async hasVerifiedBankDetails(profile) {
     const bankDetails = await getBankDetails(profile);
-    return profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
+    return isBankDetailsVerified(profile, bankDetails);
   }
 
   static async getSettings(wholesalerId) {
     const profile = await getProfile(wholesalerId);
     const bankDetails = await getBankDetails(profile);
-    const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
+    const bankDetailsVerified = await isBankDetailsVerified(profile, bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const qrImageUrl = isCloudinaryQrUrl(settings.qrImagePath)
       ? settings.qrImagePath
@@ -404,7 +392,10 @@ class PaymentsService {
     const qrPaymentsEnabled = payload.qrPaymentsEnabled === undefined ? Boolean(current.qrPaymentsEnabled) : payload.qrPaymentsEnabled === true || payload.qrPaymentsEnabled === 'true';
     const upiIdPaymentsEnabled = payload.upiIdPaymentsEnabled === undefined ? Boolean(current.upiIdPaymentsEnabled) : payload.upiIdPaymentsEnabled === true || payload.upiIdPaymentsEnabled === 'true';
     const qrSessionMinutes = payload.qrSessionMinutes === undefined ? Number(current.qrSessionMinutes || 10) : Number(payload.qrSessionMinutes);
-    const additionalPaymentMethods = parseAdditionalPaymentMethods(payload.additionalPaymentMethods, current.additionalPaymentMethods || []);
+    const requestedAdditionalPaymentMethods = parseAdditionalPaymentMethods(
+      payload.additionalPaymentMethods,
+      current.additionalPaymentMethods || [],
+    );
     const paymentOtpLimit = payload.paymentOtpLimit === undefined
       ? Number(current.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES)
       : Number(payload.paymentOtpLimit);
@@ -416,7 +407,8 @@ class PaymentsService {
       branch: String(payload.branch || originalBankDetails.branch).trim(),
     };
     const bankDetailsChanged = BANK_DETAIL_FIELDS.some((field) => bankDetails[field] !== originalBankDetails[field]);
-    bankDetails.isVerified = !bankDetailsChanged && profile.bankDetails?.isVerified === true;
+    bankDetails.isVerified = !bankDetailsChanged && await isBankDetailsVerified(profile, originalBankDetails);
+    const additionalPaymentMethods = bankDetails.isVerified ? requestedAdditionalPaymentMethods : [];
 
     if (upiId && !UPI_ID_PATTERN.test(upiId)) {
       throw new BadRequestError('Enter a valid UPI ID.', 'INVALID_UPI_ID');
@@ -434,12 +426,6 @@ class PaymentsService {
       throw new BadRequestError(
         'Enter a valid account holder name, bank name, 9–18 digit account number, IFSC code, and branch name.',
         'INVALID_BANK_DETAILS'
-      );
-    }
-    if (additionalPaymentMethods.length && (!hasValidBankDetails(bankDetails) || !bankDetails.isVerified)) {
-      throw new BadRequestError(
-        'Complete and verify bank details before enabling Net Banking, Cash Deposit, or Cheque.',
-        'BANK_DETAILS_VERIFICATION_REQUIRED'
       );
     }
     if (qrPaymentsEnabled && !file && !(await hasQrImage(current.qrImagePath))) {
@@ -570,7 +556,7 @@ class PaymentsService {
   static async getRetailerPaymentOptions(retailerId, requestedWholesalerId = null) {
     const { relationship, profile } = await this.resolveWholesalerProfile(retailerId, requestedWholesalerId);
     const bankDetails = await getBankDetails(profile);
-    const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
+    const bankDetailsVerified = await isBankDetailsVerified(profile, bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const upiIdIsValid = UPI_ID_PATTERN.test(String(settings.upiId || ''));
     const qrImageUrl = isCloudinaryQrUrl(settings.qrImagePath)
@@ -716,7 +702,7 @@ class PaymentsService {
     const profile = await getProfile(wholesalerId);
     const settings = profile.paymentSettings || {};
     const bankDetails = await getBankDetails(profile);
-    const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
+    const bankDetailsVerified = await isBankDetailsVerified(profile, bankDetails);
     if (!getEnabledPaymentMethods(settings, bankDetailsVerified).includes(paymentMethod)) {
       throw new BadRequestError('This wholesaler has not enabled the selected payment method.', 'PAYMENT_METHOD_DISABLED');
     }

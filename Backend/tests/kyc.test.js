@@ -364,6 +364,7 @@ describe('KYC Workflow Test Suite', () => {
         accountNumber: '112233445566',
         ifscCode: 'SBIN0001234',
         bankName: 'SBI',
+        branch: 'Surat Main',
       }, wholesalerToken);
 
     const kycId = submitRes.body.data._id;
@@ -381,6 +382,7 @@ describe('KYC Workflow Test Suite', () => {
     const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
     expect(profile.kycStatus).toBe(KYC_STATUS.APPROVED);
     expect(profile.isVerified).toBe(true);
+    expect(profile.bankDetails.isVerified).toBe(true);
 
     // Audit log exists
     const audit = await AuditLog.findOne({ entityId: kycId, action: 'KYC_APPROVED' });

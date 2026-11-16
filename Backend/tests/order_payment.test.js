@@ -223,6 +223,19 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
   });
 
   test('enabled bank methods show bank details and accept cheque reports', async () => {
+    const bankDetails = {
+      accountHolderName: 'Omni Supplies',
+      bankName: 'Example Bank',
+      accountNumber: '123456789012',
+      ifscCode: 'EXAM0001234',
+      branch: 'Bengaluru Main',
+    };
+    await KycApplication.create({
+      wholesalerId: wholesalerUser._id,
+      pan: 'AAACP1234F',
+      bankDetails,
+      status: KYC_STATUS.APPROVED,
+    });
     await WholesalerProfile.updateOne(
       { userId: wholesalerUser._id },
       {
@@ -326,6 +339,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       wholesalerId: wholesalerUser._id,
       pan: 'AAACP1234F',
       bankDetails: originalBankDetails,
+      status: KYC_STATUS.APPROVED,
     });
     await WholesalerProfile.updateOne(
       { userId: wholesalerUser._id },
@@ -397,8 +411,24 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('bankName', 'Example Bank')
       .field('accountNumber', '123456789012')
       .field('ifscCode', 'EXAM0001234')
-      .field('branch', 'Bengaluru Main');
+      .field('branch', 'Bengaluru Main')
+      .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CHEQUE']));
     expect(saved.status).toBe(200);
+    expect(saved.body.data.bankDetails).toMatchObject({
+      accountHolderName: 'Omni Supplies',
+      bankName: 'Example Bank',
+      accountNumber: '123456789012',
+      ifscCode: 'EXAM0001234',
+      branch: 'Bengaluru Main',
+      isVerified: false,
+    });
+    expect(saved.body.data.additionalPaymentMethods).toEqual([]);
+    const savedProfile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
+    expect(savedProfile.bankDetails.accountNumber).toBe('123456789012');
+    const refreshedSettings = await request(app)
+      .get('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(refreshedSettings.body.data.bankDetails.accountNumber).toBe('123456789012');
 
     const unverifiedOptions = await request(app)
       .get('/api/v1/retailer/payment-options')
@@ -419,6 +449,63 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
         shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
       });
     expect(checkout.status).toBe(400);
+  });
+
+  test('approved matching KYC enables bank methods, while changed details disable them', async () => {
+    const bankDetails = {
+      accountHolderName: 'Omni Supplies',
+      bankName: 'Example Bank',
+      accountNumber: '123456789012',
+      ifscCode: 'EXAM0001234',
+      branch: 'Bengaluru Main',
+    };
+    await KycApplication.create({
+      wholesalerId: wholesalerUser._id,
+      pan: 'AAACP1234F',
+      bankDetails,
+      status: KYC_STATUS.APPROVED,
+    });
+    await WholesalerProfile.updateOne(
+      { userId: wholesalerUser._id },
+      {
+        $set: {
+          ...Object.fromEntries(Object.entries(bankDetails).map(([field, value]) => [`bankDetails.${field}`, value])),
+          'bankDetails.isVerified': false,
+        },
+      }
+    );
+
+    const verifiedSave = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', bankDetails.accountHolderName)
+      .field('bankName', bankDetails.bankName)
+      .field('accountNumber', bankDetails.accountNumber)
+      .field('ifscCode', bankDetails.ifscCode.toLowerCase())
+      .field('branch', bankDetails.branch)
+      .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CHEQUE']));
+    expect(verifiedSave.status).toBe(200);
+    expect(verifiedSave.body.data.bankDetails.isVerified).toBe(true);
+    expect(verifiedSave.body.data.additionalPaymentMethods).toEqual(['NET_BANKING', 'CHEQUE']);
+
+    const options = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['NET_BANKING', 'CHEQUE']));
+    expect(options.body.data.bankDetails.accountNumber).toBe('••••••••9012');
+
+    const changedSave = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', bankDetails.accountHolderName)
+      .field('bankName', bankDetails.bankName)
+      .field('accountNumber', '999999999999')
+      .field('ifscCode', bankDetails.ifscCode)
+      .field('branch', bankDetails.branch)
+      .field('additionalPaymentMethods', JSON.stringify(['CHEQUE']));
+    expect(changedSave.status).toBe(200);
+    expect(changedSave.body.data.bankDetails.isVerified).toBe(false);
+    expect(changedSave.body.data.additionalPaymentMethods).toEqual([]);
   });
 
   test('payment QR uploads persist in private GridFS and remain available on reload', async () => {
@@ -530,6 +617,18 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
   });
 
   test('changing a verified bank account removes retailer visibility until reverified', async () => {
+    await KycApplication.create({
+      wholesalerId: wholesalerUser._id,
+      pan: 'AAACP1234F',
+      bankDetails: {
+        accountHolderName: 'Omni Supplies',
+        bankName: 'Example Bank',
+        accountNumber: '123456789012',
+        ifscCode: 'EXAM0001234',
+        branch: 'Bengaluru Main',
+      },
+      status: KYC_STATUS.APPROVED,
+    });
     await WholesalerProfile.updateOne(
       { userId: wholesalerUser._id },
       {

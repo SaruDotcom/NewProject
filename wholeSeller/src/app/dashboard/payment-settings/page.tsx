@@ -76,6 +76,15 @@ export default function PaymentSettingsPage() {
   const qrFileInput = useRef<HTMLInputElement>(null);
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
   const [evidenceContentType, setEvidenceContentType] = useState('');
+  const savedBankDetails = settingsQuery.data?.bankDetails;
+  const bankDetailsVerified = Boolean(
+    savedBankDetails?.isVerified &&
+    bankDetails.accountHolderName.trim() === savedBankDetails.accountHolderName.trim() &&
+    bankDetails.bankName.trim() === savedBankDetails.bankName.trim() &&
+    bankDetails.accountNumber.trim() === savedBankDetails.accountNumber.trim() &&
+    bankDetails.ifscCode.trim().toUpperCase() === savedBankDetails.ifscCode.trim().toUpperCase() &&
+    bankDetails.branch.trim() === savedBankDetails.branch.trim()
+  );
 
   const showMessage = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(text);
@@ -136,10 +145,6 @@ export default function PaymentSettingsPage() {
       BRANCH_PATTERN.test(cleanBankDetails.branch);
     if (hasAnyBankDetails && !validBankDetails) {
       showMessage('Enter a valid account holder name, bank name, 9-18 digit account number, IFSC code, and branch name.', 'error');
-      return;
-    }
-    if (additionalPaymentMethods.length && (!validBankDetails || !settingsQuery.data?.bankDetails?.isVerified)) {
-      showMessage('Complete and verify bank details before enabling bank payment methods.', 'error');
       return;
     }
     setBusy(true);
@@ -243,7 +248,6 @@ export default function PaymentSettingsPage() {
 
   const settings = settingsQuery.data;
   const reports = reportsQuery.data || [];
-  const savedBankDetails = settings?.bankDetails;
   const hasSavedBankDetails = Boolean(savedBankDetails && [
     savedBankDetails.accountHolderName,
     savedBankDetails.bankName,
@@ -361,11 +365,25 @@ export default function PaymentSettingsPage() {
               ['CHEQUE', 'Cheque'],
             ].map(([value, label]) => (
               <label key={value} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={additionalPaymentMethods.includes(value)} onChange={() => toggleAdditionalMethod(value)} />
+                <input
+                  type="checkbox"
+                  checked={additionalPaymentMethods.includes(value)}
+                  disabled={!bankDetailsVerified}
+                  onChange={() => toggleAdditionalMethod(value)}
+                />
                 {label}
               </label>
             ))}
-            <p className="text-xs text-gray-500">Bank details are required to enable these options.</p>
+            <p className="text-xs text-gray-500">
+              {bankDetailsVerified
+                ? 'Verified bank details are saved. Select the bank payment methods you want to offer.'
+                : 'Save complete bank details first. Bank payment methods remain disabled until an approved KYC application confirms the same details.'}
+              {!bankDetailsVerified && (
+                <a href="/dashboard/kyc" className="ml-1 font-semibold text-tradeflow-green underline">
+                  Open KYC verification
+                </a>
+              )}
+            </p>
           </fieldset>
           <fieldset className="space-y-3 rounded-xl border border-tradeflow-gray-200 p-4">
             <legend className="px-1 text-sm font-bold text-tradeflow-navy">Bank details shown to connected retailers</legend>
@@ -375,7 +393,7 @@ export default function PaymentSettingsPage() {
             <p className="text-xs text-gray-500">
               {settings?.bankDetails.isVerified
                 ? 'Verified bank details are shared with connected retailers.'
-                : 'Unverified bank details are not shared with retailers. No bank verification provider is configured.'}
+                : 'Updated bank details are not shared with retailers until they match an approved KYC application.'}
             </p>
             {[
               ['accountHolderName', 'Account Holder Name'],
@@ -464,7 +482,7 @@ export default function PaymentSettingsPage() {
                 {savedBankDetails.ifscCode && <div><dt className="text-xs text-gray-500">IFSC Code</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.ifscCode}</dd></div>}
                 {savedBankDetails.branch && <div><dt className="text-xs text-gray-500">Branch Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.branch}</dd></div>}
               </dl>
-              {!savedBankDetails.isVerified && <p className="mt-3 text-xs text-amber-700">Unverified bank details are not shared with retailers.</p>}
+              {!savedBankDetails.isVerified && <p className="mt-3 text-xs text-amber-700">Unverified bank details are not shared with retailers until an approved KYC application confirms them.</p>}
             </section>
           )}
         </aside>
