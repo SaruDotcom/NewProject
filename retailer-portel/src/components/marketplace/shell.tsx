@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useStore } from "@/state/store";
 import { getAuthToken } from "@/api/api";
 import { cn } from "@/lib/utils";
-import { money, TradeFlowMark, WholesalerLogo } from "./primitives";
+import { money, ThokStoreMark, WholesalerLogo } from "./primitives";
 
 const primary = [
   { to: "/" as const, label: "Home" },
@@ -120,7 +120,7 @@ export function Logo({ variant = "default" }: { variant?: "default" | "light" })
 
   return (
     <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group focus-visible:outline-none shrink-0">
-      <TradeFlowMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
+      <ThokStoreMark className="size-8 sm:size-10 rounded-xl shadow-sm transition-transform group-hover:scale-105 shrink-0" />
       <div className="flex flex-col min-w-0">
         <span className={cn("font-black tracking-tight text-base sm:text-xl leading-none truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[180px]", isLight ? "text-white" : "text-ink")}>
         {hasCustomName ? retailerName : <span className="text-tradeflow-green">NEXORA</span>}
@@ -187,8 +187,8 @@ export function MarketplaceShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.title = linkedWholesaler?.businessName?.trim()
-      ? `${linkedWholesaler.businessName.trim()} | Retailer Store`
-      : "Retailer Wholesale Marketplace";
+      ? `${linkedWholesaler.businessName.trim()} | thokStore`
+      : "thokStore | Retailer Marketplace";
   }, [linkedWholesaler?.businessName]);
 
   if (isAuthRoute) return <>{children}</>;

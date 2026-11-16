@@ -503,6 +503,67 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
   });
 }
 
+function requestWithUploadProgress<T>(
+  endpoint: string,
+  body: FormData,
+  onProgress: (percentage: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PATCH', buildApiUrl(endpoint));
+    xhr.timeout = 120_000;
+    xhr.setRequestHeader('Accept', 'application/json');
+    const token = getAuthToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    xhr.addEventListener('load', () => {
+      let data: any;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        reject(new ApiError('The server returned an invalid response while saving payment settings.', xhr.status, 'INVALID_RESPONSE'));
+        return;
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        if (xhr.status === 401 && typeof window !== 'undefined') {
+          clearAuthToken();
+          if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+            window.location.href = '/login?expired=1';
+          }
+        }
+        reject(new ApiError(
+          data?.message || `Unable to save payment settings (HTTP ${xhr.status}).`,
+          xhr.status,
+          data?.code,
+          data?.errors,
+        ));
+        return;
+      }
+
+      invalidateMutation(endpoint);
+      resolve(data as T);
+    });
+    xhr.addEventListener('error', () => {
+      reject(new ApiError(
+        'Could not reach the payment server. Check the API URL, connection, and backend CORS settings, then try again.',
+        0,
+        'PAYMENT_SERVER_UNREACHABLE',
+      ));
+    });
+    xhr.addEventListener('timeout', () => {
+      reject(new ApiError('The QR upload timed out. Check your connection and try again.', 0, 'QR_UPLOAD_TIMEOUT'));
+    });
+    xhr.addEventListener('abort', () => {
+      reject(new ApiError('The QR upload was cancelled.', 0, 'QR_UPLOAD_ABORTED'));
+    });
+    xhr.send(body);
+  });
+}
+
 export const api = {
   getKhataSettings: () =>
     request<{ success: boolean; data: KhataBookSettings }>('/wholesaler/khata-book/settings', { method: 'GET' }),
@@ -1180,11 +1241,17 @@ export const api = {
 
   getPaymentSettings: () =>
     request<{ success: boolean; data: any }>('/wholesaler/payment-settings', { method: 'GET' }),
-  updatePaymentSettings: (data: FormData) =>
-    request<{ success: boolean; data: any }>('/wholesaler/payment-settings', {
-      method: 'PATCH',
-      body: data,
-    }),
+  updatePaymentSettings: (data: FormData, onProgress?: (percentage: number) => void) =>
+    onProgress
+      ? requestWithUploadProgress<{ success: boolean; data: any }>(
+          '/wholesaler/payment-settings',
+          data,
+          onProgress,
+        )
+      : request<{ success: boolean; data: any }>('/wholesaler/payment-settings', {
+          method: 'PATCH',
+          body: data,
+        }),
   getPaymentReports: () =>
     request<{ success: boolean; data: any[] }>('/wholesaler/payment-reports', { method: 'GET' }),
   getFinancialSummary: () =>

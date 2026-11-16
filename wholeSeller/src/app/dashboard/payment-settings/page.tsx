@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Copy, CreditCard, QrCode, RefreshCw, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
@@ -25,6 +25,7 @@ type PaymentSettings = {
   upiIdPaymentsEnabled: boolean;
   qrSessionMinutes: number;
   qrDataUrl: string;
+  qrImageUrl?: string;
 };
 
 const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
@@ -68,8 +69,23 @@ export default function PaymentSettingsPage() {
   const [qrImage, setQrImage] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [uploadMessageType, setUploadMessageType] = useState<'success' | 'error' | 'info'>('info');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const qrFileInput = useRef<HTMLInputElement>(null);
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
   const [evidenceContentType, setEvidenceContentType] = useState('');
+
+  const showMessage = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setMessage(text);
+    setMessageType(type);
+  };
+
+  const showUploadMessage = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setUploadMessage(text);
+    setUploadMessageType(type);
+  };
 
   useEffect(() => () => {
     if (evidenceUrl) URL.revokeObjectURL(evidenceUrl);
@@ -98,11 +114,11 @@ export default function PaymentSettingsPage() {
     event.preventDefault();
     const cleanUpiId = upiId.trim();
     if (cleanUpiId && !UPI_ID_PATTERN.test(cleanUpiId)) {
-      setMessage('Enter a valid UPI ID.');
+      showMessage('Enter a valid UPI ID.', 'error');
       return;
     }
     if (upiIdPaymentsEnabled && !cleanUpiId) {
-      setMessage('Enter a UPI ID before enabling UPI ID payments.');
+      showMessage('Enter a UPI ID before enabling UPI ID payments.', 'error');
       return;
     }
     const cleanBankDetails = {
@@ -119,15 +135,17 @@ export default function PaymentSettingsPage() {
       IFSC_PATTERN.test(cleanBankDetails.ifscCode) &&
       BRANCH_PATTERN.test(cleanBankDetails.branch);
     if (hasAnyBankDetails && !validBankDetails) {
-      setMessage('Enter a valid account holder name, bank name, 9-18 digit account number, IFSC code, and branch name.');
+      showMessage('Enter a valid account holder name, bank name, 9-18 digit account number, IFSC code, and branch name.', 'error');
       return;
     }
     if (additionalPaymentMethods.length && (!validBankDetails || !settingsQuery.data?.bankDetails?.isVerified)) {
-      setMessage('Complete and verify bank details before enabling bank payment methods.');
+      showMessage('Complete and verify bank details before enabling bank payment methods.', 'error');
       return;
     }
     setBusy(true);
-    setMessage('');
+    showMessage('');
+    setUploadMessage('');
+    setUploadProgress(0);
     try {
       const payload = new FormData();
       payload.append('upiId', cleanUpiId);
@@ -139,15 +157,38 @@ export default function PaymentSettingsPage() {
       payload.append('paymentOtpLimit', String(paymentOtpLimit));
       Object.entries(cleanBankDetails).forEach(([key, value]) => payload.append(key, value));
       if (qrImage) payload.append('qrImage', qrImage);
-      await api.updatePaymentSettings(payload);
+      const response = await api.updatePaymentSettings(payload, setUploadProgress);
+      if (qrImage && !response.data.hasQrImage) {
+        throw new Error('The server did not confirm the QR image. Please try uploading it again.');
+      }
       await queryClient.invalidateQueries({ queryKey });
       setQrImage(null);
-      setMessage('Payment settings saved.');
+      if (qrFileInput.current) qrFileInput.current.value = '';
+      setUploadProgress(100);
+      showMessage('Payment settings saved.', 'success');
+      showUploadMessage(qrImage ? 'QR image uploaded and saved successfully.' : 'Payment settings saved.', 'success');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to save payment settings.');
+      const errorMessage = error instanceof Error ? error.message : 'Unable to save payment settings.';
+      showMessage(errorMessage, 'error');
+      showUploadMessage(errorMessage, 'error');
     } finally {
       setBusy(false);
     }
+  };
+
+  const selectQrImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    if (file && file.size > 5 * 1024 * 1024) {
+      event.target.value = '';
+      setQrImage(null);
+      showUploadMessage('The QR image must be 5 MB or smaller.', 'error');
+      showMessage('The QR image must be 5 MB or smaller.', 'error');
+      return;
+    }
+    setQrImage(file);
+    setUploadProgress(0);
+    showUploadMessage(file ? `${file.name} selected. Save to upload it.` : '');
+    showMessage('');
   };
 
   const review = async (id: string, action: 'VERIFY' | 'REJECT') => {
@@ -168,7 +209,7 @@ export default function PaymentSettingsPage() {
       await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'payment-reports') });
       await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'credit-overview') });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to review this payment report.');
+      showMessage(error instanceof Error ? error.message : 'Unable to review this payment report.', 'error');
     }
   };
 
@@ -180,7 +221,7 @@ export default function PaymentSettingsPage() {
       await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'payment-reports') });
       await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'credit-overview') });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to reverse this payment.');
+      showMessage(error instanceof Error ? error.message : 'Unable to reverse this payment.', 'error');
     }
   };
 
@@ -196,7 +237,7 @@ export default function PaymentSettingsPage() {
       setEvidenceUrl(evidence.url);
       setEvidenceContentType(evidence.contentType);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to open payment evidence.');
+      showMessage(error instanceof Error ? error.message : 'Unable to open payment evidence.', 'error');
     }
   };
 
@@ -216,9 +257,9 @@ export default function PaymentSettingsPage() {
     if (!savedUpiId) return;
     try {
       await navigator.clipboard.writeText(savedUpiId);
-      setMessage('UPI ID copied.');
+      showMessage('UPI ID copied.', 'success');
     } catch {
-      setMessage('Unable to copy the UPI ID. Please copy it manually.');
+      showMessage('Unable to copy the UPI ID. Please copy it manually.', 'error');
     }
   };
 
@@ -232,7 +273,27 @@ export default function PaymentSettingsPage() {
         </div>
       </header>
 
-      {message && <div role="status" className="rounded-xl border border-tradeflow-gray-200 bg-white p-3 text-sm text-tradeflow-navy">{message}</div>}
+      {settingsQuery.isLoading && <p role="status" className="rounded-xl border border-tradeflow-gray-200 bg-white p-3 text-sm text-gray-600">Loading saved payment settings…</p>}
+      {settingsQuery.isError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <span>{settingsQuery.error instanceof Error ? settingsQuery.error.message : 'Unable to load payment settings.'}</span>
+          <button type="button" onClick={() => void settingsQuery.refetch()} className="rounded-lg border border-red-300 px-3 py-1.5 font-semibold">Retry</button>
+        </div>
+      )}
+      {message && (
+        <div
+          role={messageType === 'error' ? 'alert' : 'status'}
+          className={`rounded-xl border p-3 text-sm ${
+            messageType === 'error'
+              ? 'border-red-200 bg-red-50 text-red-800'
+              : messageType === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-tradeflow-gray-200 bg-white text-tradeflow-navy'
+          }`}
+        >
+          {message}
+        </div>
+      )}
 
       <form onSubmit={saveSettings} className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] lg:items-start">
         <section className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
@@ -246,8 +307,44 @@ export default function PaymentSettingsPage() {
           </label>
           <label className="block text-sm font-semibold text-tradeflow-navy">
             QR Code Image (max 5 MB)
-            <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => setQrImage(event.target.files?.[0] || null)} className="mt-1 block w-full text-sm font-normal" />
+            <input
+              ref={qrFileInput}
+              type="file"
+              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+              onChange={selectQrImage}
+              className="mt-1 block w-full text-sm font-normal"
+            />
+            <span className="mt-1 block text-xs font-normal text-gray-500">
+              {qrImage
+                ? `${qrImage.name} is selected but not uploaded yet. Use the button below to save it.`
+                : 'Choose a JPG, PNG, or WEBP image. Selecting a file alone does not upload it.'}
+            </span>
           </label>
+          <div className="space-y-2">
+            <button type="submit" disabled={busy || settingsQuery.isLoading || settingsQuery.isError} className="rounded-lg border border-tradeflow-navy px-4 py-2 text-sm font-bold text-tradeflow-navy disabled:opacity-60">
+              {busy ? (qrImage ? `Uploading QR… ${uploadProgress}%` : 'Saving…') : qrImage ? 'Upload QR & Save Payment Settings' : 'Save Payment Settings'}
+            </button>
+            {busy && qrImage && (
+              <div role="status" aria-live="polite" className="space-y-1">
+                <progress value={uploadProgress} max={100} aria-label="QR image upload progress" className="h-2 w-full accent-emerald-600" />
+                <p className="text-xs text-gray-600">Uploading QR image: {uploadProgress}%</p>
+              </div>
+            )}
+            {uploadMessage && (
+              <p
+                role={uploadMessageType === 'error' ? 'alert' : 'status'}
+                className={`text-xs ${
+                  uploadMessageType === 'error'
+                    ? 'text-red-700'
+                    : uploadMessageType === 'success'
+                      ? 'text-emerald-700'
+                      : 'text-gray-500'
+                }`}
+              >
+                {uploadMessage}
+              </p>
+            )}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={qrPaymentsEnabled} onChange={(event) => setQrPaymentsEnabled(event.target.checked)} /> Enable QR payments</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={upiIdPaymentsEnabled} onChange={(event) => setUpiIdPaymentsEnabled(event.target.checked)} /> Enable UPI ID payments</label>
@@ -306,7 +403,7 @@ export default function PaymentSettingsPage() {
             <span className="mt-1 block text-xs font-normal text-gray-500">Approvals above this amount require a code sent to your registered mobile.</span>
           </label>
           <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Test the QR with a UPI app before enabling. Expiry closes the retailer&apos;s QR session.</p>
-          <button disabled={busy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving...' : 'Save'}</button>
+          <button disabled={busy || settingsQuery.isLoading || settingsQuery.isError} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{busy ? (qrImage ? `Uploading QR… ${uploadProgress}%` : 'Saving…') : 'Save Payment Settings'}</button>
         </section>
         <aside className="space-y-4">
           <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
@@ -319,9 +416,9 @@ export default function PaymentSettingsPage() {
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Enabled</span>
               )}
             </div>
-            {settings?.qrDataUrl ? (
+            {settings?.qrImageUrl || settings?.qrDataUrl ? (
               <div className="mt-4 flex justify-center rounded-xl border border-tradeflow-gray-200 bg-gray-50 p-4">
-                <img src={settings.qrDataUrl} alt="Your UPI QR code" className="h-60 w-60 max-w-full rounded-lg bg-white object-contain p-2" />
+                <img src={settings.qrImageUrl || settings.qrDataUrl} alt="Your UPI QR code" className="h-60 w-60 max-w-full rounded-lg bg-white object-contain p-2" />
               </div>
             ) : (
               <div className="mt-4 flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-tradeflow-gray-200 bg-gray-50 px-4 text-center">

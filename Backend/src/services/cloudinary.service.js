@@ -134,6 +134,38 @@ function uploadBusinessLogo(file, wholesalerId, req = null) {
   });
 }
 
+function uploadPaymentQr(file, wholesalerId) {
+  if (!file?.buffer) throw new Error('Payment QR image data is missing.');
+
+  return new Promise((resolve, reject) => {
+    getClient().uploader.upload_stream(
+      {
+        public_id: `wholesalers/payment-qr/${wholesalerId}/${crypto.randomUUID()}`,
+        resource_type: 'image',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        if (!result?.secure_url?.startsWith('https://') || !result.public_id) {
+          return reject(new Error('Cloud image storage did not return a permanent HTTPS URL.'));
+        }
+        return resolve({ url: result.secure_url, publicId: result.public_id });
+      },
+    ).end(file.buffer);
+  });
+}
+
+async function deletePaymentQr(publicId) {
+  if (!publicId) return;
+  const result = await getClient().uploader.destroy(publicId, {
+    resource_type: 'image',
+    invalidate: true,
+  });
+  if (!['deleted', 'not found'].includes(result.result)) {
+    throw new Error(`Cloud image storage did not confirm QR deletion for asset ${publicId}.`);
+  }
+}
+
 async function deleteUploadedProductImage(publicId) {
   if (!publicId) return;
 
@@ -161,6 +193,8 @@ async function deleteUploadedProductImage(publicId) {
 module.exports = {
   uploadProductImage,
   uploadBusinessLogo,
+  uploadPaymentQr,
+  deletePaymentQr,
   deleteUploadedProductImage,
   validateBusinessLogo,
 };

@@ -6,6 +6,7 @@ const { pipeline } = require('stream/promises');
 const { Readable } = require('stream');
 const env = require('../../config/env');
 const logger = require('../../config/logger');
+const CloudinaryService = require('../../services/cloudinary.service');
 const {
   Order,
   Payment,
@@ -73,6 +74,10 @@ function getQrFileId(storageKey) {
   return mongoose.Types.ObjectId.isValid(rawId) ? new mongoose.Types.ObjectId(rawId) : null;
 }
 
+function isCloudinaryQrUrl(storageKey) {
+  return /^https:\/\/res\.cloudinary\.com\//i.test(String(storageKey || ''));
+}
+
 function getEvidenceFileId(storageKey) {
   if (!String(storageKey || '').startsWith(EVIDENCE_KEY_PREFIX)) return null;
   const rawId = String(storageKey).slice(EVIDENCE_KEY_PREFIX.length);
@@ -92,12 +97,17 @@ function getLegacyQrImagePath(storageKey) {
 }
 
 async function hasQrImage(storageKey) {
+  if (isCloudinaryQrUrl(storageKey)) return true;
   const fileId = getQrFileId(storageKey);
   if (fileId) return getQrBucket().find({ _id: fileId }).hasNext();
   return Boolean(getLegacyQrImagePath(storageKey));
 }
 
-async function removeQrImage(storageKey) {
+async function removeQrImage(storageKey, publicId = '') {
+  if (publicId) {
+    await CloudinaryService.deletePaymentQr(publicId);
+    return;
+  }
   const fileId = getQrFileId(storageKey);
   if (fileId) {
     const bucket = getQrBucket();
@@ -318,6 +328,7 @@ async function getBankDetails(profile) {
 async function getQrDataUrl(profile) {
   const settings = profile?.paymentSettings || {};
   if (!settings.qrImagePath) return '';
+  if (isCloudinaryQrUrl(settings.qrImagePath)) return '';
   const fileId = getQrFileId(settings.qrImagePath);
   if (fileId) {
     const bucket = getQrBucket();
@@ -363,18 +374,20 @@ class PaymentsService {
     const bankDetails = await getBankDetails(profile);
     const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
+    const qrImageUrl = isCloudinaryQrUrl(settings.qrImagePath)
+      ? settings.qrImagePath
+      : settings.qrImagePath && !getQrFileId(settings.qrImagePath)
+        ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
+        : '';
     const qrDataUrl = await getQrDataUrl(profile);
-    const qrImageUrl = settings.qrImagePath && !getQrFileId(settings.qrImagePath)
-      ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
-      : '';
     return {
       upiId: settings.upiId || '',
       accountName: settings.accountName || '',
       bankDetails: { ...bankDetails, isVerified: bankDetailsVerified },
       additionalPaymentMethods: settings.additionalPaymentMethods || [],
       paymentOtpLimit: Number(settings.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES),
-      hasQrImage: Boolean(qrDataUrl),
-      qrPaymentsEnabled: Boolean(settings.qrPaymentsEnabled && qrDataUrl),
+      hasQrImage: Boolean(qrDataUrl || qrImageUrl),
+      qrPaymentsEnabled: Boolean(settings.qrPaymentsEnabled && (qrDataUrl || qrImageUrl)),
       upiIdPaymentsEnabled: Boolean(settings.upiIdPaymentsEnabled),
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
       qrDataUrl,
@@ -434,16 +447,44 @@ class PaymentsService {
     }
 
     let uploadedPath = current.qrImagePath || '';
+    let uploadedPublicId = current.qrImagePublicId || '';
     let mimeType = current.qrImageMimeType || '';
     if (file) {
       mimeType = fileMimeType(file);
-      uploadedPath = await saveQrImage(file, mimeType);
+      try {
+        const cloudinaryConfigured = Boolean(
+          env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET
+        );
+        if (cloudinaryConfigured) {
+          const asset = await CloudinaryService.uploadPaymentQr(file, wholesalerId);
+          uploadedPath = asset.url;
+          uploadedPublicId = asset.publicId;
+        } else {
+          uploadedPath = await saveQrImage(file, mimeType);
+          uploadedPublicId = '';
+        }
+        logger.info('Stored wholesaler payment QR image', {
+          wholesalerId: String(wholesalerId),
+          provider: cloudinaryConfigured ? 'cloudinary' : 'mongodb-gridfs',
+          contentType: mimeType,
+          size: file.size,
+        });
+      } catch (error) {
+        logger.error('Failed to store wholesaler payment QR image', {
+          wholesalerId: String(wholesalerId),
+          contentType: mimeType,
+          size: file.size,
+          error: error.message,
+        });
+        throw error;
+      }
     }
 
     profile.paymentSettings = {
       upiId,
       accountName,
       qrImagePath: uploadedPath,
+      qrImagePublicId: uploadedPublicId,
       qrImageMimeType: mimeType,
       qrPaymentsEnabled,
       upiIdPaymentsEnabled,
@@ -456,14 +497,14 @@ class PaymentsService {
       await profile.save();
     } catch (error) {
       if (file && uploadedPath) {
-        await removeQrImage(uploadedPath).catch((cleanupError) => {
+        await removeQrImage(uploadedPath, uploadedPublicId).catch((cleanupError) => {
           if (cleanupError.code !== 'ENOENT') logger.error('Failed to remove an uncommitted payment QR upload', { cleanupError });
         });
       }
       throw error;
     }
     if (file && current.qrImagePath && current.qrImagePath !== uploadedPath) {
-      await removeQrImage(current.qrImagePath).catch((error) => {
+      await removeQrImage(current.qrImagePath, current.qrImagePublicId).catch((error) => {
         if (error.code !== 'ENOENT') logger.error('Failed to remove a replaced payment QR image', { error });
       });
     }
@@ -532,16 +573,18 @@ class PaymentsService {
     const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const upiIdIsValid = UPI_ID_PATTERN.test(String(settings.upiId || ''));
+    const qrImageUrl = isCloudinaryQrUrl(settings.qrImagePath)
+      ? settings.qrImagePath
+      : settings.qrImagePath && !getQrFileId(settings.qrImagePath)
+        ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
+        : '';
     const qrDataUrl = settings.qrPaymentsEnabled ? await getQrDataUrl(profile) : '';
-    const qrImageUrl = settings.qrImagePath && !getQrFileId(settings.qrImagePath)
-      ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
-      : '';
     return {
       wholesalerId: String(relationship.wholesalerId),
       businessName: profile.businessName,
       accountName: settings.accountName || profile.businessName,
-      qrPaymentsEnabled: Boolean(settings.qrPaymentsEnabled && qrDataUrl),
-      hasQrImage: Boolean(qrDataUrl),
+      qrPaymentsEnabled: Boolean(settings.qrPaymentsEnabled && (qrDataUrl || qrImageUrl)),
+      hasQrImage: Boolean(qrDataUrl || qrImageUrl),
       qrDataUrl,
       qrImageUrl,
       upiIdPaymentsEnabled: Boolean(settings.upiIdPaymentsEnabled && upiIdIsValid),
@@ -563,14 +606,16 @@ class PaymentsService {
     }
 
     const qrDataUrl = await getQrDataUrl(profile);
-    if (!qrDataUrl) {
+    const qrImageUrl = isCloudinaryQrUrl(settings.qrImagePath)
+      ? settings.qrImagePath
+      : settings.qrImagePath && !getQrFileId(settings.qrImagePath)
+        ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
+        : '';
+    if (!qrDataUrl && !qrImageUrl) {
       throw new NotFoundError('The wholesaler QR image is unavailable. Ask them to upload it again.', 'QR_IMAGE_UNAVAILABLE');
     }
 
     const qrSessionMinutes = Number(settings.qrSessionMinutes || 10);
-    const qrImageUrl = settings.qrImagePath && !getQrFileId(settings.qrImagePath)
-      ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
-      : '';
     return {
       wholesalerId: String(relationship.wholesalerId),
       qrDataUrl,

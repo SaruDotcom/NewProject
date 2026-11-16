@@ -187,6 +187,7 @@ const wholesalerProfileSchema = new mongoose.Schema(
       upiId: { type: String, trim: true, lowercase: true, default: '' },
       accountName: { type: String, trim: true, default: '' },
       qrImagePath: { type: String, default: '' },
+      qrImagePublicId: { type: String, default: '' },
       qrImageMimeType: { type: String, enum: ['', 'image/jpeg', 'image/png', 'image/webp'], default: '' },
       qrPaymentsEnabled: { type: Boolean, default: false },
       upiIdPaymentsEnabled: { type: Boolean, default: false },

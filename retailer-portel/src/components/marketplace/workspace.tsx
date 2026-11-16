@@ -43,7 +43,7 @@ import {
   saveReferralAttribution,
   type ReferralAttribution,
 } from "@/lib/referral-attribution";
-import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, TradeFlowMark, WholesalerLogo, money } from "./primitives";
+import { CartItem, EmptyState, OrderCard, ProductGrid, SectionHeading, StatusBadge, ThokStoreMark, WholesalerLogo, money } from "./primitives";
 
 const AUTH_REDIRECT_KEY = "nexora_auth_redirect";
 const AUTH_IDENTIFIER_KEY = "nexora_auth_identifier";
@@ -351,7 +351,7 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
         <div className="mt-3 rounded-xl border bg-background p-3 text-center">
           {secondsLeft > 0 ? (
             <>
-              <img src={options.qrDataUrl} alt="Wholesaler UPI QR code" className="mx-auto max-h-48 object-contain" />
+              <img src={options.qrDataUrl || options.qrImageUrl || ""} alt="Wholesaler UPI QR code" className="mx-auto max-h-48 object-contain" />
               <p className="mt-2 text-xs text-muted-foreground">Session expires in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}. Expiry only hides the QR in this app; the underlying QR remains valid.</p>
             </>
           ) : <Button size="sm" variant="outline" onClick={openQr}>Request fresh QR session</Button>}
@@ -1804,10 +1804,11 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
     try {
       const session = (await api.createRetailerQrSession(currentWholesalerId || undefined)).data;
       const expiresAt = new Date(session.expiresAt).getTime();
-      if (!session.qrDataUrl || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      const sessionImage = session.qrDataUrl || session.qrImageUrl;
+      if (!sessionImage || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
         throw new Error("The wholesaler QR session could not be refreshed. Please try again.");
       }
-      setQrSessionImage(session.qrDataUrl);
+      setQrSessionImage(sessionImage);
       setQrExpiresAt(expiresAt);
       setQrSecondsLeft(Math.ceil((expiresAt - Date.now()) / 1000));
     } catch (error) {
@@ -3652,7 +3653,7 @@ export function AuthPage({
           <div className="relative z-10">
             {/* Platform Brand */}
             <div className="flex items-center gap-3">
-              <TradeFlowMark className="size-11 rounded-xl shadow-lg ring-1 ring-white/20" />
+              <ThokStoreMark className="size-11 rounded-xl shadow-lg ring-1 ring-white/20" />
               <div>
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">
                   <Sparkles className="size-3 text-emerald-400" /> B2B Trade Network

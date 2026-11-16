@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/state/store";
 import { api, setAuthToken, ApiError } from "@/api/api";
-import { TradeFlowMark, WholesalerLogo } from "./primitives";
+import { ThokStoreMark, WholesalerLogo } from "./primitives";
 import { toast } from "sonner";
 import {
   clearStoredReferralAttribution,
@@ -83,7 +83,7 @@ export function LandingPage() {
 
   // Update SEO Meta Tags
   useEffect(() => {
-    document.title = "TradeFlow - Order Wholesale From Your Trusted Supplier";
+    document.title = "thokStore - Order Wholesale From Your Trusted Supplier";
     const metaDesc = document.querySelector('meta[name="description"]');
     if (metaDesc) {
       metaDesc.setAttribute("content", "Simple online ordering portal for retail shop owners to buy direct from verified wholesale suppliers with transparent pricing and fast delivery.");
@@ -271,10 +271,10 @@ export function LandingPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#D8E1E5] shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 focus:outline-hidden">
-            <TradeFlowMark className="size-9 rounded-xl shadow-xs" />
+            <ThokStoreMark className="size-9 rounded-xl shadow-xs" />
             <div className="flex flex-col">
               <span className="font-heading font-black text-xl text-[#12304A] leading-none">
-                Trade<span className="text-[#20A66A]">Flow</span>
+                thok<span className="text-[#20A66A]">Store</span>
               </span>
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#20A66A] leading-none mt-0.5">
                 Retailer Portal
@@ -622,7 +622,7 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-10">
             <h2 className="font-heading text-2xl sm:text-3xl font-extrabold text-[#12304A]">
-              What is TradeFlow?
+              What is thokStore?
             </h2>
             <p className="text-sm sm:text-base text-[#647782] mt-2">
               A simple online portal to order trade stock from your existing wholesale supplier.
@@ -902,7 +902,7 @@ export function LandingPage() {
                   <Laptop className="size-5" />
                 </div>
                 <div>
-                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#20A66A]">TradeFlow Way</span>
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#20A66A]">thokStore Way</span>
                   <h3 className="font-heading font-bold text-lg text-[#12304A]">Instant online wholesale ordering</h3>
                 </div>
               </div>
@@ -1028,10 +1028,10 @@ export function LandingPage() {
       <footer className="bg-white border-t border-[#D8E1E5] py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2.5">
-            <TradeFlowMark className="size-8 rounded-lg" />
+            <ThokStoreMark className="size-8 rounded-lg" />
             <div className="flex flex-col">
               <span className="font-heading font-black text-base text-[#12304A] leading-none">
-                Trade<span className="text-[#20A66A]">Flow</span>
+                thok<span className="text-[#20A66A]">Store</span>
               </span>
               <span className="text-[9px] font-bold text-[#647782] mt-0.5">
                 Simple digital tools connecting shop owners directly to verified wholesale suppliers.
@@ -1044,7 +1044,7 @@ export function LandingPage() {
               Help &amp; Support
             </Link>
             <span>•</span>
-            <span>© {new Date().getFullYear()} TradeFlow</span>
+            <span>© {new Date().getFullYear()} thokStore</span>
           </div>
         </div>
       </footer>

@@ -20,6 +20,7 @@ const {
 } = require('../src/models');
 const { ROLES, USER_STATUS, KYC_STATUS, RELATIONSHIP_STATUS, ORDER_STATUS, PAYMENT_STATUS } = require('../src/config/constants');
 const env = require('../src/config/env');
+const CloudinaryService = require('../src/services/cloudinary.service');
 
 setupTestDB();
 
@@ -459,6 +460,73 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       upiId: 'omni@upi',
       qrDataUrl: uploaded.body.data.qrDataUrl,
     });
+  });
+
+  test('Cloudinary QR uploads persist as secure URLs for wholesaler and retailer payment pages', async () => {
+    const image = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x01, 0x02, 0x03,
+    ]);
+    const cloudUrl = 'https://res.cloudinary.com/test-cloud/image/upload/payment-qr.png';
+    const originalConfig = {
+      CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME,
+      CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY,
+      CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET,
+    };
+    const uploadQr = jest.spyOn(CloudinaryService, 'uploadPaymentQr')
+      .mockResolvedValue({ url: cloudUrl, publicId: 'wholesalers/payment-qr/test' });
+
+    try {
+      env.CLOUDINARY_CLOUD_NAME = 'test-cloud';
+      env.CLOUDINARY_API_KEY = 'test-key';
+      env.CLOUDINARY_API_SECRET = 'test-secret';
+      const uploaded = await request(app)
+        .patch('/api/v1/wholesaler/payment-settings')
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .field('qrPaymentsEnabled', 'true')
+        .attach('qrImage', image, { filename: 'payment-qr.png', contentType: 'image/png' });
+
+      expect(uploaded.status).toBe(200);
+      expect(uploadQr).toHaveBeenCalledTimes(1);
+      expect(uploadQr.mock.calls[0][0].mimetype).toBe('image/png');
+      expect(String(uploadQr.mock.calls[0][1])).toBe(String(wholesalerUser._id));
+      expect(uploaded.body.data).toMatchObject({
+        hasQrImage: true,
+        qrPaymentsEnabled: true,
+        qrDataUrl: '',
+        qrImageUrl: cloudUrl,
+      });
+
+      const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
+      expect(profile.paymentSettings.qrImagePath).toBe(cloudUrl);
+      expect(profile.paymentSettings.qrImagePublicId).toBe('wholesalers/payment-qr/test');
+
+      const reloaded = await request(app)
+        .get('/api/v1/wholesaler/payment-settings')
+        .set('Authorization', `Bearer ${wholesalerToken}`);
+      expect(reloaded.body.data.qrImageUrl).toBe(cloudUrl);
+
+      const retailerOptions = await request(app)
+        .get('/api/v1/retailer/payment-options')
+        .set('Authorization', `Bearer ${retailerToken}`);
+      expect(retailerOptions.status).toBe(200);
+      expect(retailerOptions.body.data).toMatchObject({
+        qrPaymentsEnabled: true,
+        hasQrImage: true,
+        qrDataUrl: '',
+        qrImageUrl: cloudUrl,
+      });
+
+      const qrSession = await request(app)
+        .post('/api/v1/retailer/payment-options/qr-session')
+        .set('Authorization', `Bearer ${retailerToken}`)
+        .send({});
+      expect(qrSession.status).toBe(200);
+      expect(qrSession.body.data.qrImageUrl).toBe(cloudUrl);
+    } finally {
+      uploadQr.mockRestore();
+      Object.assign(env, originalConfig);
+    }
   });
 
   test('changing a verified bank account removes retailer visibility until reverified', async () => {

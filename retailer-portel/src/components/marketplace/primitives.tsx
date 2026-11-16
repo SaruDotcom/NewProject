@@ -10,7 +10,7 @@ import { ProductImage } from "./ProductImage";
 export const money = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number.isFinite(n) ? n : 0);
 
-export function TradeFlowMark({ className = "size-9" }: { className?: string }) {
+export function ThokStoreMark({ className = "size-9" }: { className?: string }) {
   return (
     <svg viewBox="0 0 512 512" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="512" height="512" rx="112" fill="#12304A" />
