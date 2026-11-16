@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -27,12 +28,14 @@ import api, {
 } from '@/lib/api';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { wholesalerQueryKeys } from '@/lib/query-client';
-import type { Category, Product } from '@/lib/types';
+import type { Product } from '@/lib/types';
+import KhataBookPage from '@/app/dashboard/khata-book/page';
 
-type Tab = 'purchases' | 'suppliers' | 'returns';
+type Tab = 'purchases' | 'suppliers' | 'returns' | 'ledger';
 type FormMode = 'FULL' | 'QUICK';
 type LineDraft = {
   productId: string;
+  productName: string;
   quantity: string;
   unit: PurchaseUnit;
   purchaseRate: string;
@@ -42,6 +45,8 @@ type LineDraft = {
 };
 type BillDraft = {
   supplierId: string;
+  supplierName: string;
+  gstEnabled: boolean;
   invoiceNumber: string;
   billDate: string;
   dueDate: string;
@@ -58,10 +63,6 @@ type BillDraft = {
 };
 type SupplierDraft = {
   name: string;
-  mobile: string;
-  address: string;
-  gstin: string;
-  openingBalance: string;
 };
 
 const units: PurchaseUnit[] = ['KG', 'BOX', 'CARTON', 'PIECES', 'METER'];
@@ -94,6 +95,7 @@ const labelClass = 'block text-xs font-semibold text-stone-600';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
 const defaultLine = (): LineDraft => ({
   productId: '',
+  productName: '',
   quantity: '1',
   unit: 'PIECES',
   purchaseRate: '',
@@ -103,6 +105,8 @@ const defaultLine = (): LineDraft => ({
 });
 const defaultBill = (mode: FormMode, supplierId = ''): BillDraft => ({
   supplierId,
+  supplierName: '',
+  gstEnabled: false,
   invoiceNumber: '',
   billDate: today(),
   dueDate: '',
@@ -156,15 +160,16 @@ function StatusBadge({ status }: { status: PurchaseBill['paymentStatus'] }) {
     : status === 'PARTIAL'
       ? 'bg-amber-50 text-amber-800 ring-amber-200'
       : 'bg-rose-50 text-rose-700 ring-rose-200';
-  const text = status === 'UDHAAR' ? 'Udhaar' : status === 'PARTIAL' ? 'Partly paid' : 'Paid';
+  const text = status === 'UDHAAR' ? 'Unpaid' : status === 'PARTIAL' ? 'Partly Paid' : 'Paid';
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${styles}`}>{text}</span>;
 }
 
 export default function PurchasesPage() {
-  const { profile, products, categories, addProduct, refreshData } = useWholesaler();
+  const { profile, products, refreshData } = useWholesaler();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const ownerId = profile.id || 'unknown';
-  const [tab, setTab] = useState<Tab>('purchases');
+  const [tab, setTab] = useState<Tab>(() => searchParams.get('tab') === 'ledger' ? 'ledger' : 'purchases');
   const [search, setSearch] = useState('');
   const [billPage, setBillPage] = useState(1);
   const [supplierSearch, setSupplierSearch] = useState('');
@@ -173,9 +178,10 @@ export default function PurchasesPage() {
   const [formMode, setFormMode] = useState<FormMode>('FULL');
   const [editingBill, setEditingBill] = useState<PurchaseBill | null>(null);
   const [supplierFormOpen, setSupplierFormOpen] = useState(false);
-  const [supplierDraft, setSupplierDraft] = useState<SupplierDraft>({ name: '', mobile: '', address: '', gstin: '', openingBalance: '0' });
+  const [supplierDraft, setSupplierDraft] = useState<SupplierDraft>({ name: '' });
   const [productFormOpen, setProductFormOpen] = useState(false);
-  const [productDraft, setProductDraft] = useState({ title: '', sku: '', categoryId: '', sellingPrice: '', unit: 'piece' });
+  const [productDraft, setProductDraft] = useState({ title: '', sellingPrice: '', unit: 'piece' });
+  const [productTargetIndex, setProductTargetIndex] = useState(0);
   const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const [ledgerSupplier, setLedgerSupplier] = useState<PurchaseSupplier | null>(null);
   const [ledgerFrom, setLedgerFrom] = useState('');
@@ -239,6 +245,10 @@ export default function PurchasesPage() {
   const bills = billsQuery.data?.data.items || [];
   const returns = returnsQuery.data?.data || [];
   const summary = summaryQuery.data?.data;
+  const selectedBillSupplier = formMode === 'QUICK'
+    ? suppliers.find((supplier) => supplier.isActive &&
+      supplier.name.trim().toLowerCase() === (billForm?.supplierName || '').trim().toLowerCase())
+    : suppliers.find((supplier) => supplier._id === billForm?.supplierId);
   const activeBills = useMemo(() => bills.filter((bill) => bill.status === 'ACTIVE'), [bills]);
   const returnableBills = useMemo(
     () => activeBills.filter((bill) => bill.items.some((item) => item.returnedQuantity < item.quantity)),
@@ -250,10 +260,6 @@ export default function PurchasesPage() {
   }, [suppliers, supplierSearch]);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier._id, supplier])), [suppliers]);
   const productById = useMemo(() => new Map((products as Product[]).map((product) => [product.id, product])), [products]);
-  const mainCategories = useMemo(
-    () => (categories as Category[]).filter((category) => !category.parentId),
-    [categories],
-  );
 
   const invalidatePurchases = async () => {
     await queryClient.invalidateQueries({ queryKey: wholesalerQueryKeys.resource(ownerId, 'purchases') });
@@ -265,7 +271,7 @@ export default function PurchasesPage() {
   const openBillForm = (mode: FormMode) => {
     setEditingBill(null);
     setFormMode(mode);
-    setBillForm(defaultBill(mode, suppliers[0]?._id || ''));
+    setBillForm(defaultBill(mode, mode === 'FULL' ? suppliers[0]?._id || '' : ''));
     setDuplicateBill(null);
     setMessage(null);
   };
@@ -277,11 +283,16 @@ export default function PurchasesPage() {
       setFormMode(data.billType);
       setBillForm({
         supplierId: typeof data.supplierId === 'string' ? data.supplierId : data.supplierId._id,
+        supplierName: isObjectSupplier(data.supplierId)
+          ? data.supplierId.name
+          : supplierById.get(data.supplierId)?.name || '',
+        gstEnabled: data.items.some((item) => item.gstPercent > 0),
         invoiceNumber: data.invoiceNumber,
         billDate: data.billDate.slice(0, 10),
         dueDate: data.dueDate?.slice(0, 10) || '',
         items: data.items.map((item) => ({
           productId: item.productId,
+          productName: item.productName,
           quantity: String(item.quantity),
           unit: item.unit,
           purchaseRate: String(item.purchaseRate),
@@ -312,11 +323,10 @@ export default function PurchasesPage() {
     setMessage(null);
     try {
       const { data } = await api.createPurchaseSupplier({
-        ...supplierDraft,
-        openingBalance: Number(supplierDraft.openingBalance || 0),
+        name: supplierDraft.name.trim(),
       });
       await invalidatePurchases();
-      setSupplierDraft({ name: '', mobile: '', address: '', gstin: '', openingBalance: '0' });
+      setSupplierDraft({ name: '' });
       setSupplierFormOpen(false);
       setMessage({ type: 'success', text: `${data.name} added to your supplier list.` });
       if (billForm) setBillForm((current) => current ? { ...current, supplierId: data._id } : current);
@@ -332,30 +342,38 @@ export default function PurchasesPage() {
     setSaving(true);
     setMessage(null);
     try {
-      const category = mainCategories.find((item) => item.id === productDraft.categoryId);
-      if (!category) throw new Error('Select a main category for the new product.');
-      await addProduct({
-        title: productDraft.title.trim(),
-        sku: productDraft.sku.trim(),
-        category: category.name,
-        categoryId: category.id,
-        subcategoryId: null,
-        subSubcategoryId: null,
-        costPrice: 0,
-        sellingPrice: Number(productDraft.sellingPrice),
-        mrp: Number(productDraft.sellingPrice),
-        basePrice: Number(productDraft.sellingPrice),
-        stock: 0,
-        minOrderQty: 1,
+      const name = productDraft.title.trim();
+      const sellingPrice = productDraft.sellingPrice.trim() ? Number(productDraft.sellingPrice) : 0;
+      if (!name) throw new Error('Product name is required.');
+      if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+        throw new Error('Enter a valid retailer selling price.');
+      }
+
+      const { data } = await api.createPurchaseProduct({
+        name,
+        sellingPrice,
         unit: productDraft.unit.trim() || 'piece',
-        imageUrl: '',
-        pricingTiers: [],
-        description: '',
       });
-      await refreshData(true);
-      setProductDraft({ title: '', sku: '', categoryId: '', sellingPrice: '', unit: 'piece' });
+      const productId = data.product?._id;
+      if (!productId) throw new Error('The product was created, but its ID was missing from the response.');
+      const refreshed = await refreshData(true);
       setProductFormOpen(false);
-      setMessage({ type: 'success', text: 'Product created with zero stock. This bill can update its inventory.' });
+      setProductDraft({ title: '', sellingPrice: '', unit: 'piece' });
+      if (refreshed) {
+        const unit = units.find((value) =>
+          value.toLowerCase() === productDraft.unit.trim().toLowerCase() ||
+          (value === 'PIECES' && productDraft.unit.trim().toLowerCase() === 'piece')
+        ) || 'PIECES';
+        setBillForm((current) => current ? {
+          ...current,
+          items: current.items.map((line, index) => index === productTargetIndex
+            ? { ...line, productId, unit }
+            : line),
+        } : current);
+        setMessage({ type: 'success', text: 'Product created and added to the purchase item list.' });
+      } else {
+        setMessage({ type: 'error', text: 'Product was created, but the product list could not be refreshed. Reload the page to use it.' });
+      }
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Unable to create product.' });
     } finally {
@@ -404,18 +422,61 @@ export default function PurchasesPage() {
         }
       }
 
+      let resolvedSupplierId = billForm.supplierId;
+      const resolvedProductIds = billForm.items.map((line) => line.productId);
+      if (formMode === 'QUICK' && !editingBill) {
+        const supplierName = billForm.supplierName.trim();
+        const line = billForm.items[0];
+        const productName = line.productName.trim();
+        if (!supplierName || !productName) throw new Error('Enter both a product name and supplier name.');
+        if (Number(line.quantity) <= 0 || Number(line.purchaseRate) < 0) {
+          throw new Error('Enter a valid product quantity and purchase rate.');
+        }
+        if (Number(billForm.paymentAmount || 0) > 0 && !billForm.paymentMode) {
+          throw new Error('Choose a payment mode for the amount paid.');
+        }
+
+        const [{ data: currentSuppliers }, { data: currentProducts }] = await Promise.all([
+          api.getPurchaseSuppliers(),
+          api.getProducts(),
+        ]);
+        const normalizedSupplierName = supplierName.toLowerCase();
+        const existingSupplier = currentSuppliers.find((supplier) =>
+          supplier.isActive && supplier.name.trim().toLowerCase() === normalizedSupplierName
+        );
+        const normalizedProductName = productName.toLowerCase();
+        const existingProduct = currentProducts.find((product) =>
+          String(product.name || product.title || '').trim().toLowerCase() === normalizedProductName
+        );
+        let productId = existingProduct ? String(existingProduct._id || existingProduct.id || '') : '';
+        if (!productId) {
+          const { data } = await api.createPurchaseProduct({ name: productName, unit: line.unit.toLowerCase() });
+          productId = String(data.product?._id || data.product?.id || '');
+          if (!productId) throw new Error('The product was created, but its ID was missing from the response.');
+          await refreshData(true);
+        }
+
+        resolvedProductIds[0] = productId;
+        if (!existingSupplier) {
+          const { data } = await api.createPurchaseSupplier({ name: supplierName });
+          resolvedSupplierId = data._id;
+        } else {
+          resolvedSupplierId = existingSupplier._id;
+        }
+      }
+
       const payload: PurchaseBillInput = {
         billType: formMode,
-        supplierId: billForm.supplierId,
+        supplierId: resolvedSupplierId,
         idempotencyKey: editingBill?.idempotencyKey || makeKey(),
         invoiceNumber: formMode === 'FULL' ? billForm.invoiceNumber.trim() : '',
         billDate: billForm.billDate,
-        items: billForm.items.map((line) => ({
-          productId: line.productId,
+        items: billForm.items.map((line, index) => ({
+          productId: resolvedProductIds[index],
           quantity: Number(line.quantity),
           unit: line.unit,
           purchaseRate: Number(line.purchaseRate),
-          gstPercent: Number(line.gstPercent || 0),
+          gstPercent: billForm.gstEnabled ? Number(line.gstPercent || 0) : 0,
         })),
         transportCharges: formMode === 'FULL' ? Number(billForm.transportCharges || 0) : 0,
         loadingCharges: formMode === 'FULL' ? Number(billForm.loadingCharges || 0) : 0,
@@ -614,7 +675,7 @@ export default function PurchasesPage() {
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `${ledgerSupplier.name}-khata.csv`.replace(/[^a-z0-9._-]/gi, '-');
+      anchor.download = `${ledgerSupplier.name}-ledger.csv`.replace(/[^a-z0-9._-]/gi, '-');
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
@@ -658,8 +719,8 @@ export default function PurchasesPage() {
       const entries = await getAllLedgerEntries();
       const rows = entries.map((entry) => `<tr><td>${escapeHtml(new Date(entry.effectiveDate).toLocaleDateString('en-IN'))}</td><td>${escapeHtml(entry.type.replace(/_/g, ' '))}</td><td>${escapeHtml(entry.notes)}</td><td class="right">${entry.amount < 0 ? '−' : '+'}${escapeHtml(amount(Math.abs(entry.amount)))}</td><td class="right">${escapeHtml(amount(entry.balanceAfter))}</td></tr>`).join('');
       writePrintDocument(printWindow, `${ledgerSupplier.name} supplier statement`, `
-        <h1>Supplier Khata Statement</h1><p>${escapeHtml(ledgerSupplier.name)} · ${escapeHtml(ledgerSupplier.mobile)}</p>
-        <div class="summary"><span>Opening balance: <b>${escapeHtml(amount(ledgerSupplier.openingBalance))}</b></span><span>Current Baaki: <b>${escapeHtml(amount(ledgerSupplier.currentBalance))}</b></span></div>
+        <h1>Supplier Ledger Statement</h1><p>${escapeHtml(ledgerSupplier.name)} · ${escapeHtml(ledgerSupplier.mobile)}</p>
+        <div class="summary"><span>Opening balance: <b>${escapeHtml(amount(ledgerSupplier.openingBalance))}</b></span><span>Current balance: <b>${escapeHtml(amount(ledgerSupplier.currentBalance))}</b></span></div>
         <table><thead><tr><th>Date</th><th>Transaction</th><th>Notes</th><th>Amount</th><th>Balance</th></tr></thead><tbody>${rows}</tbody></table>
       `);
     } catch (error) {
@@ -677,7 +738,7 @@ export default function PurchasesPage() {
       <h1>Purchase Bill</h1><p>${escapeHtml(supplier?.name || 'Supplier')} · ${escapeHtml(supplier?.mobile || '')}</p>
       <p>Bill: <b>${escapeHtml(bill.invoiceNumber)}</b> · Date: ${escapeHtml(new Date(bill.billDate).toLocaleDateString('en-IN'))}</p>
       <table><thead><tr><th>Product</th><th>Quantity</th><th>Rate</th><th>GST</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
-      <table class="totals"><tbody><tr><td>Subtotal</td><td class="right">${escapeHtml(amount(bill.subtotal))}</td></tr><tr><td>GST</td><td class="right">${escapeHtml(amount(bill.gstTotal))}</td></tr><tr><td>Additional charges</td><td class="right">${escapeHtml(amount(bill.transportCharges + bill.loadingCharges))}</td></tr><tr><td>Discount</td><td class="right">−${escapeHtml(amount(bill.discountAmount))}</td></tr><tr><td class="strong">Total</td><td class="right strong">${escapeHtml(amount(bill.totalAmount))}</td></tr><tr><td>Net Jama</td><td class="right">${escapeHtml(amount(bill.paidAmount - bill.refundedAmount))}</td></tr>${bill.refundedAmount > 0 ? `<tr><td>Refund received</td><td class="right">${escapeHtml(amount(bill.refundedAmount))}</td></tr>` : ''}<tr><td>Baaki</td><td class="right">${escapeHtml(amount(bill.outstandingAmount))}</td></tr></tbody></table>
+      <table class="totals"><tbody><tr><td>Subtotal</td><td class="right">${escapeHtml(amount(bill.subtotal))}</td></tr><tr><td>GST</td><td class="right">${escapeHtml(amount(bill.gstTotal))}</td></tr><tr><td>Additional charges</td><td class="right">${escapeHtml(amount(bill.transportCharges + bill.loadingCharges))}</td></tr><tr><td>Discount</td><td class="right">−${escapeHtml(amount(bill.discountAmount))}</td></tr><tr><td class="strong">Total</td><td class="right strong">${escapeHtml(amount(bill.totalAmount))}</td></tr><tr><td>Net paid</td><td class="right">${escapeHtml(amount(bill.paidAmount - bill.refundedAmount))}</td></tr>${bill.refundedAmount > 0 ? `<tr><td>Refund received</td><td class="right">${escapeHtml(amount(bill.refundedAmount))}</td></tr>` : ''}<tr><td>Outstanding balance</td><td class="right">${escapeHtml(amount(bill.outstandingAmount))}</td></tr></tbody></table>
       ${bill.notes ? `<p>Notes: ${escapeHtml(bill.notes)}</p>` : ''}
     `);
   };
@@ -686,29 +747,57 @@ export default function PurchasesPage() {
     <Modal title={editingBill ? `Edit ${editingBill.invoiceNumber}` : formMode === 'FULL' ? 'New full purchase bill' : 'Quick purchase entry'} onClose={() => { setBillForm(null); setEditingBill(null); }} wide>
       <form className="space-y-5" onSubmit={saveBill}>
         {message?.type === 'error' && <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{message.text}</p>}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <label className={labelClass}>Supplier
+        {formMode === 'QUICK' && (
+          <section className="space-y-3 rounded-2xl border border-stone-200 bg-stone-50/60 p-4">
+            <div>
+              <h3 className="text-sm font-bold text-stone-800">Supplier &amp; Product Details</h3>
+              <p className="mt-1 text-xs text-stone-500">Enter the product and supplier for this purchase.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={labelClass}>Product Name
+                <input
+                  className={fieldClass}
+                  required
+                  disabled={Boolean(editingBill)}
+                  value={billForm.items[0]?.productName || ''}
+                  onChange={(event) => setLine(0, { productName: event.target.value })}
+                />
+              </label>
+              <label className={labelClass}>Supplier Name
+                <input
+                  className={fieldClass}
+                  required
+                  disabled={Boolean(editingBill)}
+                  value={billForm.supplierName}
+                  onChange={(event) => setBillForm({ ...billForm, supplierName: event.target.value })}
+                />
+              </label>
+            </div>
+          </section>
+        )}
+        <div className={`grid gap-4 sm:grid-cols-2 ${formMode === 'FULL' ? 'lg:grid-cols-4' : ''}`}>
+          {formMode === 'FULL' && <label className={labelClass}>Supplier Name
             <div className="mt-1 flex gap-2">
-              <select className={fieldClass + ' mt-0'} value={billForm.supplierId} required disabled={Boolean(editingBill)} onChange={(event) => setBillForm({ ...billForm, supplierId: event.target.value })}>
+              <select className={fieldClass + ' mt-0 min-w-0 flex-1'} value={billForm.supplierId} required disabled={Boolean(editingBill)} onChange={(event) => setBillForm({ ...billForm, supplierId: event.target.value })}>
                 <option value="">Select supplier</option>
                 {suppliers.filter((supplier) => supplier.isActive).map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name} · {amount(supplier.currentBalance)} due</option>)}
               </select>
-              <button type="button" onClick={() => setSupplierFormOpen(true)} className="rounded-xl border border-stone-200 px-3 text-emerald-700 hover:bg-emerald-50" aria-label="Add supplier"><Plus className="h-4 w-4" /></button>
+              {!editingBill && <button type="button" onClick={() => { setSupplierDraft({ name: '' }); setSupplierFormOpen(true); }} className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-stone-200 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50" aria-label="Add new supplier"><Plus className="h-4 w-4" /> Add New Supplier</button>}
             </div>
-          </label>
+          </label>}
           {formMode === 'FULL' && <label className={labelClass}>Bill / invoice number
             <input className={fieldClass} value={billForm.invoiceNumber} disabled={Boolean(editingBill)} onChange={(event) => setBillForm({ ...billForm, invoiceNumber: event.target.value })} required />
           </label>}
-          <label className={labelClass}>Purchase date
+          <label className={labelClass}>Bill date
             <input className={fieldClass} type="date" value={billForm.billDate} onChange={(event) => setBillForm({ ...billForm, billDate: event.target.value })} required />
           </label>
           <label className={labelClass}>Due date
             <input className={fieldClass} type="date" value={billForm.dueDate} onChange={(event) => setBillForm({ ...billForm, dueDate: event.target.value })} />
           </label>
         </div>
-        {!editingBill && suppliers.find((supplier) => supplier._id === billForm.supplierId) && (
+        {!editingBill && selectedBillSupplier && (
           <p className="rounded-xl bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-            Previous outstanding: <strong>{amount(suppliers.find((supplier) => supplier._id === billForm.supplierId)?.currentBalance)}</strong>
+            Opening balance (previous outstanding): <strong>{amount(selectedBillSupplier.currentBalance)}</strong>
           </p>
         )}
 
@@ -716,9 +805,21 @@ export default function PurchasesPage() {
           <div className="flex items-center justify-between bg-stone-50 px-4 py-3">
             <div>
               <h3 className="text-sm font-bold text-stone-800">Purchase items</h3>
-              <p className="text-xs text-stone-500">Enter supplier rate and GST; totals are recalculated by the server.</p>
+              <p className="text-xs text-stone-500">Enter supplier rates and enable GST if it applies; totals are recalculated by the server.</p>
             </div>
-            {!editingBill && <button type="button" onClick={() => setProductFormOpen(true)} className="inline-flex items-center gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"><PackagePlus className="h-4 w-4" /> Add product</button>}
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-stone-700">
+              <input
+                type="checkbox"
+                checked={billForm.gstEnabled}
+                onChange={(event) => setBillForm({
+                  ...billForm,
+                  gstEnabled: event.target.checked,
+                  items: event.target.checked ? billForm.items : billForm.items.map((line) => ({ ...line, gstPercent: '0' })),
+                })}
+                className="h-4 w-4 accent-emerald-600"
+              />
+              Include GST
+            </label>
           </div>
           <div className="space-y-3 p-3">
             {billForm.items.map((line, index) => {
@@ -726,20 +827,33 @@ export default function PurchasesPage() {
               const changedRate = product && Number(line.purchaseRate) > 0 && Math.abs(Number(product.costPrice || 0) - Number(line.purchaseRate)) >= 0.01;
               return (
                 <div key={`${index}-${line.productId}`} className="rounded-xl border border-stone-100 bg-white p-3">
-                  <div className="grid gap-3 md:grid-cols-[2fr_0.8fr_0.9fr_0.8fr_1.1fr_auto]">
-                    <label className={labelClass}>Product
-                      <select className={fieldClass} value={line.productId} required onChange={(event) => {
-                        const selected = productById.get(event.target.value);
-                        setLine(index, {
-                          productId: event.target.value,
-                          unit: (units.find((unit) => unit.toLowerCase() === String(selected?.unit || '').toLowerCase()) || 'PIECES'),
-                          purchaseRate: String(selected?.costPrice || ''),
-                        });
-                      }}>
-                        <option value="">Select product</option>
-                        {(products as Product[]).map((product) => <option key={product.id} value={product.id}>{product.title} · stock {product.stock}</option>)}
-                      </select>
-                    </label>
+                  <div className={formMode === 'QUICK'
+                    ? billForm.gstEnabled
+                      ? 'grid gap-3 md:grid-cols-[0.8fr_0.9fr_0.8fr_1.1fr_auto]'
+                      : 'grid gap-3 md:grid-cols-[0.8fr_0.9fr_1.1fr_auto]'
+                    : billForm.gstEnabled
+                      ? 'grid gap-3 md:grid-cols-[2fr_0.8fr_0.9fr_0.8fr_1.1fr_auto]'
+                      : 'grid gap-3 md:grid-cols-[2fr_0.8fr_0.9fr_1.1fr_auto]'}>
+                    {formMode === 'FULL' && <label className={labelClass}>Product
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        <select className={fieldClass + ' mt-0 min-w-0 flex-1'} value={line.productId} required onChange={(event) => {
+                          const selected = productById.get(event.target.value);
+                          setLine(index, {
+                            productId: event.target.value,
+                            unit: (units.find((unit) => unit.toLowerCase() === String(selected?.unit || '').toLowerCase()) || 'PIECES'),
+                            purchaseRate: String(selected?.costPrice || ''),
+                          });
+                        }}>
+                          <option value="">Select product</option>
+                          {(products as Product[]).map((product) => <option key={product.id} value={product.id}>{product.title} · stock {product.stock}</option>)}
+                        </select>
+                        {!editingBill && <button type="button" onClick={() => {
+                          setProductTargetIndex(index);
+                          setProductDraft({ title: '', sellingPrice: '', unit: 'piece' });
+                          setProductFormOpen(true);
+                        }} className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-stone-200 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"><PackagePlus className="h-4 w-4" /> Add New Product</button>}
+                      </div>
+                    </label>}
                     <label className={labelClass}>Quantity
                       <input className={fieldClass} type="number" min="0.001" step="0.001" value={line.quantity} required onChange={(event) => setLine(index, { quantity: event.target.value })} />
                     </label>
@@ -751,15 +865,15 @@ export default function PurchasesPage() {
                     <label className={labelClass}>Rate / unit
                       <input className={fieldClass} type="number" min="0" step="0.01" value={line.purchaseRate} required onChange={(event) => setLine(index, { purchaseRate: event.target.value })} />
                     </label>
-                    <label className={labelClass}>GST %
+                    {billForm.gstEnabled && <label className={labelClass}>GST %
                       <input className={fieldClass} type="number" min="0" max="100" step="0.01" value={line.gstPercent} onChange={(event) => setLine(index, { gstPercent: event.target.value })} />
-                    </label>
+                    </label>}
                     <div className="flex items-end">
                       {billForm.items.length > 1 && <button type="button" onClick={() => setBillForm({ ...billForm, items: billForm.items.filter((_, itemIndex) => itemIndex !== index) })} className="mb-1 rounded-lg p-2 text-stone-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Remove item"><X className="h-4 w-4" /></button>}
                     </div>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-2 text-xs">
-                    <span className="text-stone-500">Taxable {amount(lineTotals(line).taxable)} · GST {amount(lineTotals(line).gst)} · Item total <strong className="text-stone-800">{amount(lineTotals(line).total)}</strong></span>
+                    <span className="text-stone-500">Item subtotal {amount(lineTotals(line).taxable)}{billForm.gstEnabled && <> · GST {amount(lineTotals(line).gst)}</>} · Item total <strong className="text-stone-800">{amount(lineTotals(line).total)}</strong></span>
                     {changedRate && <span className="text-amber-800">Purchase rate changed ({amount(product.costPrice)} → {amount(line.purchaseRate)}). Would you like to update the retailer selling price?
                       <select className="ml-2 rounded-lg border border-amber-300 bg-white px-2 py-1" value={line.sellingPriceAction} onChange={(event) => setLine(index, { sellingPriceAction: event.target.value as LineDraft['sellingPriceAction'] })}>
                         <option value="KEEP">No, keep existing price</option>
@@ -787,7 +901,7 @@ export default function PurchasesPage() {
                 <input className={fieldClass} type="number" min="0" step="0.01" value={billForm.discountValue} onChange={(event) => setBillForm({ ...billForm, discountValue: event.target.value })} />
               </label>
             </>}
-            <label className={labelClass}>Amount paid (Jama)
+            <label className={labelClass}>Amount paid
               <input className={fieldClass} type="number" min="0" step="0.01" value={billForm.paymentAmount} onChange={(event) => setBillForm({ ...billForm, paymentAmount: event.target.value })} />
             </label>
             <label className={labelClass}>Payment mode
@@ -808,11 +922,12 @@ export default function PurchasesPage() {
             <h3 className="mb-3 text-sm font-bold text-stone-800">Bill total</h3>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between text-stone-600"><dt>Taxable amount</dt><dd>{amount(billTotals(billForm).subtotal)}</dd></div>
-              <div className="flex justify-between text-stone-600"><dt>GST</dt><dd>{amount(billTotals(billForm).gst)}</dd></div>
+              {billForm.gstEnabled && <div className="flex justify-between text-stone-600"><dt>GST</dt><dd>{amount(billTotals(billForm).gst)}</dd></div>}
               <div className="flex justify-between text-stone-600"><dt>Discount</dt><dd>−{amount(billTotals(billForm).discount)}</dd></div>
               <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-bold text-stone-900"><dt>Total bill</dt><dd>{amount(billTotals(billForm).total)}</dd></div>
-              <div className="flex justify-between text-emerald-700"><dt>Jama</dt><dd>{amount(billTotals(billForm).paid)}</dd></div>
-              <div className="flex justify-between font-semibold text-rose-700"><dt>Baaki</dt><dd>{amount(billTotals(billForm).outstanding)}</dd></div>
+              <div className="flex justify-between text-emerald-700"><dt>Paid</dt><dd>{amount(billTotals(billForm).paid)}</dd></div>
+              <div className="flex justify-between font-semibold text-rose-700"><dt>Remaining balance</dt><dd>{amount(billTotals(billForm).outstanding)}</dd></div>
+              <div className="flex justify-between border-t border-stone-200 pt-2 font-semibold text-stone-700"><dt>Payment status</dt><dd>{billTotals(billForm).paid > 0 && billTotals(billForm).outstanding > 0 ? 'Partly Paid' : billTotals(billForm).outstanding === 0 && billTotals(billForm).paid > 0 ? 'Paid' : 'Unpaid'}</dd></div>
             </dl>
           </aside>
         </div>
@@ -842,14 +957,14 @@ export default function PurchasesPage() {
     <main className="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800"><BookOpen className="h-3.5 w-3.5" /> Wholesaler Khata</div>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">Kharidi & Supplier Khata</h1>
-          <p className="mt-1 max-w-2xl text-sm text-stone-500">Record purchase bills, track Jama and Baaki, manage supplier payments and returns.</p>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800"><BookOpen className="h-3.5 w-3.5" /> Purchase</div>
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900 sm:text-3xl">Purchase</h1>
+          <p className="mt-1 max-w-2xl text-sm text-stone-500">Record purchase bills, track payments and outstanding balances, and manage supplier returns.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {tab === 'purchases' && <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => openBillForm('QUICK')} className={`${buttonClass} border border-stone-200 bg-white text-stone-700 hover:bg-stone-50`}><CirclePlus className="h-4 w-4" /> Quick entry</button>
           <button type="button" onClick={() => openBillForm('FULL')} className={`${buttonClass} bg-emerald-700 text-white shadow-sm hover:bg-emerald-800`}><Plus className="h-4 w-4" /> Full bill</button>
-        </div>
+        </div>}
       </header>
 
       {message && <div role={message.type === 'error' ? 'alert' : 'status'} className={`flex items-start justify-between gap-3 rounded-xl px-4 py-3 text-sm ${message.type === 'error' ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800'}`}>
@@ -859,11 +974,11 @@ export default function PurchasesPage() {
         Unable to load purchase data: {pageQueryError.message}
       </div>}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {tab !== 'ledger' && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: 'Total purchases', value: summary?.totalPurchases, icon: ClipboardList, color: 'text-blue-700 bg-blue-50' },
-          { label: 'Total Jama', value: summary?.totalPaid, icon: ArrowUpRight, color: 'text-emerald-700 bg-emerald-50' },
-          { label: 'Baaki / Udhaar', value: summary?.totalOutstanding, icon: ArrowDownLeft, color: 'text-amber-800 bg-amber-50' },
+          { label: 'Total paid', value: summary?.totalPaid, icon: ArrowUpRight, color: 'text-emerald-700 bg-emerald-50' },
+          { label: 'Outstanding balance', value: summary?.totalOutstanding, icon: ArrowDownLeft, color: 'text-amber-800 bg-amber-50' },
           { label: 'Overdue payments', value: summary?.overduePayments, icon: CalendarDays, color: 'text-rose-700 bg-rose-50' },
           { label: 'Purchase returns', value: summary?.totalReturns, icon: RotateCcw, color: 'text-violet-700 bg-violet-50' },
         ].map((card) => {
@@ -873,7 +988,7 @@ export default function PurchasesPage() {
             <p className="mt-3 text-xl font-bold text-stone-900">{summaryQuery.isLoading ? '—' : amount(card.value)}</p>
           </article>;
         })}
-      </section>
+      </section>}
 
       <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
         <div className="flex flex-col justify-between gap-4 border-b border-stone-100 p-4 sm:flex-row sm:items-center">
@@ -881,7 +996,8 @@ export default function PurchasesPage() {
             {[
               { key: 'purchases' as const, label: 'Purchase bills', icon: ClipboardList },
               { key: 'suppliers' as const, label: 'Suppliers', icon: Truck },
-              { key: 'returns' as const, label: 'Kharidi Wapsi', icon: RotateCcw },
+              { key: 'returns' as const, label: 'Purchase Returns', icon: RotateCcw },
+              { key: 'ledger' as const, label: 'Purchase Ledger', icon: BookOpen },
             ].map((item) => {
               const Icon = item.icon;
               return <button type="button" key={item.key} onClick={() => setTab(item.key)} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${tab === item.key ? 'bg-white text-emerald-800 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}><Icon className="h-4 w-4" />{item.label}</button>;
@@ -894,14 +1010,14 @@ export default function PurchasesPage() {
             </label>
             <select aria-label="Filter bill status" className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm" value={billStatus} onChange={(event) => { setBillStatus(event.target.value as typeof billStatus); setBillPage(1); }}><option value="ACTIVE">Active</option><option value="ALL">All bills</option><option value="CANCELLED">Cancelled</option></select>
           </div>}
-          {tab === 'suppliers' && <div className="flex gap-2"><label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" /><input aria-label="Search suppliers" className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-emerald-500 sm:w-56" placeholder="Search supplier" value={supplierSearch} onChange={(event) => setSupplierSearch(event.target.value)} /></label><button type="button" onClick={() => setSupplierFormOpen(true)} className={`${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`}><Plus className="h-4 w-4" /> Add supplier</button></div>}
+          {tab === 'suppliers' && <div className="flex gap-2"><label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" /><input aria-label="Search suppliers" className="w-full rounded-xl border border-stone-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-emerald-500 sm:w-56" placeholder="Search supplier" value={supplierSearch} onChange={(event) => setSupplierSearch(event.target.value)} /></label><button type="button" onClick={() => { setSupplierDraft({ name: '' }); setSupplierFormOpen(true); }} className={`${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`}><Plus className="h-4 w-4" /> Add New Supplier</button></div>}
           {tab === 'returns' && <button type="button" onClick={() => returnableBills[0] && openReturnForm(returnableBills[0])} disabled={!returnableBills.length} className={`${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`}><RotateCcw className="h-4 w-4" /> New return</button>}
         </div>
 
         {tab === 'purchases' && <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-stone-50 text-[11px] uppercase tracking-wide text-stone-500"><tr>
-              <th className="px-4 py-3">Bill / date</th><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Jama</th><th className="px-4 py-3">Baaki</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Due date</th><th className="px-4 py-3 text-right">Actions</th>
+              <th className="px-4 py-3">Bill / date</th><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Paid</th><th className="px-4 py-3">Balance</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Due date</th><th className="px-4 py-3 text-right">Actions</th>
             </tr></thead>
             <tbody className="divide-y divide-stone-100">
               {billsQuery.isLoading && <tr><td colSpan={8} className="px-4 py-12 text-center text-stone-500"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin" />Loading purchase bills…</td></tr>}
@@ -936,10 +1052,10 @@ export default function PurchasesPage() {
 
         {tab === 'suppliers' && <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-stone-50 text-[11px] uppercase tracking-wide text-stone-500"><tr><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Opening balance</th><th className="px-4 py-3">Purchases</th><th className="px-4 py-3">Payments</th><th className="px-4 py-3">Returns</th><th className="px-4 py-3">Current Baaki</th><th className="px-4 py-3">Next due</th><th className="px-4 py-3 text-right">Actions</th></tr></thead>
+            <thead className="bg-stone-50 text-[11px] uppercase tracking-wide text-stone-500"><tr><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Opening balance</th><th className="px-4 py-3">Purchases</th><th className="px-4 py-3">Payments</th><th className="px-4 py-3">Returns</th><th className="px-4 py-3">Current balance</th><th className="px-4 py-3">Next due</th><th className="px-4 py-3 text-right">Actions</th></tr></thead>
             <tbody className="divide-y divide-stone-100">
               {suppliersQuery.isLoading && <tr><td colSpan={8} className="px-4 py-10 text-center text-stone-500">Loading suppliers…</td></tr>}
-              {!suppliersQuery.isLoading && !filteredSuppliers.length && <tr><td colSpan={8} className="px-4 py-10 text-center text-stone-500">{suppliers.length ? 'No supplier matches this search.' : 'No suppliers yet. Add a supplier to start recording Kharidi.'}</td></tr>}
+              {!suppliersQuery.isLoading && !filteredSuppliers.length && <tr><td colSpan={8} className="px-4 py-10 text-center text-stone-500">{suppliers.length ? 'No supplier matches this search.' : 'No suppliers yet. Add a supplier to start recording purchases.'}</td></tr>}
               {filteredSuppliers.map((supplier) => <tr key={supplier._id} className="hover:bg-stone-50/70">
                 <td className="px-4 py-3"><div className="font-bold text-stone-800">{supplier.name}</div><div className="text-xs text-stone-500">{supplier.mobile}</div></td>
                 <td className="px-4 py-3">{amount(supplier.openingBalance)}</td><td className="px-4 py-3">{amount(supplier.totalPurchases)}</td><td className="px-4 py-3">{amount(supplier.totalPayments)}</td><td className="px-4 py-3">{amount(supplier.purchaseReturns)}</td><td className="px-4 py-3 font-bold text-amber-800">{amount(supplier.currentBalance)}</td>
@@ -967,30 +1083,25 @@ export default function PurchasesPage() {
             </tbody>
           </table>
         </div>}
+        {tab === 'ledger' && <div className="p-3 sm:p-4"><KhataBookPage /></div>}
       </section>
 
       {renderBillForm()}
 
-      {supplierFormOpen && <Modal title="Add new supplier" onClose={() => setSupplierFormOpen(false)}>
+      {supplierFormOpen && <Modal title="Add New Supplier" onClose={() => setSupplierFormOpen(false)}>
         <form className="space-y-4" onSubmit={saveSupplier}>
-          <p className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-600">Supplier data is private to your wholesaler account. Opening balance is recorded in the ledger.</p>
+          <p className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-600">Supplier details are saved to your account and can be selected in purchases.</p>
           <label className={labelClass}>Supplier name<input className={fieldClass} required minLength={2} maxLength={160} value={supplierDraft.name} onChange={(event) => setSupplierDraft({ ...supplierDraft, name: event.target.value })} /></label>
-          <label className={labelClass}>Mobile number<input className={fieldClass} required type="tel" pattern="\\+?[1-9][0-9]{7,14}" title="Enter 8 to 15 digits, optionally prefixed by +" value={supplierDraft.mobile} onChange={(event) => setSupplierDraft({ ...supplierDraft, mobile: event.target.value })} /></label>
-          <label className={labelClass}>Address<input className={fieldClass} maxLength={500} value={supplierDraft.address} onChange={(event) => setSupplierDraft({ ...supplierDraft, address: event.target.value })} /></label>
-          <label className={labelClass}>GSTIN (optional)<input className={fieldClass} maxLength={15} value={supplierDraft.gstin} onChange={(event) => setSupplierDraft({ ...supplierDraft, gstin: event.target.value.toUpperCase() })} /></label>
-          <label className={labelClass}>Opening balance (Baaki)<input className={fieldClass} type="number" min="0" step="0.01" value={supplierDraft.openingBalance} onChange={(event) => setSupplierDraft({ ...supplierDraft, openingBalance: event.target.value })} /></label>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setSupplierFormOpen(false)} className={`${buttonClass} border border-stone-200 text-stone-700`}>Cancel</button><button disabled={saving} className={`${buttonClass} bg-emerald-700 text-white`}>{saving ? 'Saving…' : 'Save supplier'}</button></div>
         </form>
       </Modal>}
 
-      {productFormOpen && <Modal title="Add product for this bill" onClose={() => setProductFormOpen(false)}>
+      {productFormOpen && <Modal title="Add New Product" onClose={() => setProductFormOpen(false)}>
         <form className="space-y-4" onSubmit={saveProduct}>
           <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-800">The product is created with zero stock. Inventory changes only if “Update inventory automatically” is enabled on the bill.</p>
           <label className={labelClass}>Product name<input className={fieldClass} required value={productDraft.title} onChange={(event) => setProductDraft({ ...productDraft, title: event.target.value })} /></label>
-          <label className={labelClass}>SKU<input className={fieldClass} required value={productDraft.sku} onChange={(event) => setProductDraft({ ...productDraft, sku: event.target.value })} /></label>
-          <label className={labelClass}>Main category<select className={fieldClass} required value={productDraft.categoryId} onChange={(event) => setProductDraft({ ...productDraft, categoryId: event.target.value })}><option value="">Select category</option>{mainCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelClass}>Retailer selling price<input className={fieldClass} type="number" min="0" step="0.01" required value={productDraft.sellingPrice} onChange={(event) => setProductDraft({ ...productDraft, sellingPrice: event.target.value })} /></label>
+            <label className={labelClass}>Retailer selling price<input className={fieldClass} type="number" min="0" step="0.01" value={productDraft.sellingPrice} onChange={(event) => setProductDraft({ ...productDraft, sellingPrice: event.target.value })} /></label>
             <label className={labelClass}>Unit<input className={fieldClass} value={productDraft.unit} onChange={(event) => setProductDraft({ ...productDraft, unit: event.target.value })} /></label>
           </div>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setProductFormOpen(false)} className={`${buttonClass} border border-stone-200 text-stone-700`}>Cancel</button><button disabled={saving} className={`${buttonClass} bg-emerald-700 text-white`}>{saving ? 'Saving…' : 'Create product'}</button></div>
@@ -1007,11 +1118,11 @@ export default function PurchasesPage() {
         </form>
       </Modal>}
 
-      {ledgerSupplier && <Modal title={`Supplier Khata · ${ledgerSupplier.name}`} onClose={() => setLedgerSupplier(null)} wide>
+      {ledgerSupplier && <Modal title={`Supplier ledger · ${ledgerSupplier.name}`} onClose={() => setLedgerSupplier(null)} wide>
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-stone-50 p-4">
             <div><p className="text-xs text-stone-500">Opening balance</p><p className="font-bold">{amount(ledgerSupplier.openingBalance)}</p></div>
-            <div><p className="text-xs text-stone-500">Current Baaki</p><p className="text-lg font-bold text-amber-800">{amount(ledgerSupplier.currentBalance)}</p></div>
+            <div><p className="text-xs text-stone-500">Current balance</p><p className="text-lg font-bold text-amber-800">{amount(ledgerSupplier.currentBalance)}</p></div>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={downloadStatement} disabled={!ledgerQuery.data?.data.items.length} className={`${buttonClass} border border-stone-200 bg-white text-stone-700`}><FileText className="h-4 w-4" /> Download CSV</button><button type="button" onClick={printStatement} className={`${buttonClass} border border-stone-200 bg-white text-stone-700`}><Printer className="h-4 w-4" /> Print</button><button type="button" onClick={() => startPayment(ledgerSupplier)} className={`${buttonClass} bg-emerald-700 text-white`}><Plus className="h-4 w-4" /> Add payment</button></div>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -1049,7 +1160,7 @@ export default function PurchasesPage() {
           </label>
           <div className="grid gap-3 sm:grid-cols-2"><label className={labelClass}>Return quantity<input className={fieldClass} type="number" required min="0.001" step="0.001" value={returnDraft.quantity} onChange={(event) => setReturnDraft({ ...returnDraft, quantity: event.target.value })} /></label><label className={labelClass}>Return date<input className={fieldClass} type="date" required value={returnDraft.returnDate} onChange={(event) => setReturnDraft({ ...returnDraft, returnDate: event.target.value })} /></label></div>
           <label className={labelClass}>Return reason<select className={fieldClass} value={returnDraft.reason} onChange={(event) => setReturnDraft({ ...returnDraft, reason: event.target.value as typeof returnDraft.reason })}><option value="DAMAGED">Damaged</option><option value="WRONG_PRODUCT">Wrong product</option><option value="EXCESS_QUANTITY">Excess quantity</option><option value="OTHER">Other</option></select></label>
-          <label className={labelClass}>Refund status<select className={fieldClass} value={returnDraft.refundStatus} onChange={(event) => setReturnDraft({ ...returnDraft, refundStatus: event.target.value as typeof returnDraft.refundStatus, refundMode: '' })}><option value="PENDING">Pending</option><option value="ADJUSTED">Adjusted in supplier Khata</option><option value="REFUNDED">Refund received</option></select></label>
+          <label className={labelClass}>Refund status<select className={fieldClass} value={returnDraft.refundStatus} onChange={(event) => setReturnDraft({ ...returnDraft, refundStatus: event.target.value as typeof returnDraft.refundStatus, refundMode: '' })}><option value="PENDING">Pending</option><option value="ADJUSTED">Applied to supplier balance</option><option value="REFUNDED">Refund received</option></select></label>
           {returnDraft.refundStatus === 'REFUNDED' && <label className={labelClass}>Refund received via<select className={fieldClass} required value={returnDraft.refundMode} onChange={(event) => setReturnDraft({ ...returnDraft, refundMode: event.target.value as PurchasePaymentMode })}><option value="">Select mode</option>{paymentModes.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label>}
           <label className={labelClass}>Notes<textarea className={fieldClass} rows={2} value={returnDraft.notes} onChange={(event) => setReturnDraft({ ...returnDraft, notes: event.target.value })} /></label>
           <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-800">Stock is reduced only when this bill originally added the quantity and enough of it is still available.</p>
@@ -1062,7 +1173,7 @@ export default function PurchasesPage() {
           <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-semibold text-stone-800">{typeof detailBill.supplierId === 'object' ? detailBill.supplierId.name : supplierById.get(detailBill.supplierId)?.name}</p><p className="text-xs text-stone-500">{new Date(detailBill.billDate).toLocaleDateString('en-IN')} · {detailBill.billType === 'FULL' ? 'Full bill' : 'Quick entry'}</p></div><button type="button" onClick={() => printBill(detailBill)} className={`${buttonClass} border border-stone-200 bg-white text-stone-700`}><Printer className="h-4 w-4" /> Print</button></div>
           <div className="overflow-x-auto rounded-xl border border-stone-200"><table className="w-full text-left text-sm"><thead className="bg-stone-50 text-xs text-stone-500"><tr><th className="px-3 py-2">Product</th><th className="px-3 py-2">Qty</th><th className="px-3 py-2">Rate</th><th className="px-3 py-2">GST</th><th className="px-3 py-2">Total</th></tr></thead><tbody>{detailBill.items.map((item) => <tr key={item._id} className="border-t border-stone-100"><td className="px-3 py-3">{item.productName}</td><td className="px-3 py-3">{item.quantity} {item.unit}</td><td className="px-3 py-3">{amount(item.purchaseRate)}</td><td className="px-3 py-3">{item.gstPercent}% · {amount(item.gstAmount)}</td><td className="px-3 py-3 font-semibold">{amount(item.itemTotal)}</td></tr>)}</tbody></table></div>
           <dl className="space-y-2 rounded-xl bg-stone-50 p-4 text-sm">
-            <div className="flex justify-between"><dt>Subtotal</dt><dd>{amount(detailBill.subtotal)}</dd></div><div className="flex justify-between"><dt>GST</dt><dd>{amount(detailBill.gstTotal)}</dd></div><div className="flex justify-between"><dt>Additional charges</dt><dd>{amount(detailBill.transportCharges + detailBill.loadingCharges)}</dd></div><div className="flex justify-between"><dt>Discount</dt><dd>−{amount(detailBill.discountAmount)}</dd></div><div className="flex justify-between border-t border-stone-200 pt-2 font-bold"><dt>Total</dt><dd>{amount(detailBill.totalAmount)}</dd></div>            <div className="flex justify-between text-emerald-700"><dt>Net Jama</dt><dd>{amount(detailBill.paidAmount - detailBill.refundedAmount)}</dd></div>{detailBill.refundedAmount > 0 && <div className="flex justify-between text-violet-700"><dt>Refund received</dt><dd>{amount(detailBill.refundedAmount)}</dd></div>}<div className="flex justify-between text-rose-700"><dt>Baaki</dt><dd>{amount(detailBill.outstandingAmount)}</dd></div>
+            <div className="flex justify-between"><dt>Subtotal</dt><dd>{amount(detailBill.subtotal)}</dd></div><div className="flex justify-between"><dt>GST</dt><dd>{amount(detailBill.gstTotal)}</dd></div><div className="flex justify-between"><dt>Additional charges</dt><dd>{amount(detailBill.transportCharges + detailBill.loadingCharges)}</dd></div><div className="flex justify-between"><dt>Discount</dt><dd>−{amount(detailBill.discountAmount)}</dd></div><div className="flex justify-between border-t border-stone-200 pt-2 font-bold"><dt>Total</dt><dd>{amount(detailBill.totalAmount)}</dd></div>            <div className="flex justify-between text-emerald-700"><dt>Net paid</dt><dd>{amount(detailBill.paidAmount - detailBill.refundedAmount)}</dd></div>{detailBill.refundedAmount > 0 && <div className="flex justify-between text-violet-700"><dt>Refund received</dt><dd>{amount(detailBill.refundedAmount)}</dd></div>}<div className="flex justify-between text-rose-700"><dt>Outstanding balance</dt><dd>{amount(detailBill.outstandingAmount)}</dd></div>
           </dl>
           {detailBill.notes && <p className="text-sm text-stone-600">Notes: {detailBill.notes}</p>}
           <div className="flex justify-end gap-2">{detailBill.status === 'ACTIVE' && <><button type="button" onClick={() => { setSelectedBillId(null); void editBill(detailBill); }} className={`${buttonClass} border border-stone-200 text-stone-700`}>Edit bill</button><button type="button" onClick={() => { setSelectedBillId(null); const supplier = supplierById.get(detailSupplierId || ''); if (supplier) startPayment(supplier); }} className={`${buttonClass} bg-emerald-700 text-white`}>Add payment</button></>}</div>

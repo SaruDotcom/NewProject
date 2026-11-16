@@ -554,7 +554,7 @@ export const api = {
         clearAuthToken();
         if (!window.location.pathname.startsWith('/login')) window.location.href = '/login?expired=1';
       }
-      throw new ApiError(body?.message || 'Unable to download the Khata Book report.', response.status, body?.code, body?.errors);
+      throw new ApiError(body?.message || 'Unable to download the purchase ledger report.', response.status, body?.code, body?.errors);
     }
     return response.blob();
   },
@@ -1290,6 +1290,12 @@ export const api = {
       { method: 'GET' }
     ),
 
+  createPurchaseProduct: (data: { name: string; sellingPrice?: number; unit?: string }) =>
+    request<{ success: boolean; data: any }>('/wholesaler/purchases/products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   getPurchaseSuppliers: (search = '') => {
     const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
     return request<{ success: boolean; data: PurchaseSupplier[] }>(
@@ -1300,10 +1306,7 @@ export const api = {
 
   createPurchaseSupplier: (data: {
     name: string;
-    mobile: string;
-    address: string;
-    gstin: string;
-    openingBalance: number;
+    mobile?: string;
   }) =>
     request<{ success: boolean; data: PurchaseSupplier }>('/wholesaler/purchases/suppliers', {
       method: 'POST',

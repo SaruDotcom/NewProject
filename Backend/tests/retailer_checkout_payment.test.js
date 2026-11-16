@@ -5,6 +5,15 @@ const PaymentsService = require('../src/modules/payments/payments.service');
 const AuditService = require('../src/services/audit.service');
 const { checkoutSchema } = require('../src/modules/retailers/retailer.validation');
 
+const verifiedBankDetails = {
+  accountHolderName: 'Trusted Textiles',
+  bankName: 'Example Bank',
+  accountNumber: '123456789012',
+  ifscCode: 'EXAM0001234',
+  branch: 'Main Branch',
+  isVerified: true,
+};
+
 describe('Direct retailer checkout payments', () => {
   afterEach(() => jest.restoreAllMocks());
 
@@ -70,6 +79,7 @@ describe('Direct retailer checkout payments', () => {
     });
     const profile = {
       businessName: 'Trusted Textiles',
+      bankDetails: verifiedBankDetails,
       paymentSettings: {
         accountName: 'Trusted Textiles',
         upiId: 'trusted@upi',
@@ -87,6 +97,13 @@ describe('Direct retailer checkout payments', () => {
       upiId: 'trusted@upi',
       upiIdPaymentsEnabled: true,
       qrPaymentsEnabled: false,
+      bankDetails: {
+        accountHolderName: 'Trusted Textiles',
+        bankName: 'Example Bank',
+        accountNumber: '••••••••9012',
+        ifscCode: 'EXAM0001234',
+        branch: 'Main Branch',
+      },
     });
   });
 
@@ -97,6 +114,7 @@ describe('Direct retailer checkout payments', () => {
     });
     const profile = {
       businessName: 'Trusted Textiles',
+      bankDetails: verifiedBankDetails,
       paymentSettings: {
         accountName: 'Trusted Textiles',
         upiId: 'trusted@upi',
@@ -138,6 +156,7 @@ describe('Direct retailer checkout payments', () => {
     });
     jest.spyOn(WholesalerProfile, 'findOne').mockResolvedValue({
       businessName: 'Trusted Textiles',
+      bankDetails: verifiedBankDetails,
       paymentSettings: {
         upiId: 'trusted@upi',
         upiIdPaymentsEnabled: true,
@@ -162,6 +181,7 @@ describe('Direct retailer checkout payments', () => {
 
   test('wholesaler cannot enable QR payments when the saved image file is missing', async () => {
     const profile = {
+      bankDetails: verifiedBankDetails,
       paymentSettings: {
         qrImagePath: 'missing-qr.png',
         qrImageMimeType: 'image/png',
@@ -185,6 +205,7 @@ describe('Direct retailer checkout payments', () => {
 
   test('payment settings reject malformed UPI IDs before saving', async () => {
     const profile = {
+      bankDetails: verifiedBankDetails,
       paymentSettings: {},
       save: jest.fn(),
     };

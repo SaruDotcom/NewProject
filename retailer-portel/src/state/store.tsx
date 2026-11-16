@@ -1593,10 +1593,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [invalidateUserData, products, relationships, wishlist]);
 
   const saveProfile = useCallback(async (profileInput: RetailerProfile) => {
-    setProfile(profileInput);
-    try {
-      localStorage.setItem("nexora_retailer_profile", JSON.stringify(profileInput));
-    } catch {}
     await api.updateBusinessProfile({
       ownerName: profileInput.ownerName,
       phone: profileInput.phone,
@@ -1610,6 +1606,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       gstStatus: profileInput.gstRegistered ? "REGISTERED" : "UNREGISTERED",
       gstin: profileInput.gstNumber,
     });
+    setProfile(profileInput);
+    try {
+      localStorage.setItem("nexora_retailer_profile", JSON.stringify(profileInput));
+    } catch {}
     invalidateUserData("profile", "dashboard");
     await syncSession(true);
     toast.success("Retailer profile saved");

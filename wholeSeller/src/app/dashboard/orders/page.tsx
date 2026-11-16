@@ -26,12 +26,23 @@ import { useWholesaler } from '@/context/WholesalerContext';
 import { Order, OrderStatus } from '@/lib/types';
 import { api, resolveProductImageUrl } from '@/lib/api';
 
+function parseOrderDate(value: string): Date | null {
+  const localDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(value);
+  if (localDate) {
+    const [, day, month, year] = localDate;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default function OrdersPage() {
   const { profile, orders, returns, updateOrderStatus, updateReturnStatus } = useWholesaler();
 
   // Filters State
   const [activeStatusTab, setActiveStatusTab] = useState<string>('ALL');
-  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
+  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'YEAR'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(50);
 
@@ -51,9 +62,9 @@ export default function OrdersPage() {
 
       let matchesDate = true;
       if (dateFilter !== 'ALL' && order.createdAt) {
-        const orderDate = new Date(order.createdAt);
+        const orderDate = parseOrderDate(order.createdAt);
         const now = new Date();
-        if (!Number.isNaN(orderDate.getTime())) {
+        if (orderDate) {
           if (dateFilter === 'TODAY') {
             matchesDate = orderDate.toDateString() === now.toDateString();
           } else if (dateFilter === 'WEEK') {
@@ -62,7 +73,11 @@ export default function OrdersPage() {
           } else if (dateFilter === 'MONTH') {
             const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
             matchesDate = orderDate >= monthAgo;
+          } else if (dateFilter === 'YEAR') {
+            matchesDate = orderDate.getFullYear() === now.getFullYear();
           }
+        } else {
+          matchesDate = false;
         }
       }
 
@@ -285,6 +300,7 @@ export default function OrdersPage() {
               <option value="TODAY">Today (Mar 15)</option>
               <option value="WEEK">Last 7 Days</option>
               <option value="MONTH">This Month (Mar 2026)</option>
+              <option value="YEAR">This Year ({new Date().getFullYear()})</option>
             </select>
           </div>
 

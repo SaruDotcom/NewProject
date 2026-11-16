@@ -61,10 +61,6 @@ describe('Products & Inventory Test Suite', () => {
       stock: 500,
       moq: 10,
       categoryId: category._id,
-      categoryAttributes: {
-        modelNumber: 'USBC-100W',
-        warrantyPeriod: '1 Year Manufacturer Warranty',
-      },
       pricingTiers: [
         { minQty: 10, maxQty: 49, pricePerUnit: 150 },
         { minQty: 50, pricePerUnit: 125 },
@@ -87,6 +83,58 @@ describe('Products & Inventory Test Suite', () => {
     expect(inv.available).toBe(500);
   });
 
+  test('purchase flow creates products without category or SKU and rejects duplicate names', async () => {
+    const payload = {
+      name: 'Purchase-only product',
+      sellingPrice: 60,
+      unit: 'piece',
+    };
+
+    const created = await request(app)
+      .post('/api/v1/wholesaler/purchases/products')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send(payload);
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.product).toMatchObject({
+      name: payload.name,
+      categoryId: null,
+      categoryName: '',
+      stock: 0,
+    });
+    expect(created.body.data.product.sku).toBeTruthy();
+    expect(created.body.data.inventory.available).toBe(0);
+
+    const listedProducts = await request(app)
+      .get('/api/v1/wholesaler/products')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(listedProducts.status).toBe(200);
+    expect(listedProducts.body.data.map((product) => String(product._id))).toContain(
+      String(created.body.data.product._id)
+    );
+
+    const duplicate = await request(app)
+      .post('/api/v1/wholesaler/purchases/products')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ ...payload, name: ' purchase-only PRODUCT ' });
+
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.code).toBe('DUPLICATE_PRODUCT');
+    await expect(Product.countDocuments({ wholesalerId: wholesalerUser._id })).resolves.toBe(1);
+  });
+
+  test('purchase flow allows product creation without a retailer selling price', async () => {
+    const created = await request(app)
+      .post('/api/v1/wholesaler/purchases/products')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send({ name: 'Product without a selling price', unit: 'piece' });
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.product.retailerPrice).toBe(0);
+    expect(created.body.data.product.categoryId).toBeNull();
+    expect(created.body.data.inventory.available).toBe(0);
+  });
+
   test('2. Duplicate SKU rejected for same wholesaler', async () => {
     const payload = {
       name: 'Item One',
@@ -94,10 +142,6 @@ describe('Products & Inventory Test Suite', () => {
       wholesalePrice: 100,
       stock: 10,
       categoryId: category._id,
-      categoryAttributes: {
-        modelNumber: 'UNIQUE-1',
-        warrantyPeriod: '6 Months Manufacturer Warranty',
-      },
     };
 
     await request(app)
@@ -115,10 +159,6 @@ describe('Products & Inventory Test Suite', () => {
         wholesalePrice: 120,
         stock: 5,
         categoryId: category._id,
-        categoryAttributes: {
-          modelNumber: 'UNIQUE-2',
-          warrantyPeriod: '6 Months Manufacturer Warranty',
-        },
       });
 
     expect(res.status).toBe(409);
@@ -139,10 +179,6 @@ describe('Products & Inventory Test Suite', () => {
         sku: 'TEST-SKU',
         wholesalePrice: 50,
         categoryId: category._id,
-        categoryAttributes: {
-          modelNumber: 'TEST-ITEM',
-          warrantyPeriod: 'No Warranty',
-        },
       });
 
     expect(res.status).toBe(403);

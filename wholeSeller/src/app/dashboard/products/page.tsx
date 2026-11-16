@@ -829,7 +829,7 @@ export default function ProductsPage() {
         <BulkProductUpload
           canImport={canCreateProducts}
           isProfileLoaded={isProfileLoaded}
-          onImported={() => refreshData(true)}
+          onImported={async () => { await refreshData(true); }}
         />
       </React.Suspense>
 

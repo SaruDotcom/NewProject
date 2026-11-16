@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, QrCode, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Copy, CreditCard, QrCode, RefreshCw, ShieldCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { wholesalerQueryKeys } from '@/lib/query-client';
@@ -202,6 +202,25 @@ export default function PaymentSettingsPage() {
 
   const settings = settingsQuery.data;
   const reports = reportsQuery.data || [];
+  const savedBankDetails = settings?.bankDetails;
+  const hasSavedBankDetails = Boolean(savedBankDetails && [
+    savedBankDetails.accountHolderName,
+    savedBankDetails.bankName,
+    savedBankDetails.accountNumber,
+    savedBankDetails.ifscCode,
+    savedBankDetails.branch,
+  ].some((value) => value.trim()));
+
+  const copySavedUpiId = async () => {
+    const savedUpiId = settings?.upiId?.trim();
+    if (!savedUpiId) return;
+    try {
+      await navigator.clipboard.writeText(savedUpiId);
+      setMessage('UPI ID copied.');
+    } catch {
+      setMessage('Unable to copy the UPI ID. Please copy it manually.');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -215,7 +234,7 @@ export default function PaymentSettingsPage() {
 
       {message && <div role="status" className="rounded-xl border border-tradeflow-gray-200 bg-white p-3 text-sm text-tradeflow-navy">{message}</div>}
 
-      <form onSubmit={saveSettings} className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <form onSubmit={saveSettings} className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] lg:items-start">
         <section className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
           <label className="block text-sm font-semibold text-tradeflow-navy">
             UPI ID
@@ -289,10 +308,68 @@ export default function PaymentSettingsPage() {
           <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Test the QR with a UPI app before enabling. Expiry closes the retailer&apos;s QR session.</p>
           <button disabled={busy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{busy ? 'Saving...' : 'Save'}</button>
         </section>
-        <aside className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 text-center shadow-sm">
-          <h2 className="font-bold text-tradeflow-navy">Current QR Code</h2>
-          {settings?.qrDataUrl ? <img src={settings.qrDataUrl} alt="Your UPI QR code" className="mx-auto mt-4 max-h-64 max-w-full object-contain" /> : <p className="mt-5 text-sm text-gray-500">No QR image uploaded.</p>}
-          {settings?.hasQrImage && <p className="mt-3 flex items-center justify-center gap-1 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" /> Private to you and your linked retailers</p>}
+        <aside className="space-y-4">
+          <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-tradeflow-navy">QR Code</h2>
+                <p className="mt-1 text-xs text-gray-500">Your saved code, ready for connected retailers to scan.</p>
+              </div>
+              {settings?.qrPaymentsEnabled && (
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Enabled</span>
+              )}
+            </div>
+            {settings?.qrDataUrl ? (
+              <div className="mt-4 flex justify-center rounded-xl border border-tradeflow-gray-200 bg-gray-50 p-4">
+                <img src={settings.qrDataUrl} alt="Your UPI QR code" className="h-60 w-60 max-w-full rounded-lg bg-white object-contain p-2" />
+              </div>
+            ) : (
+              <div className="mt-4 flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-tradeflow-gray-200 bg-gray-50 px-4 text-center">
+                <QrCode className="h-8 w-8 text-gray-400" />
+                <p className="mt-2 text-sm font-medium text-gray-600">No QR image uploaded</p>
+                <p className="mt-1 text-xs text-gray-500">Upload one in the settings form to display it here.</p>
+              </div>
+            )}
+            {settings?.hasQrImage && <p className="mt-3 flex items-center justify-center gap-1 text-xs text-emerald-700"><ShieldCheck className="h-4 w-4" /> Private to you and your linked retailers</p>}
+          </section>
+
+          {settings?.upiId?.trim() && (
+            <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-tradeflow-green/10 p-2 text-tradeflow-green"><CreditCard className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-bold text-tradeflow-navy">UPI Payment Details</h2>
+                  <p className="mt-1 break-all text-sm font-semibold text-gray-800">{settings.upiId}</p>
+                  <p className="mt-1 text-xs text-gray-500">{settings.upiIdPaymentsEnabled ? 'UPI payments are enabled.' : 'UPI ID payments are currently disabled.'}</p>
+                </div>
+                <button type="button" onClick={() => void copySavedUpiId()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-tradeflow-gray-200 px-3 py-2 text-xs font-semibold text-tradeflow-navy hover:bg-gray-50">
+                  <Copy className="h-3.5 w-3.5" /> Copy
+                </button>
+              </div>
+            </section>
+          )}
+
+          {hasSavedBankDetails && savedBankDetails && (
+            <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-tradeflow-green/10 p-2 text-tradeflow-green"><CreditCard className="h-4 w-4" /></div>
+                  <h2 className="font-bold text-tradeflow-navy">Bank Account Details</h2>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${savedBankDetails.isVerified ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {savedBankDetails.isVerified ? 'Verified' : 'Unverified'}
+                </span>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                {savedBankDetails.accountHolderName && <div className="col-span-2"><dt className="text-xs text-gray-500">Account Holder</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.accountHolderName}</dd></div>}
+                {savedBankDetails.bankName && <div><dt className="text-xs text-gray-500">Bank Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.bankName}</dd></div>}
+                {savedBankDetails.accountNumber && <div><dt className="text-xs text-gray-500">Account Number</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">••••••••{savedBankDetails.accountNumber.slice(-4)}</dd></div>}
+                {savedBankDetails.ifscCode && <div><dt className="text-xs text-gray-500">IFSC Code</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.ifscCode}</dd></div>}
+                {savedBankDetails.branch && <div><dt className="text-xs text-gray-500">Branch Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.branch}</dd></div>}
+              </dl>
+              {!savedBankDetails.isVerified && <p className="mt-3 text-xs text-amber-700">Unverified bank details are not shared with retailers.</p>}
+            </section>
+          )}
         </aside>
       </form>
 

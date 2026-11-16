@@ -46,7 +46,8 @@ router.patch(
     const result = await RetailerIdentityService.updateIdentity(
       req.params.retailerId,
       req.body,
-      req.files
+      req.files,
+      req.user
     );
     return ApiResponse.success(res, result, 'Retailer identity details updated');
   })

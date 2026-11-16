@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@/lib/router";
-import { Component, type ErrorInfo, type ReactNode, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronRight, Favorite, FavoriteBorder, LocationOn, Inventory2, ShoppingCartOutlined, Verified, VerifiedUser, Lock, LocalShipping, Notifications, LocalOffer, ConfirmationNumber } from "@mui/icons-material";
@@ -75,9 +75,89 @@ function getBankDetailsStatusMessage(status?: string): string {
   return "Bank Details Not Added";
 }
 
+async function copyUpiId(upiId: string) {
+  try {
+    await navigator.clipboard.writeText(upiId);
+    toast.success("UPI ID copied.");
+  } catch {
+    toast.error("Unable to copy the UPI ID. Please copy it manually.");
+  }
+}
+
+type PaymentBankDetails = {
+  accountHolderName: string;
+  bankName: string;
+  accountNumber: string;
+  ifscCode: string;
+  branch?: string;
+};
+
+function BankDetailsCard({ details, status }: { details?: PaymentBankDetails | null; status?: string }) {
+  if (!details) {
+    return (
+      <div className="rounded-xl border border-border/80 bg-background p-3 text-xs text-muted-foreground">
+        {getBankDetailsStatusMessage(status)}
+      </div>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-border/80 bg-background p-4">
+      <h3 className="text-sm font-bold text-ink">Bank Account Details</h3>
+      <dl className="mt-3 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <dt className="text-muted-foreground">Account Holder</dt>
+          <dd className="mt-0.5 font-semibold text-ink">{details.accountHolderName}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Bank Name</dt>
+          <dd className="mt-0.5 font-semibold text-ink">{details.bankName}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Account Number</dt>
+          <dd className="mt-0.5 font-semibold text-ink">••••••••{details.accountNumber.slice(-4)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">IFSC Code</dt>
+          <dd className="mt-0.5 font-semibold text-ink">{details.ifscCode}</dd>
+        </div>
+        {details.branch && (
+          <div>
+            <dt className="text-muted-foreground">Branch Name</dt>
+            <dd className="mt-0.5 font-semibold text-ink">{details.branch}</dd>
+          </div>
+        )}
+      </dl>
+    </section>
+  );
+}
+
+function UpiPaymentDetailsCard({ upiId }: { upiId: string }) {
+  if (!upiId.trim()) return null;
+
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
+      <div className="min-w-0">
+        <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">UPI Payment Details</h3>
+        <p className="mt-1 break-all text-sm font-bold text-ink">{upiId}</p>
+      </div>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-background px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/5"
+        onClick={(event) => {
+          event.stopPropagation();
+          void copyUpiId(upiId);
+        }}
+      >
+        <Copy className="size-3.5" />
+        Copy UPI ID
+      </button>
+    </section>
+  );
+}
+
 export function DashboardPage() {
-  const { currentUser, wishlist, orders, retailerProfile, linkedWholesalerId, linkedWholesaler, products } = useStore();
-  const connectedProducts = products.filter((p) => p.wholesalerId === linkedWholesalerId);
+  const { currentUser, orders, retailerProfile, linkedWholesaler } = useStore();
   const safeOwnerName = retailerProfile.ownerName?.trim() || "Retailer";
   const firstName = safeOwnerName.split(/\s+/)[0] || "Retailer";
   const linkedSupplierName = linkedWholesaler?.businessName || "your supplier";
@@ -95,109 +175,74 @@ export function DashboardPage() {
     if (creditQuery.error) console.error("Failed to load retailer credit data", creditQuery.error);
   }, [creditQuery.error]);
 
-  const overdueCount = useMemo(() => {
-    return orders.filter(o => o.isCreditOrder && o.creditPaymentStatus === "OVERDUE").length;
-  }, [orders]);
+  const outstanding = Number(creditInfo?.currentOutstandingAmount || 0);
 
   return (
-    <main className="shell py-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <main className="shell max-w-6xl py-8 sm:py-10">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase text-primary">Retailer workspace</p>
-          <h1 className="mt-2 text-3xl font-extrabold text-ink">Good morning, {firstName}</h1>
-          <p className="mt-2 text-muted-foreground">{retailerProfile.businessName || "Your business"} shops with <strong className="text-ink">{linkedSupplierName}</strong>.</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Retailer dashboard</p>
+          <h1 className="mt-2 text-3xl font-extrabold text-ink">Welcome, {firstName}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {retailerProfile.businessName || "Your business"}
+            {linkedWholesaler?.businessName ? <> · Connected to <strong className="text-ink">{linkedWholesaler.businessName}</strong></> : null}
+          </p>
         </div>
-        <Button asChild><Link to="/products">Continue shopping</Link></Button>
-      </div>
+        <Button asChild><Link to="/products">Browse products</Link></Button>
+      </header>
 
-      {creditInfo && (creditInfo.creditEnabled || Number(creditInfo.currentOutstandingAmount || 0) > 0) && (
-        <div className="mt-6 rounded-2xl border border-tradeflow-green/20 bg-gradient-to-r from-tradeflow-green-50 via-white to-tradeflow-green-50 p-5 shadow-xs dark:border-tradeflow-green/30 dark:from-tradeflow-navy/70 dark:via-background dark:to-tradeflow-navy/70">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-tradeflow-green/20 pb-3 dark:border-tradeflow-green/30">
-            <div className="flex items-center gap-2">
-              <Badge className="bg-tradeflow-green text-tradeflow-navy font-bold">{creditInfo.creditEnabled ? "Credit Line Active" : "Credit Balance Due"}</Badge>
-              <span className="text-xs font-semibold text-muted-foreground">Provided by {linkedSupplierName}</span>
+      <div className="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(260px,0.75fr)]">
+        {creditInfo && (creditInfo.creditEnabled || outstanding > 0) && (
+          <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-ink">Credit balance</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{linkedSupplierName}</p>
+              </div>
+              {creditInfo.creditEnabled && <Badge variant="secondary">Credit available</Badge>}
             </div>
-            <span className="text-xs text-muted-foreground">Pay within <strong>{creditInfo.creditPeriodDays} days</strong> of order</span>
-          </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border bg-background p-3">
+                <span className="text-xs text-muted-foreground">Outstanding amount</span>
+                <strong className="mt-1 block text-lg font-extrabold text-ink">{money(outstanding)}</strong>
+              </div>
+              <div className="rounded-xl border bg-background p-3">
+                <span className="text-xs text-muted-foreground">Available credit</span>
+                <strong className="mt-1 block text-lg font-extrabold text-primary">{money(creditInfo.availableCredit)}</strong>
+              </div>
+            </div>
+            {outstanding > 0 && <CreditRepaymentPanel outstanding={outstanding} />}
+          </section>
+        )}
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
-              <span className="text-xs font-medium text-muted-foreground">Total Credit Limit</span>
-              <p className="text-lg font-black text-ink mt-0.5">{money(creditInfo.effectiveLimit)}</p>
-            </div>
-            <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
-              <span className="text-xs font-medium text-muted-foreground">Current Outstanding</span>
-              <p className={cn("text-lg font-black mt-0.5", creditInfo.currentOutstandingAmount > 0 ? "text-amber-700 dark:text-amber-300" : "text-green-700 dark:text-tradeflow-green")}>
-                {money(creditInfo.currentOutstandingAmount)}
-              </p>
-            </div>
-            <div className="rounded-xl bg-white p-3.5 border border-tradeflow-gray-200 dark:bg-card dark:border-tradeflow-navy-hover/50">
-              <span className="text-xs font-medium text-muted-foreground">Available Credit</span>
-              <p className="text-lg font-black text-green-700 dark:text-tradeflow-green mt-0.5">{money(creditInfo.availableCredit)}</p>
-            </div>
-          </div>
-
-          {overdueCount > 0 && (
-            <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-100 p-3 text-xs font-bold text-amber-800 border border-amber-200">
-              ⚠️ You have {overdueCount} overdue credit order{overdueCount > 1 ? "s" : ""}. Please settle your dues with {linkedSupplierName} to avoid late charges.
-            </div>
-          )}
-          {Number(creditInfo?.currentOutstandingAmount || 0) > 0 && (
-            <CreditRepaymentPanel outstanding={Number(creditInfo.currentOutstandingAmount)} />
-          )}
-        </div>
-      )}
-
-      <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          ["Active orders", orders.filter(o => !["Delivered", "Cancelled"].includes(o.status)).length, "/orders"],
-          ["Pending orders", orders.filter(o => o.status === "Pending").length, "/orders"],
-          ["Available products", connectedProducts.length, "/products"],
-          ["Wishlist items", wishlist.length, "/wishlist"],
-        ].map(([label, value, to]) => (
-          <Link key={label as string} to={to as "/orders" | "/products" | "/wishlist"} className="border bg-card p-5 interactive rounded-2xl">
-            <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-            <strong className="mt-2 block text-xl sm:text-2xl text-ink font-black truncate">{value}</strong>
-          </Link>
-        ))}
-      </div>
-      <div className="mt-12 grid gap-12 lg:grid-cols-[1.4fr_1fr]">
-        <section>
-          <SectionHeading title="Recent orders" subtitle="Track your latest replenishment activity" href="/orders" />
-          {orders.length > 0 ? (
-            <div className="grid gap-3">
-              {orders.slice(0, 3).map((order) => (
-                <OrderCard key={order.id} order={order} />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-border/80 p-6 text-center text-sm text-muted-foreground bg-card">
-              No orders placed yet. Explore trade products to start ordering.
-            </div>
-          )}
-        </section>
-        <section>
-          <SectionHeading title="Quick actions" />
-          <div className="grid gap-3">
+        <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+          <h2 className="font-bold text-ink">Quick actions</h2>
+          <div className="mt-3 grid gap-2">
             {[
-              [`Browse ${linkedSupplierName}`, "Shop trade catalog and place bulk orders", "/products"],
-              ["Review wishlist", "Return to products you saved", "/wishlist"],
-              ["Manage delivery addresses", "Keep your store details ready", "/addresses"],
-            ].map(([t, d, to]) => (
-              <Link key={t} to={to as "/products" | "/wishlist" | "/addresses"} className="flex items-center justify-between border bg-card p-4 interactive rounded-xl">
-                <div>
-                  <b className="block text-ink text-sm font-extrabold">{t}</b>
-                  <span className="text-xs text-muted-foreground">{d}</span>
-                </div>
+              ["Browse products", "/products"],
+              ["View orders", "/orders"],
+              ["Edit business profile", "/profile"],
+            ].map(([label, to]) => (
+              <Link key={to} to={to as "/products" | "/orders" | "/profile"} className="flex min-h-11 items-center justify-between rounded-xl border px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-accent">
+                {label}
                 <ChevronRight className="size-4 text-primary" />
               </Link>
             ))}
           </div>
         </section>
       </div>
-      <section className="mt-14">
-        <SectionHeading title={`Catalogue from ${linkedSupplierName}`} subtitle="Direct wholesale trade catalog" href="/products" />
-        <ProductGrid products={connectedProducts.slice(0, 4)} />
+
+      <section className="mt-8 rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
+        <SectionHeading title="Recent orders" subtitle="Your latest purchases" href="/orders" />
+        {orders.length > 0 ? (
+          <div className="mt-4 grid gap-3">
+            {orders.slice(0, 3).map((order) => <OrderCard key={order.id} order={order} />)}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            No orders yet. Browse products to place your first order.
+          </div>
+        )}
       </section>
     </main>
   );
@@ -312,10 +357,10 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
           ) : <Button size="sm" variant="outline" onClick={openQr}>Request fresh QR session</Button>}
         </div>
       )}
-      {options?.upiIdPaymentsEnabled && (
-        <div className="mt-3 flex items-center gap-2 text-sm">
-          <strong>{options.upiId}</strong>
-          <button type="button" className="text-xs font-bold text-primary" onClick={() => void navigator.clipboard.writeText(options.upiId).then(() => toast.success("UPI ID copied."))}>Copy</button>
+      {paymentMethod === "UPI" && options?.upiId && <div className="mt-3"><UpiPaymentDetailsCard upiId={options.upiId} /></div>}
+      {paymentMethod === "UPI" && options?.bankDetails && (
+        <div className="mt-3">
+          <BankDetailsCard details={options.bankDetails} />
         </div>
       )}
       {!submitted ? (
@@ -326,14 +371,8 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
             </select>
           </label>
           {paymentMethod !== "UPI" && (
-            <div className="rounded-lg border bg-background p-3 text-xs sm:col-span-2">
-              {options?.bankDetails ? (
-                <>
-                  <b>Wholesaler bank details</b>
-                  <p>{options.bankDetails.accountHolderName} · {options.bankDetails.bankName}</p>
-                  <p>A/C {options.bankDetails.accountNumber} · IFSC {options.bankDetails.ifscCode} · {options.bankDetails.branch}</p>
-                </>
-              ) : <p>{getBankDetailsStatusMessage(options?.bankDetailsStatus)}</p>}
+            <div className="sm:col-span-2">
+              <BankDetailsCard details={options?.bankDetails} status={options?.bankDetailsStatus} />
             </div>
           )}
           <label className="text-xs font-bold">Installment amount (₹)
@@ -2129,7 +2168,7 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
           <p>
             Your connected wholesaler has not uploaded or enabled a QR code.
             {paymentOptions?.upiIdPaymentsEnabled && paymentOptions.upiId
-              ? " You can still pay using their verified UPI ID above."
+              ? " You can still pay using their UPI ID below."
               : " Please contact the wholesaler for alternate payment instructions."}
           </p>
         </div>
@@ -2171,12 +2210,12 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
               </button>
             </div>
           ) : (
-            <div className="relative inline-block mx-auto">
+            <div className="relative mx-auto h-56 w-56 max-w-full">
               <img
                 src={activeQrImage}
                 alt="Wholesaler UPI QR code"
                 onError={() => setQrImageError(true)}
-                className="mx-auto max-h-56 max-w-full rounded-xl border bg-white p-2 shadow-xs object-contain"
+                className="h-full w-full rounded-xl border bg-white p-3 shadow-sm object-contain"
               />
               {qrSessionLoading && (
                 <div className="absolute inset-0 bg-white/70 backdrop-blur-xs flex items-center justify-center rounded-xl">
@@ -2293,27 +2332,9 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
 
                   {paymentMode === "UPI" && hasDirectUpi && (
                     <div className="mt-4 pt-4 border-t border-primary/20 space-y-3" onClick={(e) => e.stopPropagation()}>
-                      {paymentOptions?.upiId && (
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
-                          <div>
-                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Wholesaler UPI ID</span>
-                            <span className="text-sm font-bold text-ink">{paymentOptions.upiId}</span>
-                          </div>
-                          {paymentOptions.upiIdPaymentsEnabled && (
-                            <button
-                              type="button"
-                              className="rounded border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-colors"
-                              onClick={() => {
-                                void navigator.clipboard.writeText(paymentOptions.upiId).then(() => toast.success("UPI ID copied."));
-                              }}
-                            >
-                              Copy UPI ID
-                            </button>
-                          )}
-                        </div>
-                      )}
-
                       {renderQrSection()}
+                      {paymentOptions?.upiId && <UpiPaymentDetailsCard upiId={paymentOptions.upiId} />}
+                      {paymentOptions?.bankDetails && <BankDetailsCard details={paymentOptions.bankDetails} />}
                     </div>
                   )}
                 </div>
@@ -2337,14 +2358,8 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
                   <div className="flex-1">
                     <b className="text-sm text-ink">{method.replace(/_/g, " ")}</b>
                     <p className="mt-1 text-xs text-muted-foreground">Pay using the wholesaler&apos;s bank account and submit the reference for verification.</p>
-                    <div className="mt-3 rounded-lg border bg-background p-3 text-xs">
-                      {paymentOptions?.bankDetails ? (
-                        <>
-                          <b>{paymentOptions.bankDetails.accountHolderName}</b>
-                          <p>{paymentOptions.bankDetails.bankName} · {paymentOptions.bankDetails.branch}</p>
-                          <p>A/C {paymentOptions.bankDetails.accountNumber} · IFSC {paymentOptions.bankDetails.ifscCode}</p>
-                        </>
-                      ) : <p>{getBankDetailsStatusMessage(paymentOptions?.bankDetailsStatus)}</p>}
+                    <div className="mt-3">
+                      <BankDetailsCard details={paymentOptions?.bankDetails} status={paymentOptions?.bankDetailsStatus} />
                     </div>
                   </div>
                 </div>
@@ -2449,35 +2464,14 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
                     Order {reportedOrder.number} · Exact order total {money(reportedOrder.amount)} · Account {paymentOptions?.accountName || paymentOptions?.businessName || "Wholesaler"}
                   </p>
                 </div>
-                {paymentOptions?.upiId && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background p-3">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Wholesaler UPI ID</span>
-                      <span className="text-sm font-bold text-ink">{paymentOptions.upiId}</span>
-                    </div>
-                    {paymentOptions.upiIdPaymentsEnabled && (
-                      <button
-                        type="button"
-                        className="rounded border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-colors"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(paymentOptions.upiId).then(() => toast.success("UPI ID copied."));
-                        }}
-                      >
-                        Copy UPI ID
-                      </button>
-                    )}
-                  </div>
-                )}
-                {reportedOrder.paymentMethod === "UPI" ? renderQrSection() : (
-                  <div className="rounded-xl border bg-background p-3 text-xs">
-                    {paymentOptions?.bankDetails ? (
-                      <>
-                        <b>{paymentOptions.bankDetails.accountHolderName}</b>
-                        <p>{paymentOptions.bankDetails.bankName} · {paymentOptions.bankDetails.branch}</p>
-                        <p>A/C {paymentOptions.bankDetails.accountNumber} · IFSC {paymentOptions.bankDetails.ifscCode}</p>
-                      </>
-                    ) : <p>{getBankDetailsStatusMessage(paymentOptions?.bankDetailsStatus)}</p>}
-                  </div>
+                {reportedOrder.paymentMethod === "UPI" ? (
+                  <>
+                    {renderQrSection()}
+                    {paymentOptions?.upiId && <UpiPaymentDetailsCard upiId={paymentOptions.upiId} />}
+                    {paymentOptions?.bankDetails && <BankDetailsCard details={paymentOptions.bankDetails} />}
+                  </>
+                ) : (
+                  <BankDetailsCard details={paymentOptions?.bankDetails} status={paymentOptions?.bankDetailsStatus} />
                 )}
                 {!reportSubmitted ? (
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -2969,10 +2963,13 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
   const [aadhaarDraft, setAadhaarDraft] = useState("");
   const [identityConsent, setIdentityConsent] = useState(false);
   const [shopPhotoFile, setShopPhotoFile] = useState<File>();
+  const [shopPhotoPreview, setShopPhotoPreview] = useState("");
   const [panImageFile, setPanImageFile] = useState<File>();
   const [aadhaarFrontFile, setAadhaarFrontFile] = useState<File>();
   const [aadhaarBackFile, setAadhaarBackFile] = useState<File>();
   const [identitySaving, setIdentitySaving] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const shopPhotoUrlRef = useRef<string | null>(null);
   const setupBlankProfile = (profile: RetailerProfile): RetailerProfile => ({
     ...profile,
     businessName: "",
@@ -3013,6 +3010,31 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
     };
   }, [currentUser?.id]);
 
+  const setProfilePhotoPreview = useCallback((blob?: Blob) => {
+    if (shopPhotoUrlRef.current) URL.revokeObjectURL(shopPhotoUrlRef.current);
+    shopPhotoUrlRef.current = blob ? URL.createObjectURL(blob) : null;
+    setShopPhotoPreview(shopPhotoUrlRef.current || "");
+  }, []);
+
+  useEffect(() => () => {
+    if (shopPhotoUrlRef.current) URL.revokeObjectURL(shopPhotoUrlRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!identity?.shopPhoto.hasImage || shopPhotoFile || !currentUser?.id) return;
+    let active = true;
+    void api.getRetailerDocument(currentUser.id, "shop-photo")
+      .then((blob) => {
+        if (active) setProfilePhotoPreview(blob);
+      })
+      .catch((error: unknown) => {
+        if (active) toast.error(error instanceof Error ? error.message : "Unable to load the profile image.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [identity?.shopPhoto.hasImage, shopPhotoFile, currentUser?.id, setProfilePhotoPreview]);
+
   const selectIdentityFile = (
     event: React.ChangeEvent<HTMLInputElement>,
     update: (file: File | undefined) => void,
@@ -3029,6 +3051,24 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
       return;
     }
     update(file);
+  };
+
+  const selectShopPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setShopPhotoFile(undefined);
+      setProfilePhotoPreview();
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      event.target.value = "";
+      setShopPhotoFile(undefined);
+      setProfilePhotoPreview();
+      toast.error("The profile image must be 5 MB or smaller.");
+      return;
+    }
+    setShopPhotoFile(file);
+    setProfilePhotoPreview(file);
   };
 
   const saveIdentityDetails = async (event: React.FormEvent) => {
@@ -3076,49 +3116,47 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
     }
   };
 
-  const completionItems = [
-    ["Business name", Boolean(form.businessName)],
-    ["Owner name", Boolean(form.ownerName)],
-    ["Mobile number", Boolean(form.phone)],
-    ["Email address", Boolean(form.email)],
-    ["Shop address", Boolean(form.address)],
-    ["City", Boolean(form.city)],
-    ["State", Boolean(form.state)],
-    ["Pincode", Boolean(form.pincode)],
-    ["Business type (optional)", Boolean(form.businessType)],
-    ["GSTIN (optional)", Boolean(form.gstNumber)],
-    ["Shop photo (optional)", Boolean(identity?.shopPhoto.hasImage)],
-    ["PAN number (optional)", Boolean(identity?.pan.last4)],
-    ["PAN card image (optional)", Boolean(identity?.pan.hasImage)],
-    ["Aadhaar number (optional)", Boolean(identity?.aadhaar.last4)],
-    ["Aadhaar front (optional)", Boolean(identity?.aadhaar.hasFrontImage)],
-    ["Aadhaar back (optional)", Boolean(identity?.aadhaar.hasBackImage)],
-  ] as const;
-  const completedItems = completionItems.filter(([, complete]) => complete).length;
-  const completionPercent = Math.round((completedItems / completionItems.length) * 100);
-  const missingItems = completionItems.filter(([, complete]) => !complete).map(([label]) => label);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setProfileSaving(true);
     try {
       await saveProfile(form);
       if (setupMode) navigate({ to: "/dashboard" });
-    } catch (err: any) {
-      toast.error(err?.message || "Unable to save business setup");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Unable to save business information.");
+    } finally {
+      setProfileSaving(false);
     }
   };
 
   return (
-    <main className="shell py-10">
-      <h1 className="text-3xl font-extrabold text-ink">{setupMode ? "Complete business setup" : "Business profile"}</h1>
-      <p className="mt-2 text-muted-foreground">
-        {setupMode
-          ? "Apni business details complete karo. Iske baad store products, orders, cart aur baaki pages unlock honge."
-          : "Keep your retailer details ready for every wholesale order."}
-      </p>
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_300px]">
-        <section className="border bg-card p-6">
-          <h2 className="text-xl font-bold">Business information</h2>
+    <main className="shell max-w-5xl py-8 sm:py-10">
+      <header className="flex items-center gap-4">
+        <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl border bg-card shadow-sm sm:size-20">
+          {shopPhotoPreview ? (
+            <img src={shopPhotoPreview} alt="Retailer profile" className="size-full object-contain p-1" />
+          ) : (
+            <span className="text-lg font-extrabold text-primary">
+              {(form.businessName || form.ownerName || "R").trim().slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Retailer account</p>
+          <h1 className="mt-1 text-2xl font-extrabold text-ink sm:text-3xl">
+            {setupMode ? "Complete business setup" : "Profile & business information"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {linkedWholesaler?.businessName ? `Connected to ${linkedWholesaler.businessName}` : "Manage your retailer details."}
+          </p>
+        </div>
+      </header>
+      <div className="mt-6 grid max-w-4xl gap-5">
+        <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+          <div className="border-b pb-4">
+            <h2 className="text-lg font-bold text-ink">Business information</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Keep your store details accurate for orders and invoices.</p>
+          </div>
           <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
             <label className="text-sm font-semibold sm:col-span-2">
               Business name
@@ -3238,16 +3276,28 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
               />
             </label>
             <div className="sm:col-span-2">
-              <Button type="submit" className="mt-2">{setupMode ? "Save & continue" : "Save changes"}</Button>
+              <Button type="submit" className="mt-2" disabled={profileSaving}>
+                {profileSaving ? "Saving..." : setupMode ? "Save & continue" : "Save changes"}
+              </Button>
             </div>
           </form>
         </section>
-        <section className="border bg-card p-6">
-          <div>
-            <h2 className="text-xl font-bold">Identity details</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Optional, you can add this later.</p>
+        <section className="rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+          <div className="border-b pb-4">
+            <h2 className="text-lg font-bold text-ink">Identity details</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Identity information is encrypted and saved to your retailer profile.</p>
           </div>
           <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={saveIdentityDetails}>
+            <label className="text-sm font-semibold sm:col-span-2">
+              Store logo or shop photo
+              <input
+                className="mt-2 block w-full text-xs font-normal file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:font-semibold file:text-primary"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={selectShopPhoto}
+              />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">JPG, PNG, or WEBP up to 5 MB. The framed preview preserves the image proportions.</span>
+            </label>
             <label className="text-sm font-semibold">
               PAN number
               <Input className="mt-2 uppercase" maxLength={10} pattern="[A-Za-z]{5}[0-9]{4}[A-Za-z]" value={panDraft} onChange={(event) => setPanDraft(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))} placeholder={identity?.pan.last4 ? `On file ending ${identity.pan.last4}` : "ABCDE1234F"} />
@@ -3274,67 +3324,18 @@ export function ProfilePage({ setupMode = false }: { setupMode?: boolean }) {
                 <span className="mt-1 block text-xs font-normal text-muted-foreground">{identity?.aadhaar.hasBackImage ? "Back document is on file." : "Not provided."}</span>
               </label>
             </div>
-            <label className="text-sm font-semibold sm:col-span-2">
-              Shop photo
-              <input className="mt-2 block w-full text-sm font-normal" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectIdentityFile(event, setShopPhotoFile)} />
-              <span className="mt-1 block text-xs font-normal text-muted-foreground">{identity?.shopPhoto.hasImage ? "A shop photo is already on file." : "Not provided."}</span>
-            </label>
             <label className="flex items-start gap-2 text-sm font-medium leading-6 sm:col-span-2">
               <input className="mt-1" type="checkbox" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} />
-              <span>I allow my wholesaler to view these details for verification.</span>
+              <span>I allow my connected wholesaler to view these details for verification.</span>
             </label>
-            <p className="text-xs text-muted-foreground sm:col-span-2">JPG, JPEG, PNG, WEBP, or PDF; max 5 MB per file. Documents are saved only when this consent is ticked.</p>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Documents and the store image are saved only when consent is accepted. Files may be JPG, PNG, WEBP, or PDF up to 5 MB.
+            </p>
             <div className="sm:col-span-2">
               <Button type="submit" disabled={identitySaving}>{identitySaving ? "Saving..." : "Save identity details"}</Button>
             </div>
           </form>
         </section>
-        <aside className="border bg-card p-6">
-          <VerifiedUser className="size-7 text-success" />
-          <h2 className="mt-4 font-bold">{setupMode ? "Setup checklist" : "Verified retailer account"}</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {setupMode ? "Complete these details once to unlock your connected wholesale store." : "Your business information is ready to share with connected wholesalers."}
-          </p>
-          <div className="mt-5 space-y-3 text-sm">
-            <div>
-              <div className="mb-2 flex items-center justify-between text-xs font-bold">
-                <span>Profile completion</span>
-                <span>{completionPercent}%</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${completionPercent}%` }} />
-              </div>
-              {missingItems.length > 0 && (
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  Still missing: {missingItems.join(", ")}.
-                </p>
-              )}
-            </div>
-            {[
-              ["Business identity", Boolean(form.businessName && form.ownerName && form.phone)],
-              ["Trade category", Boolean(form.category && form.businessType)],
-              ["Tax preference", Boolean(!form.gstRegistered || form.gstNumber)],
-              ["Store address", Boolean(form.address && form.city && form.state && form.pincode)],
-            ].map(([label, done]) => (
-              <div key={String(label)} className="flex items-center justify-between rounded-xl border bg-background px-3 py-2">
-                <span className="font-semibold">{String(label)}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${done ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
-                  {done ? "Done" : "Pending"}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-primary">Connected wholesaler</p>
-            <h3 className="mt-2 font-black text-ink">{linkedWholesaler?.businessName || linkedWholesaler?.name || "Your wholesaler"}</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Setup complete hone ke baad isi wholesaler ke products, company details, cart aur orders unlock honge.
-            </p>
-          </div>
-          <div className="mt-5 rounded-2xl border bg-canvas p-4 text-xs leading-6 text-muted-foreground">
-            <strong className="text-ink">Note:</strong> Address ya category auto-fill nahi hoti. Retailer ko apni real store details fill karni hongi.
-          </div>
-        </aside>
       </div>
     </main>
   );
@@ -3376,54 +3377,19 @@ export function AddressesPage() {
 
 export function SettingsPage() {
   return (
-    <main className="shell py-10">
+    <main className="shell max-w-4xl py-8 sm:py-10">
       <h1 className="text-3xl font-extrabold text-ink">Settings</h1>
-      <p className="mt-2 text-muted-foreground">Manage how NEXORA keeps you updated.</p>
-      <div className="mt-8 max-w-2xl border bg-card p-6">
-        <h2 className="text-xl font-bold">Notifications</h2>
-        {[
-          ["Order updates", "Get shipping and delivery updates"],
-          ["Price alerts", "Know when saved products change price"],
-          ["Wholesaler messages", "Receive catalogue and access updates"],
-        ].map(([title, body], i) => (
-          <label key={title} className="flex items-center justify-between gap-4 border-b py-5 last:border-0">
-            <span>
-              <b>{title}</b>
-              <span className="mt-1 block text-sm text-muted-foreground">{body}</span>
-            </span>
-            <input type="checkbox" defaultChecked={i < 2} />
-          </label>
-        ))}
-        <Button className="mt-5">Save preferences</Button>
-      </div>
+      <section className="mt-6 rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+        <h2 className="text-lg font-bold text-ink">Account details</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Update your retailer contact and business information from your profile.
+        </p>
+        <Button asChild className="mt-5">
+          <Link to="/profile">Open profile</Link>
+        </Button>
+      </section>
     </main>
   );
-}
-
-class OptionalIdentityFieldsBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  override state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  override componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Optional retailer identity fields failed to render", error, info);
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return (
-        <p role="status" className="rounded-xl border bg-muted/20 p-4 text-xs text-muted-foreground">
-          Optional identity details are unavailable right now. You can add them later from Profile.
-        </p>
-      );
-    }
-    return this.props.children;
-  }
 }
 
 export function AuthPage({
@@ -3463,19 +3429,10 @@ export function AuthPage({
   const [name, setName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
-  const [businessType, setBusinessType] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
-  const [gstin, setGstin] = useState("");
-  const [panNumber, setPanNumber] = useState("");
-  const [aadhaarNumber, setAadhaarNumber] = useState("");
-  const [identityConsent, setIdentityConsent] = useState(false);
-  const [shopPhoto, setShopPhoto] = useState<File>();
-  const [panImage, setPanImage] = useState<File>();
-  const [aadhaarFront, setAadhaarFront] = useState<File>();
-  const [aadhaarBack, setAadhaarBack] = useState<File>();
   const [referralAttribution, setReferralAttribution] = useState<ReferralAttribution | null>(() => {
     if (typeof window === "undefined") return null;
     return isLoggedIn
@@ -3502,7 +3459,6 @@ export function AuthPage({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showOptionalDocs, setShowOptionalDocs] = useState(false);
 
   useEffect(() => {
     try {
@@ -3612,52 +3568,13 @@ export function AuthPage({
           setIsSubmitting(false);
           return;
         }
-        if (gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)) {
-          toast.error("Enter a valid 15-character GSTIN.");
-          setIsSubmitting(false);
-          return;
-        }
-        if (panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNumber)) {
-          toast.error("Enter a valid PAN number (for example, ABCDE1234F).");
-          setIsSubmitting(false);
-          return;
-        }
-        if (aadhaarNumber && !/^\d{12}$/.test(aadhaarNumber)) {
-          toast.error("Enter a valid 12-digit Aadhaar number.");
-          setIsSubmitting(false);
-          return;
-        }
-        if (
-          (panNumber ||
-            aadhaarNumber ||
-            shopPhoto ||
-            panImage ||
-            aadhaarFront ||
-            aadhaarBack) &&
-          !identityConsent
-        ) {
-          toast.error("Please accept the consent to save shop or identity documents.");
-          setIsSubmitting(false);
-          return;
-        }
-
         const registration = await api.register({
           name: name.trim(),
           businessName: businessName.trim(),
-          businessType: businessType.trim(),
           address: address.trim(),
           city: city.trim(),
           state: state.trim(),
           pincode: pincode.trim(),
-          gstin: gstin.trim().toUpperCase(),
-          gstStatus: gstin ? "REGISTERED" : "UNREGISTERED",
-          panNumber: panNumber.trim().toUpperCase(),
-          aadhaarNumber: aadhaarNumber.trim(),
-          identityConsent,
-          shopPhoto,
-          panImage,
-          aadhaarFront,
-          aadhaarBack,
           phone: phone.trim(),
           email: email.trim(),
           password,
@@ -3716,12 +3633,18 @@ export function AuthPage({
   return (
     <main className="relative min-h-[calc(100vh-80px)] overflow-hidden bg-[#F4F7F8] px-4 py-8 sm:py-12 flex items-center justify-center">
       {/* Ambient background decoration */}
-      <div className="pointer-events-none absolute -top-40 -left-40 size-[520px] rounded-full bg-[#20A66A]/10 blur-[110px]" />
-      <div className="pointer-events-none absolute -bottom-40 -right-40 size-[520px] rounded-full bg-[#12304A]/10 blur-[110px]" />
+      {mode !== "register" && <div className="pointer-events-none absolute -top-40 -left-40 size-[520px] rounded-full bg-[#20A66A]/10 blur-[110px]" />}
+      {mode !== "register" && <div className="pointer-events-none absolute -bottom-40 -right-40 size-[520px] rounded-full bg-[#12304A]/10 blur-[110px]" />}
 
-      <div className="relative w-full max-w-5xl rounded-3xl border border-[#D8E1E5]/80 bg-white shadow-[0_24px_60px_-12px_rgba(18,48,74,0.15)] overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+      <div className={cn(
+        "relative w-full rounded-3xl border border-[#D8E1E5]/80 bg-white shadow-[0_24px_60px_-12px_rgba(18,48,74,0.15)] overflow-hidden",
+        mode === "register" ? "max-w-2xl" : "max-w-5xl grid grid-cols-1 lg:grid-cols-12",
+      )}>
         {/* Left Column: Brand Showcase & Wholesaler Trust Badge */}
-        <section className="bg-gradient-to-br from-[#12304A] via-[#0E273D] to-[#0A1D2E] text-white p-7 sm:p-10 flex flex-col justify-between relative overflow-hidden lg:col-span-5">
+        <section className={cn(
+          "bg-gradient-to-br from-[#12304A] via-[#0E273D] to-[#0A1D2E] text-white p-7 sm:p-10 flex flex-col justify-between relative overflow-hidden",
+          mode === "register" ? "hidden" : "lg:col-span-5",
+        )}>
           {/* Decorative radial lighting */}
           <div className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-emerald-500/15 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-24 -left-24 size-64 rounded-full bg-sky-500/10 blur-2xl" />
@@ -3863,7 +3786,7 @@ export function AuthPage({
         </section>
 
         {/* Right Column: Dynamic Form & Status View */}
-        <section className="bg-white p-7 sm:p-10 flex flex-col justify-between lg:col-span-7">
+        <section className={cn("bg-white p-6 sm:p-10 flex flex-col justify-between", mode !== "register" && "lg:col-span-7")}>
           <div>
             {/* Top Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -3903,6 +3826,26 @@ export function AuthPage({
                 </button>
               )}
             </div>
+
+            {mode === "register" && activeReferralWholesaler && (
+              <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                <WholesalerLogo
+                  src={activeReferralWholesaler.logo}
+                  name={activeReferralWholesaler.businessName}
+                  className="size-10 shrink-0 rounded-lg border bg-white object-contain"
+                />
+                <p className="min-w-0 flex-1 text-sm text-ink">
+                  Invited by <strong>{activeReferralWholesaler.businessName}</strong>
+                </p>
+                <button
+                  type="button"
+                  onClick={clearReferral}
+                  className="shrink-0 text-xs font-semibold text-primary underline underline-offset-2"
+                >
+                  Change
+                </button>
+              </div>
+            )}
 
             {/* State: Verifying link */}
             {mode === "register" && isLookingUpReferral && (
@@ -4033,16 +3976,6 @@ export function AuthPage({
                       />
                     </label>
 
-                    {/* Business Type */}
-                    <label className="block text-xs font-bold text-[#12304A]">
-                      Business type (optional)
-                      <Input
-                        className="mt-1.5"
-                        value={businessType}
-                        onChange={(event) => setBusinessType(event.target.value)}
-                        placeholder="e.g. General store"
-                      />
-                    </label>
                   </div>
                 </div>
 
@@ -4071,7 +4004,6 @@ export function AuthPage({
                         onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                         required
                       />
-                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">Use a 10-digit Indian number starting with 6, 7, 8, or 9.</span>
                     </label>
 
                     {/* Email */}
@@ -4086,9 +4018,6 @@ export function AuthPage({
                         onChange={(e) => setEmail(e.target.value)}
                         required
                       />
-                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                        Enter your Gmail / Email address here (e.g. yourname@gmail.com).
-                      </span>
                     </label>
 
                     {/* Shop address */}
@@ -4161,111 +4090,9 @@ export function AuthPage({
                           {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                         </button>
                       </div>
-                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                        Minimum 6 characters. You will use this with your Retailer ID, mobile number, or email to sign in.
-                      </span>
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">At least 6 characters.</span>
                     </label>
                   </div>
-                </div>
-
-                {/* Section 4: Optional Verification & Documents */}
-                <div className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4 transition-all">
-                  <button
-                    type="button"
-                    onClick={() => setShowOptionalDocs((prev) => !prev)}
-                    className="flex w-full items-center justify-between text-left cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-                        <FileText className="size-4" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-[#12304A]">
-                          Verification & Tax Documents <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          Add GSTIN, PAN or Shop photo now or anytime later from Profile
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                      <span>{showOptionalDocs ? "Hide" : "Add details"}</span>
-                      {showOptionalDocs ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                    </div>
-                  </button>
-
-                  {showOptionalDocs && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* GSTIN */}
-                        <label className="block text-xs font-bold text-[#12304A]">
-                          GSTIN (optional)
-                          <Input
-                            className="mt-1.5 uppercase font-mono"
-                            value={gstin}
-                            onChange={(event) => setGstin(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15))}
-                            maxLength={15}
-                            pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]"
-                            placeholder="15-character GSTIN"
-                          />
-                          <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
-                            Required only if you claim GST input tax credit.
-                          </span>
-                        </label>
-
-                        {/* Shop photo */}
-                        <label className="block text-xs font-bold text-[#12304A]">
-                          Shop photo (optional)
-                          <input
-                            className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={(event) => setShopPhoto(event.target.files?.[0])}
-                          />
-                          <span className="mt-1 block text-[11px] font-normal text-muted-foreground">JPG, PNG, or WEBP; max 5 MB.</span>
-                        </label>
-                      </div>
-
-                      <OptionalIdentityFieldsBoundary>
-                        <section className="grid gap-3 rounded-xl border bg-white p-4">
-                          <div>
-                            <h2 className="font-bold text-ink">Identity details</h2>
-                            <p className="mt-1 text-xs font-normal text-muted-foreground">Optional, you can add this later.</p>
-                          </div>
-                          <label className="text-xs font-bold text-ink">
-                            PAN number
-                            <Input className="mt-1.5 uppercase font-mono" maxLength={10} pattern="[A-Za-z]{5}[0-9]{4}[A-Za-z]" value={panNumber} onChange={(event) => setPanNumber(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))} placeholder="ABCDE1234F" />
-                          </label>
-                          <label className="text-xs font-bold text-ink">
-                            PAN card image
-                            <input className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setPanImage(event.target.files?.[0])} />
-                          </label>
-                          <label className="text-xs font-bold text-ink">
-                            Aadhaar number
-                            <Input className="mt-1.5 font-mono" inputMode="numeric" maxLength={12} pattern="[0-9]{12}" value={aadhaarNumber} onChange={(event) => setAadhaarNumber(event.target.value.replace(/\D/g, "").slice(0, 12))} />
-                            <span className="mt-1 block text-[11px] font-normal text-muted-foreground">Only the last 4 digits are shown to your wholesaler.</span>
-                          </label>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="text-xs font-bold text-ink">
-                              Aadhaar front
-                              <input className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAadhaarFront(event.target.files?.[0])} />
-                            </label>
-                            <label className="text-xs font-bold text-ink">
-                              Aadhaar back
-                              <input className="mt-1.5 block w-full text-xs font-normal file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAadhaarBack(event.target.files?.[0])} />
-                            </label>
-                          </div>
-                          <label className="flex items-start gap-2 text-xs font-semibold leading-5 text-ink cursor-pointer">
-                            <input className="mt-1" type="checkbox" checked={identityConsent} onChange={(event) => setIdentityConsent(event.target.checked)} />
-                            <span>
-                              I allow my wholesaler to view these details for verification.
-                            </span>
-                          </label>
-                          <p className="text-[11px] font-normal text-muted-foreground">JPG, JPEG, PNG, WEBP, or PDF; max 5 MB per file. Identity documents and shop photos are saved only when you accept this consent.</p>
-                        </section>
-                      </OptionalIdentityFieldsBoundary>
-                    </div>
-                  )}
                 </div>
 
                 {/* Submit Button */}

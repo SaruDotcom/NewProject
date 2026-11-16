@@ -10,6 +10,7 @@ const {
   purchaseReturnSchema,
   createSupplierSchema,
 } = require('../src/modules/purchases/purchases.validation');
+const Supplier = require('../src/models/Supplier');
 
 const productId = '507f1f77bcf86cd799439011';
 const supplierId = '507f1f77bcf86cd799439012';
@@ -61,6 +62,29 @@ describe('Wholesaler purchase validation and calculations', () => {
     });
   });
 
+  test('allows categoryless products on bills and honors the stock update toggle', () => {
+    const categorylessProduct = {
+      _id: productId,
+      name: 'Purchase-only product',
+      unit: 'piece',
+      status: 'ACTIVE',
+    };
+    const products = new Map([[productId, categorylessProduct]]);
+    const items = [{ productId, quantity: 2, unit: 'PIECES', purchaseRate: 60 }];
+
+    const withoutStockUpdate = calculateTotals(
+      validBill({ items, stockUpdateEnabled: false }),
+      products,
+    );
+    const withStockUpdate = calculateTotals(
+      validBill({ items, stockUpdateEnabled: true }),
+      products,
+    );
+
+    expect(withoutStockUpdate.items[0].stockAppliedQuantity).toBe(0);
+    expect(withStockUpdate.items[0].stockAppliedQuantity).toBe(2);
+  });
+
   test('treats a received supplier refund as an increase in the remaining bill balance', () => {
     expect(paymentStatus(100, 50, 20, 20)).toBe('PARTIAL');
     expect(paymentStatus(100, 100, 10, 10)).toBe('PAID');
@@ -91,7 +115,14 @@ describe('Wholesaler purchase validation and calculations', () => {
     )).toThrow(expect.objectContaining({ code: 'PURCHASE_UNIT_MISMATCH' }));
   });
 
-  test('requires genuine supplier contact details and refund mode for received returns', () => {
+  test('allows suppliers without mobile numbers and validates supplied numbers', () => {
+    const supplierWithoutMobile = createSupplierSchema.validate({ name: 'Local Supplier' });
+    expect(supplierWithoutMobile.error).toBeUndefined();
+    expect(supplierWithoutMobile.value.mobile).toBe('');
+    const supplier = new Supplier({ wholesalerId: supplierId, name: 'Local Supplier', createdBy: supplierId });
+    expect(supplier.validateSync()).toBeUndefined();
+    expect(supplier.mobile).toBe('');
+
     expect(createSupplierSchema.validate({
       name: 'Local Supplier',
       mobile: '9876543210',
@@ -101,7 +132,9 @@ describe('Wholesaler purchase validation and calculations', () => {
       name: 'Local Supplier',
       mobile: 'not-a-number',
     }).error).toBeDefined();
+  });
 
+  test('requires refund mode for received purchase returns', () => {
     const refund = {
       purchaseBillId: supplierId,
       returnDate: '2026-10-28',

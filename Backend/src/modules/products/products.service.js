@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const slugify = require('slugify');
 const {
   Product,
@@ -440,7 +441,50 @@ class ProductService {
   /**
    * Wholesaler creates product
    */
-  static async createProduct(productData, wholesalerUser, req = null) {
+  static async createPurchaseProduct(productData, wholesalerUser, req = null) {
+    const name = String(productData.name || productData.title || '').trim();
+    const hasSellingPrice = productData.sellingPrice !== undefined &&
+      productData.sellingPrice !== null &&
+      String(productData.sellingPrice).trim() !== '';
+    const sellingPrice = hasSellingPrice ? Number(productData.sellingPrice) : 0;
+
+    if (!name) {
+      throw new BadRequestError('Product name is required.', 'PRODUCT_NAME_REQUIRED');
+    }
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      throw new BadRequestError('Enter a valid retailer selling price.', 'INVALID_RETAILER_PRICE');
+    }
+
+    const existingProduct = await Product.findOne({
+      wholesalerId: wholesalerUser._id,
+      isDeleted: { $ne: true },
+      name: new RegExp(`^${escapeRegex(name)}$`, 'i'),
+    }).select('_id').lean();
+    if (existingProduct) {
+      throw new ConflictError(
+        'A product with this name already exists. Select it from the purchase item list instead.',
+        'DUPLICATE_PRODUCT'
+      );
+    }
+
+    return this.createProduct({
+      name,
+      sku: `PUR-${crypto.randomUUID()}`,
+      categoryId: null,
+      subcategoryId: null,
+      subSubcategoryId: null,
+      costPrice: 0,
+      wholesalePrice: sellingPrice,
+      retailerPrice: sellingPrice,
+      mrp: sellingPrice,
+      stock: 0,
+      minOrderQty: 1,
+      unit: String(productData.unit || '').trim() || 'piece',
+      description: '',
+    }, wholesalerUser, req, { allowMissingCategory: true });
+  }
+
+  static async createProduct(productData, wholesalerUser, req = null, options = {}) {
     const wholesalerId = wholesalerUser._id;
     validateTaxDetails(productData);
     await assertWholesalerBusinessActivated(wholesalerId);
@@ -493,8 +537,12 @@ class ProductService {
       throw new ConflictError(`A product with SKU '${cleanSku}' already exists in your inventory.`, 'DUPLICATE_SKU');
     }
 
-    const category = await this.validateCategorySelection(categoryId, subcategoryId, wholesalerId, subSubcategoryId);
-    const categoryName = category.name;
+    const category = categoryId
+      ? await this.validateCategorySelection(categoryId, subcategoryId, wholesalerId, subSubcategoryId)
+      : options.allowMissingCategory
+        ? null
+        : await this.validateCategorySelection(categoryId, subcategoryId, wholesalerId, subSubcategoryId);
+    const categoryName = category?.name || '';
 
     const slug = await this.generateSlug(productName);
 

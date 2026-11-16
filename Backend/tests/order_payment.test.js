@@ -254,7 +254,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(options.body.data.bankDetails).toMatchObject({
       accountHolderName: 'Omni Supplies',
       bankName: 'Example Bank',
-      accountNumber: '123456789012',
+      accountNumber: '••••••••9012',
       ifscCode: 'EXAM0001234',
     });
 
@@ -350,7 +350,10 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
     expect(retailerOptions.body.data.bankDetailsStatus).toBe('VERIFIED');
-    expect(retailerOptions.body.data.bankDetails).toEqual(originalBankDetails);
+    expect(retailerOptions.body.data.bankDetails).toEqual({
+      ...originalBankDetails,
+      accountNumber: '••••••••7788',
+    });
 
     const saved = await request(app)
       .patch('/api/v1/wholesaler/payment-settings')
@@ -415,6 +418,47 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
         shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
       });
     expect(checkout.status).toBe(400);
+  });
+
+  test('payment QR uploads persist in private GridFS and remain available on reload', async () => {
+    const image = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x01, 0x02, 0x03,
+    ]);
+    const uploaded = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('upiId', 'omni@upi')
+      .field('upiIdPaymentsEnabled', 'true')
+      .field('qrPaymentsEnabled', 'true')
+      .attach('qrImage', image, { filename: 'payment-qr.png', contentType: 'image/png' });
+
+    expect(uploaded.status).toBe(200);
+    expect(uploaded.body.data).toMatchObject({
+      upiId: 'omni@upi',
+      upiIdPaymentsEnabled: true,
+      hasQrImage: true,
+      qrPaymentsEnabled: true,
+      qrDataUrl: `data:image/png;base64,${image.toString('base64')}`,
+    });
+
+    const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
+    expect(profile.paymentSettings.qrImagePath).toMatch(/^gridfs:payment-qr:/);
+
+    const reloaded = await request(app)
+      .get('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.data.qrDataUrl).toBe(uploaded.body.data.qrDataUrl);
+
+    const retailerOptions = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(retailerOptions.status).toBe(200);
+    expect(retailerOptions.body.data).toMatchObject({
+      upiId: 'omni@upi',
+      qrDataUrl: uploaded.body.data.qrDataUrl,
+    });
   });
 
   test('changing a verified bank account removes retailer visibility until reverified', async () => {

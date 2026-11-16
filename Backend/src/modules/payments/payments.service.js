@@ -25,6 +25,8 @@ const {
 
 const QR_DIRECTORY = path.join(env.UPLOAD_PATH, 'payment-qr');
 const REPORT_DIRECTORY = path.join(env.UPLOAD_PATH, 'payment-reports');
+const QR_BUCKET_NAME = 'paymentQrImages';
+const QR_KEY_PREFIX = 'gridfs:payment-qr:';
 const EVIDENCE_BUCKET_NAME = 'paymentEvidence';
 const EVIDENCE_KEY_PREFIX = 'gridfs:';
 const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
@@ -58,10 +60,78 @@ function getEvidenceBucket() {
   return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: EVIDENCE_BUCKET_NAME });
 }
 
+function getQrBucket() {
+  if (!mongoose.connection.db) {
+    throw new Error('Payment QR storage is unavailable before the database connects');
+  }
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: QR_BUCKET_NAME });
+}
+
+function getQrFileId(storageKey) {
+  if (!String(storageKey || '').startsWith(QR_KEY_PREFIX)) return null;
+  const rawId = String(storageKey).slice(QR_KEY_PREFIX.length);
+  return mongoose.Types.ObjectId.isValid(rawId) ? new mongoose.Types.ObjectId(rawId) : null;
+}
+
 function getEvidenceFileId(storageKey) {
   if (!String(storageKey || '').startsWith(EVIDENCE_KEY_PREFIX)) return null;
   const rawId = String(storageKey).slice(EVIDENCE_KEY_PREFIX.length);
   return mongoose.Types.ObjectId.isValid(rawId) ? new mongoose.Types.ObjectId(rawId) : null;
+}
+
+function getLegacyQrImagePath(storageKey) {
+  if (!storageKey) return '';
+  const filename = path.basename(storageKey);
+  const candidates = [
+    path.join(QR_DIRECTORY, filename),
+    path.join(env.UPLOAD_PATH, storageKey),
+    path.join(env.UPLOAD_PATH, 'payment-qr', filename),
+    path.resolve(storageKey),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || '';
+}
+
+async function hasQrImage(storageKey) {
+  const fileId = getQrFileId(storageKey);
+  if (fileId) return getQrBucket().find({ _id: fileId }).hasNext();
+  return Boolean(getLegacyQrImagePath(storageKey));
+}
+
+async function removeQrImage(storageKey) {
+  const fileId = getQrFileId(storageKey);
+  if (fileId) {
+    const bucket = getQrBucket();
+    if (await bucket.find({ _id: fileId }).hasNext()) await bucket.delete(fileId);
+    return;
+  }
+  if (!storageKey) return;
+  await fs.promises.unlink(path.resolve(QR_DIRECTORY, path.basename(storageKey))).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+}
+
+async function saveQrImage(file, mimeType) {
+  const bucket = getQrBucket();
+  const uploadStream = bucket.openUploadStream(`payment-qr-${crypto.randomUUID()}`, {
+    contentType: mimeType,
+    metadata: { kind: 'payment-qr' },
+  });
+  try {
+    await pipeline(Readable.from(file.buffer), uploadStream);
+  } catch (error) {
+    try {
+      if (await bucket.find({ _id: uploadStream.id }).hasNext()) {
+        await bucket.delete(uploadStream.id);
+      }
+    } catch (cleanupError) {
+      logger.error('Unable to remove incomplete payment QR upload', {
+        fileId: String(uploadStream.id),
+        error: cleanupError.message,
+      });
+    }
+    throw error;
+  }
+  return `${QR_KEY_PREFIX}${uploadStream.id}`;
 }
 
 async function getScreenshotAvailability(storageKeys) {
@@ -132,6 +202,11 @@ function hasValidBankDetails(details = {}) {
     ACCOUNT_NUMBER_PATTERN.test(String(details.accountNumber || '').trim()) &&
     IFSC_PATTERN.test(String(details.ifscCode || '').trim().toUpperCase()) &&
     BRANCH_PATTERN.test(String(details.branch || '').trim());
+}
+
+function maskAccountNumber(accountNumber) {
+  const value = String(accountNumber || '');
+  return value ? `••••••••${value.slice(-4)}` : '';
 }
 
 function getBankDetailsStatus(details, verified) {
@@ -240,29 +315,28 @@ async function getBankDetails(profile) {
   ]));
 }
 
-function getQrDataUrl(profile) {
+async function getQrDataUrl(profile) {
   const settings = profile?.paymentSettings || {};
   if (!settings.qrImagePath) return '';
-  ensureDirectories();
-  const filename = path.basename(settings.qrImagePath);
-  const candidates = [
-    path.join(QR_DIRECTORY, filename),
-    path.join(env.UPLOAD_PATH, settings.qrImagePath),
-    path.join(env.UPLOAD_PATH, 'payment-qr', filename),
-    path.resolve(settings.qrImagePath),
-  ];
-  let imagePath = '';
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      imagePath = candidate;
-      break;
+  const fileId = getQrFileId(settings.qrImagePath);
+  if (fileId) {
+    const bucket = getQrBucket();
+    if (!(await bucket.find({ _id: fileId }).hasNext())) {
+      logger.warn('Payment QR image file not found in GridFS', {
+        wholesalerId: profile.userId,
+        qrImagePath: settings.qrImagePath,
+      });
+      return '';
     }
+    const chunks = [];
+    for await (const chunk of bucket.openDownloadStream(fileId)) chunks.push(chunk);
+    return `data:${settings.qrImageMimeType};base64,${Buffer.concat(chunks).toString('base64')}`;
   }
+  const imagePath = getLegacyQrImagePath(settings.qrImagePath);
   if (!imagePath) {
     logger.warn('Payment QR image file not found on disk', {
       wholesalerId: profile.userId,
       qrImagePath: settings.qrImagePath,
-      candidates,
     });
     return '';
   }
@@ -289,8 +363,10 @@ class PaymentsService {
     const bankDetails = await getBankDetails(profile);
     const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
-    const qrDataUrl = getQrDataUrl(profile);
-    const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
+    const qrDataUrl = await getQrDataUrl(profile);
+    const qrImageUrl = settings.qrImagePath && !getQrFileId(settings.qrImagePath)
+      ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
+      : '';
     return {
       upiId: settings.upiId || '',
       accountName: settings.accountName || '',
@@ -353,10 +429,7 @@ class PaymentsService {
         'BANK_DETAILS_VERIFICATION_REQUIRED'
       );
     }
-    const existingQrPath = current.qrImagePath
-      ? path.join(QR_DIRECTORY, path.basename(current.qrImagePath))
-      : '';
-    if (qrPaymentsEnabled && !file && (!existingQrPath || !fs.existsSync(existingQrPath))) {
+    if (qrPaymentsEnabled && !file && !(await hasQrImage(current.qrImagePath))) {
       throw new BadRequestError('Upload a QR image before enabling QR payments.', 'QR_IMAGE_REQUIRED');
     }
 
@@ -364,9 +437,7 @@ class PaymentsService {
     let mimeType = current.qrImageMimeType || '';
     if (file) {
       mimeType = fileMimeType(file);
-      ensureDirectories();
-      uploadedPath = `${crypto.randomUUID()}.${mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]}`;
-      await fs.promises.writeFile(path.join(QR_DIRECTORY, uploadedPath), file.buffer, { flag: 'wx' });
+      uploadedPath = await saveQrImage(file, mimeType);
     }
 
     profile.paymentSettings = {
@@ -385,14 +456,14 @@ class PaymentsService {
       await profile.save();
     } catch (error) {
       if (file && uploadedPath) {
-        await fs.promises.unlink(path.join(QR_DIRECTORY, uploadedPath)).catch((cleanupError) => {
+        await removeQrImage(uploadedPath).catch((cleanupError) => {
           if (cleanupError.code !== 'ENOENT') logger.error('Failed to remove an uncommitted payment QR upload', { cleanupError });
         });
       }
       throw error;
     }
     if (file && current.qrImagePath && current.qrImagePath !== uploadedPath) {
-      await fs.promises.unlink(path.join(QR_DIRECTORY, path.basename(current.qrImagePath))).catch((error) => {
+      await removeQrImage(current.qrImagePath).catch((error) => {
         if (error.code !== 'ENOENT') logger.error('Failed to remove a replaced payment QR image', { error });
       });
     }
@@ -461,8 +532,10 @@ class PaymentsService {
     const bankDetailsVerified = profile.bankDetails?.isVerified === true && hasValidBankDetails(bankDetails);
     const settings = profile.paymentSettings?.toObject?.() || profile.paymentSettings || {};
     const upiIdIsValid = UPI_ID_PATTERN.test(String(settings.upiId || ''));
-    const qrDataUrl = settings.qrPaymentsEnabled ? getQrDataUrl(profile) : '';
-    const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
+    const qrDataUrl = settings.qrPaymentsEnabled ? await getQrDataUrl(profile) : '';
+    const qrImageUrl = settings.qrImagePath && !getQrFileId(settings.qrImagePath)
+      ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
+      : '';
     return {
       wholesalerId: String(relationship.wholesalerId),
       businessName: profile.businessName,
@@ -476,7 +549,9 @@ class PaymentsService {
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
       paymentMethods: getEnabledPaymentMethods(settings, bankDetailsVerified),
       bankDetailsStatus: getBankDetailsStatus(bankDetails, bankDetailsVerified),
-      bankDetails: bankDetailsVerified ? bankDetails : null,
+      bankDetails: bankDetailsVerified
+        ? { ...bankDetails, accountNumber: maskAccountNumber(bankDetails.accountNumber) }
+        : null,
     };
   }
 
@@ -487,13 +562,15 @@ class PaymentsService {
       throw new BadRequestError('This wholesaler has not enabled QR payments.', 'QR_PAYMENTS_DISABLED');
     }
 
-    const qrDataUrl = getQrDataUrl(profile);
+    const qrDataUrl = await getQrDataUrl(profile);
     if (!qrDataUrl) {
       throw new NotFoundError('The wholesaler QR image is unavailable. Ask them to upload it again.', 'QR_IMAGE_UNAVAILABLE');
     }
 
     const qrSessionMinutes = Number(settings.qrSessionMinutes || 10);
-    const qrImageUrl = settings.qrImagePath ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}` : '';
+    const qrImageUrl = settings.qrImagePath && !getQrFileId(settings.qrImagePath)
+      ? `/uploads/payment-qr/${path.basename(settings.qrImagePath)}`
+      : '';
     return {
       wholesalerId: String(relationship.wholesalerId),
       qrDataUrl,

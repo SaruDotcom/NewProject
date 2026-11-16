@@ -60,7 +60,7 @@ env.assertCloudinaryConfigured = () => {
   const missing = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']
     .filter((key) => !env[key]);
   if (missing.length) {
-    throw new Error(`Cloudinary product-image uploads require: ${missing.join(', ')}`);
+    throw new Error(`Cloudinary uploads require: ${missing.join(', ')}`);
   }
 };
 

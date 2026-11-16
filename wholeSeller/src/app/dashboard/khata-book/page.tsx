@@ -154,7 +154,7 @@ export default function KhataBookPage() {
         saved.data,
       );
       setEditingBusinessType(false);
-      setMessage({ type: 'success', text: 'Your Khata Book is ready.' });
+      setMessage({ type: 'success', text: 'Your purchase ledger is ready.' });
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Unable to save your business type.' });
     } finally {
@@ -238,7 +238,7 @@ export default function KhataBookPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `khata-book-${from || 'all'}-to-${to || 'dates'}.${format}`;
+      link.download = `purchase-ledger-${from || 'all'}-to-${to || 'dates'}.${format}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -274,10 +274,10 @@ export default function KhataBookPage() {
   ];
 
   if (!profile.id || settingsQuery.isLoading) {
-    return <div role="status" className="flex items-center justify-center gap-2 p-16 text-sm text-gray-500"><LoaderCircle className="h-5 w-5 animate-spin" /> Opening your Khata Book…</div>;
+    return <div role="status" className="flex items-center justify-center gap-2 p-16 text-sm text-gray-500"><LoaderCircle className="h-5 w-5 animate-spin" /> Opening your purchase ledger…</div>;
   }
   if (settingsQuery.error) {
-    return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{settingsQuery.error.message || 'Unable to load your Khata Book settings.'}</div>;
+    return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{settingsQuery.error.message || 'Unable to load your purchase ledger settings.'}</div>;
   }
 
   if (!businessType || editingBusinessType) {
@@ -285,7 +285,7 @@ export default function KhataBookPage() {
       <div className="mx-auto max-w-2xl rounded-2xl border border-tradeflow-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <div className="mb-5 flex items-center gap-3">
           <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green"><BookOpen className="h-5 w-5" /></div>
-          <div><h1 className="text-2xl font-extrabold text-tradeflow-navy">{businessType ? 'Change business type' : 'Set up your Khata Book'}</h1><p className="mt-1 text-sm text-gray-500">Choose your business type to show the right purchase details.</p></div>
+          <div><h1 className="text-2xl font-extrabold text-tradeflow-navy">{businessType ? 'Change business type' : 'Set up your purchase ledger'}</h1><p className="mt-1 text-sm text-gray-500">Choose your business type to show the right purchase details.</p></div>
         </div>
         {message && <div role={message.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-lg p-3 text-sm ${message.type === 'error' ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}>{message.text}</div>}
         <form onSubmit={saveBusinessType} className="space-y-4">
@@ -299,7 +299,7 @@ export default function KhataBookPage() {
           </label>}
           <p className="rounded-lg bg-blue-50 p-3 text-xs leading-5 text-blue-900">Your business type controls which purchase details appear. Existing purchases stay saved if you change it.</p>
           <button type="submit" disabled={savingSettings} className="inline-flex items-center gap-2 rounded-lg bg-tradeflow-green px-5 py-2.5 text-sm font-bold text-white disabled:opacity-60">
-            {savingSettings && <LoaderCircle className="h-4 w-4 animate-spin" />} {businessType ? 'Save business type' : 'Open my Khata Book'}
+            {savingSettings && <LoaderCircle className="h-4 w-4 animate-spin" />} {businessType ? 'Save business type' : 'Open purchase ledger'}
           </button>
           {businessType && <button type="button" onClick={() => setEditingBusinessType(false)} className="ml-2 rounded-lg border border-tradeflow-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600">Cancel</button>}
         </form>
@@ -314,7 +314,7 @@ export default function KhataBookPage() {
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green"><BookOpen className="h-5 w-5" /></div>
           <div>
-            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Khata Book</h1>
+            <h1 className="text-2xl font-extrabold text-tradeflow-navy">Purchase Ledger</h1>
             <p className="mt-1 text-sm text-gray-500">{settings?.businessName || profile.businessName} · {businessType === 'OTHER' ? settings?.otherBusinessType : businessTypes.find((type) => type.value === businessType)?.label} purchase register</p>
           </div>
         </div>
@@ -438,7 +438,7 @@ export default function KhataBookPage() {
       <section id="khata-print-area" className="overflow-hidden rounded-2xl border border-tradeflow-gray-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
         <div className="hidden border-b border-gray-200 p-4 print:block">
           <h1 className="text-xl font-bold">{settings?.businessName || profile.businessName || 'Business'}</h1>
-          <p className="mt-1 text-sm">Purchase Khata Book · {from || 'All dates'} to {to || 'All dates'}</p>
+          <p className="mt-1 text-sm">Purchase ledger · {from || 'All dates'} to {to || 'All dates'}</p>
           <p className="mt-1 text-sm">Total purchase: {amount(summary.totalPurchase)} · Total paid: {amount(summary.totalPaid)} · Total pending: {amount(summary.totalPending)}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-tradeflow-gray-200 p-4 print:hidden">
@@ -447,8 +447,8 @@ export default function KhataBookPage() {
         </div>
         {entriesQuery.isLoading ? <div role="status" className="flex items-center justify-center gap-2 p-12 text-sm text-gray-500"><LoaderCircle className="h-5 w-5 animate-spin" /> Loading saved entries…</div>
           : entries.length === 0 ? <div className="p-10 text-center print:hidden">
-            <BookOpen className="mx-auto h-8 w-8 text-gray-300" /><h3 className="mt-3 font-semibold text-tradeflow-navy">Your Khata Book is empty</h3>
-            <p className="mt-1 text-sm text-gray-500">Add a purchase entry to start recording your business hisaab.</p>
+            <BookOpen className="mx-auto h-8 w-8 text-gray-300" /><h3 className="mt-3 font-semibold text-tradeflow-navy">Your purchase ledger is empty</h3>
+            <p className="mt-1 text-sm text-gray-500">Add a purchase entry to start recording your business transactions.</p>
             <button type="button" onClick={openNewEntry} className="mt-4 rounded-lg bg-tradeflow-green px-4 py-2 text-sm font-bold text-white">New Entry</button>
           </div> : <>
             <div className="overflow-x-auto">

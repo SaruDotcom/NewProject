@@ -112,6 +112,10 @@ function consentAccepted(value) {
   return value === true || value === 'true';
 }
 
+function activeRetailerProfileFilter(retailerId) {
+  return { userId: retailerId, isDeleted: { $ne: true } };
+}
+
 class RetailerIdentityService {
   static async uploadOne(file, retailerId, fieldName) {
     const mimeType = detectFileType(file, fieldName);
@@ -217,8 +221,9 @@ class RetailerIdentityService {
     }
   }
 
-  static async updateIdentity(retailerId, body, files) {
-    const profile = await RetailerProfile.findOne({ userId: retailerId, isDeleted: false });
+  static async updateIdentity(retailerId, body, files, requester) {
+    await this.assertAccess(retailerId, requester);
+    const profile = await RetailerProfile.findOne(activeRetailerProfileFilter(retailerId));
     if (!profile) throw new NotFoundError('Retailer profile not found');
 
     const accepted = consentAccepted(body.identityConsent);
@@ -327,7 +332,7 @@ class RetailerIdentityService {
 
   static async getIdentityProfile(retailerId, requester) {
     await this.assertAccess(retailerId, requester);
-    const profile = await RetailerProfile.findOne({ userId: retailerId, isDeleted: false }).lean();
+    const profile = await RetailerProfile.findOne(activeRetailerProfileFilter(retailerId)).lean();
     if (!profile) throw new NotFoundError('Retailer profile not found');
     return this.formatIdentity(profile, { includePan: true });
   }
@@ -337,7 +342,7 @@ class RetailerIdentityService {
       throw new ForbiddenError('You are not allowed to access this retailer profile.', 'RETAILER_IDENTITY_FORBIDDEN');
     }
     await this.assertAccess(retailerId, requester);
-    const profile = await RetailerProfile.findOne({ userId: retailerId, isDeleted: false }).lean();
+    const profile = await RetailerProfile.findOne(activeRetailerProfileFilter(retailerId)).lean();
     if (!profile?.aadhaar?.numberEncrypted) throw new NotFoundError('Aadhaar number has not been provided');
     const auditEntry = await AuditService.log({
       actorId: requester._id,
@@ -363,12 +368,12 @@ class RetailerIdentityService {
     }
     await this.assertAccess(retailerId, requester);
     const profile = await RetailerProfile.findOneAndUpdate(
-      { userId: retailerId, isDeleted: false, verificationStatus: 'SUBMITTED' },
+      { ...activeRetailerProfileFilter(retailerId), verificationStatus: 'SUBMITTED' },
       { verificationStatus: status, verificationNote: String(note || '').trim().slice(0, 1000) },
       { new: true, runValidators: true }
     );
     if (!profile) {
-      const exists = await RetailerProfile.exists({ userId: retailerId, isDeleted: false });
+      const exists = await RetailerProfile.exists(activeRetailerProfileFilter(retailerId));
       if (!exists) throw new NotFoundError('Retailer profile not found');
       throw new BadRequestError('Only submitted retailer details can be verified or rejected.', 'RETAILER_IDENTITY_NOT_SUBMITTED');
     }
@@ -386,7 +391,7 @@ class RetailerIdentityService {
 
   static async streamDocument(retailerId, documentType, requester, req, res) {
     await this.assertAccess(retailerId, requester);
-    const profile = await RetailerProfile.findOne({ userId: retailerId, isDeleted: false }).lean();
+    const profile = await RetailerProfile.findOne(activeRetailerProfileFilter(retailerId)).lean();
     if (!profile) throw new NotFoundError('Retailer profile not found');
 
     const documentMap = {

@@ -87,6 +87,84 @@ describe('Retailer identity registration and privacy', () => {
     expect(encryptIdentityNumber('123456789012')).not.toBe(encrypted);
   });
 
+  test('persists identity numbers for the owning retailer, including legacy profiles without a delete flag', async () => {
+    const retailerId = '507f1f77bcf86cd799439099';
+    const profile = {
+      pan: {},
+      aadhaar: {},
+      shopPhoto: {},
+      consent: { accepted: false, at: null },
+      verificationStatus: 'NOT_SUBMITTED',
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const findOne = jest.spyOn(RetailerProfile, 'findOne').mockResolvedValue(profile);
+
+    const result = await RetailerIdentityService.updateIdentity(
+      retailerId,
+      {
+        panNumber: 'ABCDE1234F',
+        aadhaarNumber: '123456789012',
+        identityConsent: 'true',
+      },
+      {},
+      { _id: retailerId, role: 'RETAILER' },
+    );
+
+    expect(findOne).toHaveBeenCalledWith({
+      userId: retailerId,
+      isDeleted: { $ne: true },
+    });
+    expect(profile.save).toHaveBeenCalledTimes(1);
+    expect(decryptIdentityNumber(profile.pan.numberEncrypted)).toBe('ABCDE1234F');
+    expect(decryptIdentityNumber(profile.aadhaar.numberEncrypted)).toBe('123456789012');
+    expect(result.pan.last4).toBe('234F');
+    expect(result.aadhaar.last4).toBe('9012');
+  });
+
+  test('does not allow a retailer to update another retailer identity profile', async () => {
+    const findOne = jest.spyOn(RetailerProfile, 'findOne');
+
+    await expect(RetailerIdentityService.updateIdentity(
+      '507f1f77bcf86cd799439099',
+      { panNumber: 'ABCDE1234F' },
+      {},
+      { _id: '507f1f77bcf86cd799439098', role: 'RETAILER' },
+    )).rejects.toThrow();
+
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  test('stores the retailer profile image and returns its saved status', async () => {
+    const retailerId = '507f1f77bcf86cd799439099';
+    const asset = {
+      imageUrl: 'https://secure.example/profile.png',
+      publicId: 'retailer-identity/profile',
+      resourceType: 'image',
+      format: 'png',
+    };
+    const profile = {
+      pan: {},
+      aadhaar: {},
+      shopPhoto: {},
+      consent: { accepted: false, at: null },
+      verificationStatus: 'NOT_SUBMITTED',
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    jest.spyOn(RetailerProfile, 'findOne').mockResolvedValue(profile);
+    jest.spyOn(RetailerIdentityService, 'uploadOne').mockResolvedValue(asset);
+
+    const result = await RetailerIdentityService.updateIdentity(
+      retailerId,
+      { identityConsent: 'true' },
+      { shopPhoto: [{ originalname: 'store.png' }] },
+      { _id: retailerId, role: 'RETAILER' },
+    );
+
+    expect(profile.shopPhoto).toEqual(asset);
+    expect(profile.save).toHaveBeenCalledTimes(1);
+    expect(result.shopPhoto.hasImage).toBe(true);
+  });
+
   test('safe identity summaries expose no full Aadhaar or encrypted fields', () => {
     const summary = RetailerIdentityService.formatIdentity({
       pan: { numberEncrypted: 'encrypted-pan', last4: '1234' },

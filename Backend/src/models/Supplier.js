@@ -9,7 +9,7 @@ const supplierSchema = new mongoose.Schema(
       index: true,
     },
     name: { type: String, required: true, trim: true, maxlength: 160 },
-    mobile: { type: String, required: true, trim: true, maxlength: 20 },
+    mobile: { type: String, trim: true, default: '', maxlength: 20 },
     address: { type: String, trim: true, default: '', maxlength: 500 },
     gstin: { type: String, trim: true, uppercase: true, default: '', maxlength: 15 },
     openingBalance: { type: Number, min: 0, default: 0 },

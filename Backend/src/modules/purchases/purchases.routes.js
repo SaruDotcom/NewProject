@@ -5,11 +5,14 @@ const validate = require('../../middleware/validate');
 const { ROLES } = require('../../config/constants');
 const controller = require('./purchases.controller');
 const schemas = require('./purchases.validation');
+const productController = require('../products/products.controller');
+const { requireActiveWholesaler } = require('../../middleware/wholesalerAccess');
 
 const router = express.Router();
 router.use(authenticate, authorize(ROLES.WHOLESALER));
 
 router.get('/summary', controller.summary);
+router.post('/products', requireActiveWholesaler, productController.createPurchaseProduct);
 
 router.get('/suppliers', validate(schemas.supplierListSchema, 'query'), controller.listSuppliers);
 router.post('/suppliers', validate(schemas.createSupplierSchema), controller.createSupplier);

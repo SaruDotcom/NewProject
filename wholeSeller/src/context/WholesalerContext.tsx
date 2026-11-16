@@ -28,6 +28,7 @@ function getWholesalerPageResources(pathname: string): Set<string> {
   }
   if (pathname === '/dashboard/products') return new Set(['categories', 'products', 'profile', 'kyc']);
   if (pathname === '/dashboard/categories') return new Set(['categories', 'products', 'profile', 'kyc']);
+  if (pathname === '/dashboard/purchases') return new Set(['products']);
   if (pathname.startsWith('/dashboard/inventory')) return new Set(['products']);
   if (pathname === '/dashboard/retailers') return new Set(['retailers']);
   if (pathname === '/dashboard/orders') return new Set(['orders', 'returns']);
@@ -157,7 +158,7 @@ interface WholesalerContextType {
   verifyTwoFactorOtp: (code: string) => Promise<void>;
   disableTwoFactor: () => Promise<void>;
   registerWholesaler: (data: WholesalerAccountRegistration, passwordInput: string) => Promise<void>;
-  refreshData: (silent?: boolean) => Promise<void>;
+  refreshData: (silent?: boolean) => Promise<boolean>;
   markNotificationsRead: () => Promise<void>;
   updateProfile: (updated: Partial<WholesalerProfile>) => void;
   addProduct: (product: Omit<Product, 'id' | 'wholesalerId' | 'isLowStock'>) => Promise<void>;
@@ -330,7 +331,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const isBusinessActivated = accessControl.isAllowed;
   const [notifications, setNotifications] = useState<WholesalerNotification[]>([]);
-  const refreshDataRef = useRef<(silent?: boolean) => Promise<void>>(() => Promise.resolve());
+  const refreshDataRef = useRef<(silent?: boolean) => Promise<boolean>>(() => Promise.resolve(false));
 
   const invalidateResources = (...resources: string[]) => {
     const userId = profile.id || getWholesalerId();
@@ -376,7 +377,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setAuditLogs([]);
       setNotifications([]);
       if (!silent) setIsLoading(false);
-      return;
+      return false;
     }
 
     try {
@@ -651,6 +652,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       void loadNotifications().catch((err: any) => console.warn('Notification load failed:', err.message));
+      return true;
     } catch (err: any) {
       console.warn('Sync Wholesaler API note:', err.message);
       if (String(err?.message || '').toLowerCase().includes('unauthorized') || String(err?.message || '').includes('401')) {
@@ -674,6 +676,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           window.location.href = '/login';
         }
       }
+      return false;
     } finally {
       if (!silent) setIsLoading(false);
     }
@@ -1241,7 +1244,7 @@ const fallbackWholesalerContext: WholesalerContextType = {
   verifyTwoFactorOtp: async () => undefined,
   disableTwoFactor: async () => undefined,
   registerWholesaler: async () => undefined,
-  refreshData: async () => undefined,
+  refreshData: async () => false,
   markNotificationsRead: async () => undefined,
   updateProfile: () => undefined,
   addProduct: async () => undefined,

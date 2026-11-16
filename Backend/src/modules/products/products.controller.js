@@ -50,6 +50,11 @@ class ProductController {
     return ApiResponse.created(res, result, 'Product created successfully');
   });
 
+  createPurchaseProduct = asyncHandler(async (req, res) => {
+    const result = await ProductService.createPurchaseProduct(req.body, req.user, req);
+    return ApiResponse.created(res, result, 'Purchase product created successfully');
+  });
+
   previewBulkProducts = asyncHandler(async (req, res) => {
     const rows = await BulkProductService.preview(req.body.rows, req.user);
     return ApiResponse.success(res, { rows }, 'Bulk product preview generated');

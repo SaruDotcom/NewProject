@@ -9,7 +9,7 @@ const paymentModes = ['CASH', 'UPI', 'CHEQUE', 'BANK_TRANSFER'];
 
 const createSupplierSchema = Joi.object({
   name: Joi.string().trim().min(2).max(160).required(),
-  mobile: Joi.string().trim().pattern(/^\+?[1-9]\d{7,14}$/).required(),
+  mobile: Joi.string().trim().pattern(/^\+?[1-9]\d{7,14}$/).allow('').default(''),
   address: Joi.string().trim().max(500).allow('').default(''),
   gstin: Joi.string().trim().uppercase().pattern(/^[0-9A-Z]{15}$/).allow('').default(''),
   openingBalance: money.default(0),

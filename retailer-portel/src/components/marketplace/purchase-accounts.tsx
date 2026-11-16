@@ -695,7 +695,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
                   ["Monthly Total Purchase", monthPurchaseTotal, "Actual orders excluding cancellations"],
                   ["Yearly Total Purchase", yearPurchaseTotal, "Actual orders excluding cancellations"],
                   ["Total Paid Amount", paidTotal, "Recorded for purchases in the selected period"],
-                  ["Total Outstanding (Udhaar)", outstandingTotal, "After approved payments and completed returns"],
+                  ["Total Outstanding", outstandingTotal, "After approved payments and completed returns"],
                   ["Total Advance Payment", advanceTotal, advanceTotal ? "Recorded advance transactions" : "No advance records available"],
                   ["Purchase Returns", returnTotal, "Completed return adjustments in the selected period"],
                 ].map(([label, amount, hint]) => (
@@ -758,7 +758,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
                       <p><span className="text-muted-foreground">Bilty:</span> {order.shippingDetails?.biltyNumber || "Not provided"}</p>
                       <p><span className="text-muted-foreground">Paid:</span> {money(orderPaid(order, payments))}</p>
                       <p className="font-bold text-ink"><span className="text-muted-foreground">Total:</span> {money(orderTotal(order))}</p>
-                      <p className="font-bold text-amber-700"><span className="text-muted-foreground">Baaki:</span> {money(paymentDue(order, payments, returns))}</p>
+                      <p className="font-bold text-amber-700"><span className="text-muted-foreground">Balance:</span> {money(paymentDue(order, payments, returns))}</p>
                     </div>
                     <Button className="mt-3 w-full" variant="outline" onClick={() => setSelectedOrderId(orderId(order))}>View Invoice / Status</Button>
                   </article>
@@ -799,13 +799,13 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
                     <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-4">
                       <div><p className="font-extrabold text-ink">{group.name}</p><p className="mt-1 text-[11px] text-muted-foreground">Opening balance: Not recorded · Next due: {formatDate(group.nextDue)}</p></div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-xs sm:grid-cols-4">
-                        <span>Purchases <b className="block text-ink">{money(group.purchases)}</b></span><span>Payments <b className="block text-emerald-700">{money(group.payments)}</b></span><span>Returns <b className="block text-emerald-700">{money(group.returns)}</b></span><span>Baaki <b className="block text-amber-700">{money(group.due)}</b></span>
+                        <span>Purchases <b className="block text-ink">{money(group.purchases)}</b></span><span>Payments <b className="block text-emerald-700">{money(group.payments)}</b></span><span>Returns <b className="block text-emerald-700">{money(group.returns)}</b></span><span>Balance <b className="block text-amber-700">{money(group.due)}</b></span>
                       </div>
                       <Button type="button" size="sm" variant="outline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); downloadLedgerStatement(group.name, visibleEvents); }}><Download className="mr-2 size-3.5" />Download statement</Button>
                     </summary>
                     <div className="overflow-x-auto border-t">
                       <table className="w-full min-w-[720px] text-left text-xs">
-                        <thead className="text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">Date</th><th className="p-3">Transaction</th><th className="p-3">Invoice / ID</th><th className="p-3 text-right">Debit</th><th className="p-3 text-right">Credit (Jama)</th><th className="p-3 text-right">Running Balance</th></tr></thead>
+                        <thead className="text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">Date</th><th className="p-3">Transaction</th><th className="p-3">Invoice / ID</th><th className="p-3 text-right">Debit</th><th className="p-3 text-right">Credit</th><th className="p-3 text-right">Running balance</th></tr></thead>
                         <tbody className="divide-y">
                           {visibleEvents.map((entry, index) => (
                             <tr key={`${entry.reference}-${index}`}>
