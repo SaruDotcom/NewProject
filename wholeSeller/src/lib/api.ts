@@ -433,6 +433,13 @@ function getWholesalerResources(path: string): string[] {
 
 function isUncachedWholesalerRead(path: string): boolean {
   return path.startsWith('/auth/') ||
+    path === '/orders' ||
+    path.startsWith('/orders/') ||
+    path.startsWith('/wholesaler/products') ||
+    path.startsWith('/wholesaler/inventory') ||
+    path.startsWith('/wholesaler/credit-overview') ||
+    path.startsWith('/wholesaler/khata-book') ||
+    path.startsWith('/wholesaler/purchases') ||
     /\/(payment|payments|payout|payouts|wallet|wallets|kyc|security|documents?)(\/|$|-)/i.test(path);
 }
 

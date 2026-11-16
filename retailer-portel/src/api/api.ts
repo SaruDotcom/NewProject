@@ -271,7 +271,7 @@ function invalidateMutation(endpoint: string) {
 function getRetailerResources(path: string): string[] {
   if (path.startsWith("/retailer/cart")) return ["cart"];
   if (path.startsWith("/retailer/wishlist")) return ["wishlist"];
-  if (path === "/retailer/checkout") return ["cart", "orders", "dashboard"];
+  if (path === "/retailer/checkout") return ["cart", "orders", "dashboard", "products", "category-products"];
   if (path.startsWith("/retailer/payments/reports")) {
     return ["payment-reports", "orders", "credit"];
   }
@@ -312,7 +312,10 @@ function isUncachedRetailerRead(path: string): boolean {
   return (
     path.startsWith("/auth/") ||
     path.startsWith("/retailer-identity/") ||
-    /^\/retailer\/orders\/[^/]+/.test(path) ||
+    path.startsWith("/retailer/orders") ||
+    path.startsWith("/retailer/credit-info") ||
+    path.startsWith("/retailer/products") ||
+    path.startsWith("/retailer/returns") ||
     /\/(payment|payments|checkout|transaction|transactions|document|documents|aadhaar|pan)(\/|$|-)/i.test(
       path,
     )
