@@ -20,8 +20,10 @@ const {
   WholesalerSubscription,
   SubscriptionPayment,
 } = require('../../models');
-const { ROLES, USER_STATUS, KYC_STATUS, ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS, RELATIONSHIP_STATUS } = require('../../config/constants');
-const { BadRequestError, NotFoundError } = require('../../utils/errors');
+const { AUDIT_ACTION, ROLES, USER_STATUS, KYC_STATUS, ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS, RELATIONSHIP_STATUS } = require('../../config/constants');
+const { BadRequestError, ForbiddenError, NotFoundError } = require('../../utils/errors');
+const AuditService = require('../../services/audit.service');
+const { hasValidBankDetails } = require('../../services/bank-details.service');
 
 const DASHBOARD_SUBSCRIPTION_PLAN_KEYS = [
   'WHOLESALER_MONTHLY',
@@ -48,6 +50,102 @@ function addSubscriptionPeriod(date, billingPeriod) {
 }
 
 class AdminService {
+  static async getBankDetailsSubmissions(status = 'PENDING') {
+    const normalizedStatus = String(status || 'PENDING').toUpperCase();
+    if (!['PENDING', 'APPROVED', 'REJECTED', 'ALL'].includes(normalizedStatus)) {
+      throw new BadRequestError('Choose a valid bank details status filter.', 'INVALID_BANK_DETAILS_STATUS');
+    }
+
+    const filter = { isDeleted: { $ne: true } };
+    if (normalizedStatus !== 'ALL') {
+      filter['bankDetails.verificationStatus'] = normalizedStatus;
+    } else {
+      filter['bankDetails.verificationStatus'] = { $in: ['PENDING', 'APPROVED', 'REJECTED'] };
+    }
+
+    const profiles = await WholesalerProfile.find(filter)
+      .select('userId businessName bankDetails kycStatus')
+      .populate('userId', 'name email')
+      .sort({ 'bankDetails.submittedAt': -1 })
+      .lean();
+
+    return profiles.map((profile) => ({
+      wholesalerId: String(profile.userId?._id || profile.userId),
+      wholesalerName: profile.userId?.name || 'Wholesaler',
+      email: profile.userId?.email || '',
+      businessName: profile.businessName || '',
+      kycStatus: profile.kycStatus || 'DRAFT',
+      bankDetails: profile.bankDetails || {},
+    }));
+  }
+
+  static async reviewBankDetails(wholesalerId, action, input, adminUser, req = null) {
+    if (adminUser?.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError('Only a Superadmin can review bank details.', 'SUPERADMIN_REQUIRED');
+    }
+    if (!mongoose.isValidObjectId(wholesalerId)) {
+      throw new BadRequestError('A valid wholesaler ID is required.', 'INVALID_WHOLESALER_ID');
+    }
+    if (!['APPROVE', 'REJECT'].includes(action)) {
+      throw new BadRequestError('Choose approve or reject for the bank details.', 'INVALID_BANK_REVIEW_ACTION');
+    }
+
+    const profile = await WholesalerProfile.findOne({ userId: wholesalerId, isDeleted: { $ne: true } });
+    if (!profile) throw new NotFoundError('Wholesaler profile not found.');
+    const details = profile.bankDetails || {};
+    if (details.verificationStatus !== 'PENDING') {
+      throw new BadRequestError('Only pending bank details can be reviewed.', 'BANK_DETAILS_NOT_PENDING');
+    }
+    if (action === 'APPROVE' && !hasValidBankDetails(details)) {
+      throw new BadRequestError('The submitted bank details are incomplete or invalid.', 'INVALID_BANK_DETAILS');
+    }
+
+    const rejectionReason = String(input?.reason || '').trim();
+    if (action === 'REJECT' && !rejectionReason) {
+      throw new BadRequestError('A rejection reason is required.', 'BANK_REJECTION_REASON_REQUIRED');
+    }
+    if (rejectionReason.length > 500) {
+      throw new BadRequestError('The rejection reason cannot exceed 500 characters.', 'BANK_REJECTION_REASON_TOO_LONG');
+    }
+
+    const now = new Date();
+    const status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    details.verificationHistory = details.verificationHistory || [];
+    details.verificationStatus = status;
+    details.isVerified = status === 'APPROVED';
+    details.approvedAt = status === 'APPROVED' ? now : undefined;
+    details.approvedBy = status === 'APPROVED' ? adminUser._id : undefined;
+    details.rejectionReason = status === 'REJECTED' ? rejectionReason : '';
+    details.verificationHistory.push({
+      status,
+      changedBy: adminUser._id,
+      changedAt: now,
+      rejectionReason: status === 'REJECTED' ? rejectionReason : '',
+      accountNumberLast4: String(details.accountNumber || '').slice(-4),
+    });
+    await profile.save();
+
+    await AuditService.log({
+      actorId: adminUser._id,
+      actorRole: adminUser.role,
+      action: status === 'APPROVED'
+        ? AUDIT_ACTION.BANK_DETAILS_APPROVED
+        : AUDIT_ACTION.BANK_DETAILS_REJECTED,
+      entityType: 'WholesalerBankDetails',
+      entityId: wholesalerId,
+      before: { verificationStatus: 'PENDING' },
+      after: { verificationStatus: status, rejectionReason: details.rejectionReason },
+      req,
+    });
+
+    return {
+      wholesalerId: String(wholesalerId),
+      verificationStatus: status,
+      reviewedAt: now,
+      rejectionReason: details.rejectionReason,
+    };
+  }
+
   /**
    * Helper to compute date range filter
    */

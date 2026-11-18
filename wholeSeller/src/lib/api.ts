@@ -1259,6 +1259,18 @@ export const api = {
           method: 'PATCH',
           body: data,
         }),
+  submitBankDetails: (data: {
+    accountHolderName: string;
+    bankName: string;
+    accountNumber: string;
+    confirmAccountNumber?: string;
+    ifscCode: string;
+    branch: string;
+  }) =>
+    request<{ success: boolean; data: any }>('/wholesaler/bank-details', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
   getPaymentReports: () =>
     request<{ success: boolean; data: any[] }>('/wholesaler/payment-reports', { method: 'GET' }),
   getFinancialSummary: () =>

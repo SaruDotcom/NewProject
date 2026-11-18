@@ -21,10 +21,6 @@ const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
 const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
-const {
-  bankDetailsMatch,
-  hasValidBankDetails,
-} = require('../../services/bank-details.service');
 const logger = require('../../config/logger');
 
 const maskAccountNumber = (accountNumber) => {
@@ -432,21 +428,11 @@ class KycService {
     });
     await application.save();
 
-    const profile = await WholesalerProfile.findOne({ userId: application.wholesalerId })
-      .select('bankDetails')
-      .lean();
-    const bankDetailsVerified = Boolean(
-      hasValidBankDetails(application.bankDetails) &&
-      bankDetailsMatch(profile?.bankDetails, application.bankDetails)
-    );
-
-    // Mark the bank details verified only when the approved KYC matches the saved account.
     await WholesalerProfile.findOneAndUpdate(
       { userId: application.wholesalerId },
       {
         kycStatus: KYC_STATUS.APPROVED,
         isVerified: true,
-        'bankDetails.isVerified': bankDetailsVerified,
       }
     );
 
@@ -462,7 +448,6 @@ class KycService {
       after: {
         status: KYC_STATUS.APPROVED,
         reviewedBy: adminUser._id,
-        bankDetailsVerified,
       },
       req,
     });

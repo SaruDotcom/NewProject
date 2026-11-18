@@ -20,6 +20,7 @@ import {
   FileCheck2,
   Headphones,
   LayoutDashboard,
+  Landmark,
   Menu,
   MessageSquareText,
   Moon,
@@ -74,6 +75,7 @@ const nav = [
   { label: "Wholesalers", href: "/wholesalers", icon: Building2 },
   { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
   { label: "KYC", href: "/kyc", icon: FileCheck2 },
+  { label: "Bank Verification", href: "/bank-details", icon: Landmark },
   // { label: "Retailers", href: "/retailers", icon: Store },
   // { label: "Relationships", href: "/relationships", icon: Waypoints },
   // { label: "Products", href: "/products", icon: PackageSearch },
@@ -119,7 +121,10 @@ export function AdminShell({ children }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const current = nav.find((item) =>
+  const visibleNav = adminUser?.role === "SUPER_ADMIN"
+    ? nav
+    : nav.filter((item) => item.href !== "/bank-details");
+  const current = visibleNav.find((item) =>
     item.href === "/" ? pathname === "/" : pathname.startsWith(item.href),
   );
 
@@ -255,6 +260,7 @@ export function AdminShell({ children }) {
         children: [
           _jsx(Brand, { compact: collapsed }),
           _jsx(NavList, {
+            items: visibleNav,
             compact: collapsed,
             pathname: pathname,
             pendingKycCount,
@@ -301,6 +307,7 @@ export function AdminShell({ children }) {
                 ],
               }),
               _jsx(NavList, {
+                items: visibleNav,
                 pathname: pathname,
                 close: () => setMobile(false),
                 pendingKycCount: pendingKycCount,
@@ -654,7 +661,7 @@ export function AdminShell({ children }) {
               _jsx(CommandEmpty, { children: "No matching pages." }),
               _jsx(CommandGroup, {
                 heading: "Pages",
-                children: nav.map((item) =>
+                children: visibleNav.map((item) =>
                   _jsxs(
                     CommandItem,
                     {
@@ -696,10 +703,10 @@ function Brand({ compact = false }) {
     ],
   });
 }
-function NavList({ compact = false, pathname, close, pendingKycCount = 0 }) {
+function NavList({ items, compact = false, pathname, close, pendingKycCount = 0 }) {
   return _jsx("nav", {
     className: "fine-scrollbar flex-1 overflow-y-auto p-2",
-    children: nav.map((item) => {
+    children: items.map((item) => {
       const active =
         item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
       return _jsxs(

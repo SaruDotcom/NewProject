@@ -70,6 +70,8 @@ function getApiErrorCode(error: unknown): string | undefined {
 }
 
 function getBankDetailsStatusMessage(status?: string): string {
+  if (status === "PENDING") return "Wholesaler bank details are awaiting Superadmin approval.";
+  if (status === "REJECTED") return "Wholesaler bank details are unavailable while they are being corrected.";
   if (status === "UNVERIFIED") return "Bank details are awaiting verification.";
   if (status === "INCOMPLETE") return "Bank details are incomplete.";
   return "Bank Details Not Added";

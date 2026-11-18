@@ -17,6 +17,10 @@ type PaymentSettings = {
     ifscCode: string;
     branch: string;
     isVerified: boolean;
+    verificationStatus: 'NOT_SUBMITTED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNVERIFIED';
+    rejectionReason: string;
+    submittedAt: string | null;
+    approvedAt: string | null;
   };
   additionalPaymentMethods: string[];
   paymentOtpLimit: number;
@@ -68,6 +72,9 @@ export default function PaymentSettingsPage() {
   const [qrSessionMinutes, setQrSessionMinutes] = useState(10);
   const [qrImage, setQrImage] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bankBusy, setBankBusy] = useState(false);
+  const [bankEditorOpen, setBankEditorOpen] = useState(false);
+  const [confirmAccountNumber, setConfirmAccountNumber] = useState('');
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error' | 'info'>('info');
   const [uploadMessage, setUploadMessage] = useState('');
@@ -77,14 +84,7 @@ export default function PaymentSettingsPage() {
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
   const [evidenceContentType, setEvidenceContentType] = useState('');
   const savedBankDetails = settingsQuery.data?.bankDetails;
-  const bankDetailsVerified = Boolean(
-    savedBankDetails?.isVerified &&
-    bankDetails.accountHolderName.trim() === savedBankDetails.accountHolderName.trim() &&
-    bankDetails.bankName.trim() === savedBankDetails.bankName.trim() &&
-    bankDetails.accountNumber.trim() === savedBankDetails.accountNumber.trim() &&
-    bankDetails.ifscCode.trim().toUpperCase() === savedBankDetails.ifscCode.trim().toUpperCase() &&
-    bankDetails.branch.trim() === savedBankDetails.branch.trim()
-  );
+  const bankDetailsVerified = Boolean(savedBankDetails?.isVerified);
 
   const showMessage = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(text);
@@ -130,23 +130,6 @@ export default function PaymentSettingsPage() {
       showMessage('Enter a UPI ID before enabling UPI ID payments.', 'error');
       return;
     }
-    const cleanBankDetails = {
-      accountHolderName: bankDetails.accountHolderName.trim(),
-      bankName: bankDetails.bankName.trim(),
-      accountNumber: bankDetails.accountNumber.trim(),
-      ifscCode: bankDetails.ifscCode.trim().toUpperCase(),
-      branch: bankDetails.branch.trim(),
-    };
-    const hasAnyBankDetails = Object.values(cleanBankDetails).some(Boolean);
-    const validBankDetails = ACCOUNT_HOLDER_PATTERN.test(cleanBankDetails.accountHolderName) &&
-      BANK_NAME_PATTERN.test(cleanBankDetails.bankName) &&
-      ACCOUNT_NUMBER_PATTERN.test(cleanBankDetails.accountNumber) &&
-      IFSC_PATTERN.test(cleanBankDetails.ifscCode) &&
-      BRANCH_PATTERN.test(cleanBankDetails.branch);
-    if (hasAnyBankDetails && !validBankDetails) {
-      showMessage('Enter a valid account holder name, bank name, 9-18 digit account number, IFSC code, and branch name.', 'error');
-      return;
-    }
     setBusy(true);
     showMessage('');
     setUploadMessage('');
@@ -160,7 +143,6 @@ export default function PaymentSettingsPage() {
       payload.append('qrSessionMinutes', String(qrSessionMinutes));
       payload.append('additionalPaymentMethods', JSON.stringify(additionalPaymentMethods));
       payload.append('paymentOtpLimit', String(paymentOtpLimit));
-      Object.entries(cleanBankDetails).forEach(([key, value]) => payload.append(key, value));
       if (qrImage) payload.append('qrImage', qrImage);
       const response = await api.updatePaymentSettings(payload, setUploadProgress);
       if (qrImage && !response.data.hasQrImage) {
@@ -178,6 +160,51 @@ export default function PaymentSettingsPage() {
       showUploadMessage(errorMessage, 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitBankDetails = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const cleanBankDetails = {
+      accountHolderName: bankDetails.accountHolderName.trim(),
+      bankName: bankDetails.bankName.trim(),
+      accountNumber: bankDetails.accountNumber.trim(),
+      ifscCode: bankDetails.ifscCode.trim().toUpperCase(),
+      branch: bankDetails.branch.trim(),
+    };
+    const validBankDetails = ACCOUNT_HOLDER_PATTERN.test(cleanBankDetails.accountHolderName) &&
+      BANK_NAME_PATTERN.test(cleanBankDetails.bankName) &&
+      ACCOUNT_NUMBER_PATTERN.test(cleanBankDetails.accountNumber) &&
+      IFSC_PATTERN.test(cleanBankDetails.ifscCode) &&
+      BRANCH_PATTERN.test(cleanBankDetails.branch);
+    if (!validBankDetails) {
+      showMessage('Enter a valid account holder name, bank name, 9-18 digit account number, IFSC code, and branch name.', 'error');
+      return;
+    }
+    if (
+      (!savedBankDetails?.accountNumber ||
+        cleanBankDetails.accountNumber !== savedBankDetails.accountNumber) &&
+      cleanBankDetails.accountNumber !== confirmAccountNumber.trim()
+    ) {
+      showMessage('Account number and confirmation do not match.', 'error');
+      return;
+    }
+
+    setBankBusy(true);
+    showMessage('');
+    try {
+      await api.submitBankDetails({
+        ...cleanBankDetails,
+        ...(confirmAccountNumber.trim() ? { confirmAccountNumber: confirmAccountNumber.trim() } : {}),
+      });
+      await queryClient.invalidateQueries({ queryKey });
+      setConfirmAccountNumber('');
+      setBankEditorOpen(false);
+      showMessage('Bank details submitted for Superadmin verification.', 'success');
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Unable to submit bank details.', 'error');
+    } finally {
+      setBankBusy(false);
     }
   };
 
@@ -273,7 +300,7 @@ export default function PaymentSettingsPage() {
         <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green"><QrCode className="h-5 w-5" /></div>
         <div>
           <h1 className="text-2xl font-extrabold text-tradeflow-navy">Payment Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure payment methods, bank details, and high-value approval verification.</p>
+          <p className="mt-1 text-sm text-gray-500">Configure UPI, QR payments, and high-value payment approval. Bank details are reviewed separately.</p>
         </div>
       </header>
 
@@ -376,44 +403,11 @@ export default function PaymentSettingsPage() {
             ))}
             <p className="text-xs text-gray-500">
               {bankDetailsVerified
-                ? 'Verified bank details are saved. Select the bank payment methods you want to offer.'
-                : 'Save complete bank details first. Bank payment methods remain disabled until an approved KYC application confirms the same details.'}
-              {!bankDetailsVerified && (
-                <a href="/dashboard/kyc" className="ml-1 font-semibold text-tradeflow-green underline">
-                  Open KYC verification
-                </a>
-              )}
+                ? 'Bank details are approved. Select the bank payment methods you want to offer.'
+                : savedBankDetails?.verificationStatus === 'APPROVED'
+                  ? 'Bank details are approved. Bank payment methods remain disabled until your KYC is approved.'
+                  : 'Bank payments stay disabled until a Superadmin approves your bank details.'}
             </p>
-          </fieldset>
-          <fieldset className="space-y-3 rounded-xl border border-tradeflow-gray-200 p-4">
-            <legend className="px-1 text-sm font-bold text-tradeflow-navy">Bank details shown to connected retailers</legend>
-            {!Object.values(bankDetails).some(Boolean) && (
-              <p className="text-sm text-gray-500">Bank Details Not Added</p>
-            )}
-            <p className="text-xs text-gray-500">
-              {settings?.bankDetails.isVerified
-                ? 'Verified bank details are shared with connected retailers.'
-                : 'Updated bank details are not shared with retailers until they match an approved KYC application.'}
-            </p>
-            {[
-              ['accountHolderName', 'Account Holder Name'],
-              ['bankName', 'Bank Name'],
-              ['accountNumber', 'Account Number'],
-              ['ifscCode', 'IFSC Code'],
-              ['branch', 'Branch Name'],
-            ].map(([key, label]) => (
-              <label key={key} className="block text-sm font-semibold text-tradeflow-navy">
-                {label}
-                <input
-                  value={bankDetails[key as keyof typeof bankDetails]}
-                  onChange={(event) => setBankDetails((current) => ({ ...current, [key]: event.target.value }))}
-                  autoComplete="off"
-                  maxLength={key === 'accountNumber' ? 18 : key === 'ifscCode' ? 11 : 100}
-                  inputMode={key === 'accountNumber' ? 'numeric' : 'text'}
-                  className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal"
-                />
-              </label>
-            ))}
           </fieldset>
           <label className="block text-sm font-semibold text-tradeflow-navy">
             Payment OTP Limit (₹)
@@ -464,29 +458,111 @@ export default function PaymentSettingsPage() {
             </section>
           )}
 
-          {hasSavedBankDetails && savedBankDetails && (
-            <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="rounded-lg bg-tradeflow-green/10 p-2 text-tradeflow-green"><CreditCard className="h-4 w-4" /></div>
                   <h2 className="font-bold text-tradeflow-navy">Bank Account Details</h2>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${savedBankDetails.isVerified ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {savedBankDetails.isVerified ? 'Verified' : 'Unverified'}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${bankDetailsVerified ? 'bg-emerald-50 text-emerald-700' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {bankDetailsVerified ? 'Approved' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'Rejected' : savedBankDetails?.verificationStatus === 'PENDING' ? 'Pending review' : 'Not submitted'}
                 </span>
               </div>
-              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                {savedBankDetails.accountHolderName && <div className="col-span-2"><dt className="text-xs text-gray-500">Account Holder</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.accountHolderName}</dd></div>}
-                {savedBankDetails.bankName && <div><dt className="text-xs text-gray-500">Bank Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.bankName}</dd></div>}
-                {savedBankDetails.accountNumber && <div><dt className="text-xs text-gray-500">Account Number</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">••••••••{savedBankDetails.accountNumber.slice(-4)}</dd></div>}
-                {savedBankDetails.ifscCode && <div><dt className="text-xs text-gray-500">IFSC Code</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.ifscCode}</dd></div>}
-                {savedBankDetails.branch && <div><dt className="text-xs text-gray-500">Branch Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.branch}</dd></div>}
-              </dl>
-              {!savedBankDetails.isVerified && <p className="mt-3 text-xs text-amber-700">Unverified bank details are not shared with retailers until an approved KYC application confirms them.</p>}
+              {hasSavedBankDetails && savedBankDetails ? (
+                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  {savedBankDetails.accountHolderName && <div className="col-span-2"><dt className="text-xs text-gray-500">Account Holder</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.accountHolderName}</dd></div>}
+                  {savedBankDetails.bankName && <div><dt className="text-xs text-gray-500">Bank Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.bankName}</dd></div>}
+                  {savedBankDetails.accountNumber && <div><dt className="text-xs text-gray-500">Account Number</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">••••••••{savedBankDetails.accountNumber.slice(-4)}</dd></div>}
+                  {savedBankDetails.ifscCode && <div><dt className="text-xs text-gray-500">IFSC Code</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.ifscCode}</dd></div>}
+                  {savedBankDetails.branch && <div><dt className="text-xs text-gray-500">Branch Name</dt><dd className="mt-0.5 font-semibold text-tradeflow-navy">{savedBankDetails.branch}</dd></div>}
+                </dl>
+              ) : (
+                <p className="mt-3 text-sm text-gray-500">No bank details have been submitted.</p>
+              )}
+              {savedBankDetails?.verificationStatus === 'REJECTED' && savedBankDetails.rejectionReason && (
+                <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+                  Rejection reason: {savedBankDetails.rejectionReason}
+                </p>
+              )}
+              {!bankDetailsVerified && (
+                <p className="mt-3 text-xs text-amber-700">
+                  {savedBankDetails?.verificationStatus === 'PENDING'
+                    ? 'Your bank details are awaiting Superadmin review. Bank transfer remains disabled.'
+                    : 'Bank transfer is available after your bank details and KYC are approved.'}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmAccountNumber('');
+                  setBankEditorOpen((open) => !open);
+                }}
+                className="mt-4 rounded-lg border border-tradeflow-navy px-4 py-2 text-sm font-bold text-tradeflow-navy"
+              >
+                Add / Update Bank Details
+              </button>
             </section>
-          )}
         </aside>
       </form>
+
+      {bankEditorOpen && (
+        <form onSubmit={submitBankDetails} className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="text-lg font-bold text-tradeflow-navy">
+              {savedBankDetails?.verificationStatus === 'REJECTED' ? 'Correct and Resubmit Bank Details' : 'Add / Update Bank Details'}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">These details are stored with your wholesaler profile and reviewed separately from KYC.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              ['accountHolderName', 'Account Holder Name'],
+              ['bankName', 'Bank Name'],
+              ['accountNumber', 'Account Number'],
+              ['ifscCode', 'IFSC Code'],
+              ['branch', 'Branch Name'],
+            ].map(([key, label]) => (
+              <label key={key} className="block text-sm font-semibold text-tradeflow-navy">
+                {label}
+                <input
+                  required
+                  value={bankDetails[key as keyof typeof bankDetails]}
+                  onChange={(event) => {
+                    setBankDetails((current) => ({ ...current, [key]: event.target.value }));
+                    if (key === 'accountNumber') setConfirmAccountNumber('');
+                  }}
+                  autoComplete="off"
+                  maxLength={key === 'accountNumber' ? 18 : key === 'ifscCode' ? 11 : 100}
+                  inputMode={key === 'accountNumber' ? 'numeric' : 'text'}
+                  className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal"
+                />
+              </label>
+            ))}
+            {(!savedBankDetails?.accountNumber ||
+              bankDetails.accountNumber.trim() !== savedBankDetails.accountNumber) && (
+              <label className="block text-sm font-semibold text-tradeflow-navy">
+                Confirm Account Number
+                <input
+                  required
+                  value={confirmAccountNumber}
+                  onChange={(event) => setConfirmAccountNumber(event.target.value)}
+                  autoComplete="off"
+                  inputMode="numeric"
+                  maxLength={18}
+                  className="mt-1 w-full rounded-lg border border-tradeflow-gray-200 px-3 py-2 font-normal"
+                />
+              </label>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={bankBusy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+              {bankBusy ? 'Submitting…' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'Resubmit Bank Details' : 'Submit Bank Details'}
+            </button>
+            <button type="button" onClick={() => setBankEditorOpen(false)} disabled={bankBusy} className="rounded-lg border border-tradeflow-gray-200 px-4 py-2 text-sm font-semibold text-gray-700">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       <section className="rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">

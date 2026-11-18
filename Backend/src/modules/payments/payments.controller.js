@@ -5,17 +5,26 @@ const PaymentsService = require('./payments.service');
 module.exports = {
   getSettings: asyncHandler(async (req, res) => {
     const settings = await PaymentsService.getSettings(req.user._id);
+    res.set('Cache-Control', 'no-store');
     return ApiResponse.success(res, settings, 'Payment settings retrieved');
   }),
 
   updateSettings: asyncHandler(async (req, res) => {
     const settings = await PaymentsService.updateSettings(req.user._id, req.body, req.file, req.user, req);
+    res.set('Cache-Control', 'no-store');
     return ApiResponse.success(res, settings, 'Payment settings saved');
+  }),
+
+  submitBankDetails: asyncHandler(async (req, res) => {
+    const settings = await PaymentsService.submitBankDetails(req.user._id, req.body, req.user, req);
+    res.set('Cache-Control', 'no-store');
+    return ApiResponse.success(res, settings, 'Bank details submitted for verification');
   }),
 
   getRetailerOptions: asyncHandler(async (req, res) => {
     const wholesalerId = req.query.wholesalerId || req.query.wholesaler || null;
     const options = await PaymentsService.getRetailerPaymentOptions(req.user._id, wholesalerId);
+    res.set('Cache-Control', 'no-store');
     return ApiResponse.success(res, options, 'Wholesaler payment options retrieved');
   }),
 

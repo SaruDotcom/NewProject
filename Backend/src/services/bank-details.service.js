@@ -38,6 +38,13 @@ async function isBankDetailsVerified(profile, details = profile?.bankDetails || 
     return false;
   }
 
+  const verificationStatus = details.verificationStatus ?? profile.bankDetails?.verificationStatus;
+  const legacyVerified = details.isVerified ?? profile.bankDetails?.isVerified;
+  if (verificationStatus === 'APPROVED') return true;
+  if (['PENDING', 'REJECTED'].includes(verificationStatus)) return false;
+  if (legacyVerified !== true) return false;
+
+  // Preserve accounts approved through the previous KYC-matching workflow.
   const approvedApplication = await KycApplication.findOne({
     wholesalerId: profile.userId,
     status: 'APPROVED',
@@ -56,4 +63,5 @@ module.exports = {
   hasAnyBankDetails,
   hasValidBankDetails,
   isBankDetailsVerified,
+  normalizeBankDetails,
 };

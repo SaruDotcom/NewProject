@@ -561,7 +561,7 @@ export function ProductsPage({ initialCategory = "All", initialSearch = "" }: { 
               list={list}
               className={list
                 ? "grid-cols-1 gap-3"
-                : "grid-cols-2 md:grid-cols-3 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 xl:gap-5"}
+                : "gap-2.5 sm:gap-3 lg:gap-4"}
             />
           ) : (
             <div className="border border-dashed bg-card p-10 text-center rounded-2xl">

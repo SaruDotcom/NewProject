@@ -255,6 +255,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('accountHolderName', 'Omni Supplies')
       .field('bankName', 'Example Bank')
       .field('accountNumber', '123456789012')
+      .field('confirmAccountNumber', '123456789012')
       .field('ifscCode', 'EXAM0001234')
       .field('branch', 'Bengaluru Main')
       .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE']));
@@ -410,6 +411,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('accountHolderName', 'Omni Supplies')
       .field('bankName', 'Example Bank')
       .field('accountNumber', '123456789012')
+      .field('confirmAccountNumber', '123456789012')
       .field('ifscCode', 'EXAM0001234')
       .field('branch', 'Bengaluru Main')
       .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CHEQUE']));
@@ -433,7 +435,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const unverifiedOptions = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
-    expect(unverifiedOptions.body.data.bankDetailsStatus).toBe('UNVERIFIED');
+    expect(unverifiedOptions.body.data.bankDetailsStatus).toBe('PENDING');
     expect(unverifiedOptions.body.data.bankDetails).toBeNull();
     expect(unverifiedOptions.body.data.paymentMethods).not.toContain('CHEQUE');
     await WholesalerProfile.updateOne(
@@ -451,7 +453,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(checkout.status).toBe(400);
   });
 
-  test('approved matching KYC enables bank methods, while changed details disable them', async () => {
+  test('KYC approval alone does not approve bank details or enable bank methods', async () => {
     const bankDetails = {
       accountHolderName: 'Omni Supplies',
       bankName: 'Example Bank',
@@ -485,14 +487,15 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('branch', bankDetails.branch)
       .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CHEQUE']));
     expect(verifiedSave.status).toBe(200);
-    expect(verifiedSave.body.data.bankDetails.isVerified).toBe(true);
-    expect(verifiedSave.body.data.additionalPaymentMethods).toEqual(['NET_BANKING', 'CHEQUE']);
+    expect(verifiedSave.body.data.bankDetails.isVerified).toBe(false);
+    expect(verifiedSave.body.data.additionalPaymentMethods).toEqual([]);
 
     const options = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
-    expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['NET_BANKING', 'CHEQUE']));
-    expect(options.body.data.bankDetails.accountNumber).toBe('••••••••9012');
+    expect(options.body.data.paymentMethods).toContain('UPI');
+    expect(options.body.data.paymentMethods).not.toContain('NET_BANKING');
+    expect(options.body.data.bankDetails).toBeNull();
 
     const changedSave = await request(app)
       .patch('/api/v1/wholesaler/payment-settings')
@@ -500,6 +503,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('accountHolderName', bankDetails.accountHolderName)
       .field('bankName', bankDetails.bankName)
       .field('accountNumber', '999999999999')
+      .field('confirmAccountNumber', '999999999999')
       .field('ifscCode', bankDetails.ifscCode)
       .field('branch', bankDetails.branch)
       .field('additionalPaymentMethods', JSON.stringify(['CHEQUE']));
@@ -649,6 +653,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('accountHolderName', 'Omni Supplies')
       .field('bankName', 'Example Bank')
       .field('accountNumber', '123456789013')
+      .field('confirmAccountNumber', '123456789013')
       .field('ifscCode', 'EXAM0001234')
       .field('branch', 'Bengaluru Main');
     expect(saved.status).toBe(200);
@@ -657,7 +662,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const options = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
-    expect(options.body.data.bankDetailsStatus).toBe('UNVERIFIED');
+    expect(options.body.data.bankDetailsStatus).toBe('PENDING');
     expect(options.body.data.bankDetails).toBeNull();
   });
 
@@ -669,6 +674,17 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       ifscCode: 'EXAM0001234',
       branch: 'Bengaluru Main',
     };
+    const missingConfirmation = await request(app)
+      .patch('/api/v1/wholesaler/payment-settings')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .field('accountHolderName', validDetails.accountHolderName)
+      .field('bankName', validDetails.bankName)
+      .field('accountNumber', validDetails.accountNumber)
+      .field('ifscCode', validDetails.ifscCode)
+      .field('branch', validDetails.branch);
+    expect(missingConfirmation.status).toBe(400);
+    expect(missingConfirmation.body.code).toBe('BANK_ACCOUNT_CONFIRMATION_REQUIRED');
+
     const invalidFields = [
       ['accountHolderName', 'A!'],
       ['bankName', '?'],

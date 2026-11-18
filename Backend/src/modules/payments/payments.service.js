@@ -12,6 +12,7 @@ const {
   hasAnyBankDetails,
   hasValidBankDetails,
   isBankDetailsVerified,
+  normalizeBankDetails,
 } = require('../../services/bank-details.service');
 const {
   Order,
@@ -210,7 +211,9 @@ function maskAccountNumber(accountNumber) {
 function getBankDetailsStatus(details, verified) {
   if (!hasAnyBankDetails(details)) return 'NOT_ADDED';
   if (!hasValidBankDetails(details)) return 'INCOMPLETE';
-  return verified ? 'VERIFIED' : 'UNVERIFIED';
+  if (verified) return 'VERIFIED';
+  if (['PENDING', 'REJECTED'].includes(details.verificationStatus)) return details.verificationStatus;
+  return 'UNVERIFIED';
 }
 
 function parseAdditionalPaymentMethods(value, fallback = []) {
@@ -371,7 +374,17 @@ class PaymentsService {
     return {
       upiId: settings.upiId || '',
       accountName: settings.accountName || '',
-      bankDetails: { ...bankDetails, isVerified: bankDetailsVerified },
+      bankDetails: {
+        ...bankDetails,
+        isVerified: bankDetailsVerified,
+        verificationStatus: bankDetailsVerified
+          ? 'APPROVED'
+          : profile.bankDetails?.verificationStatus || 'NOT_SUBMITTED',
+        submittedAt: profile.bankDetails?.submittedAt || null,
+        approvedAt: profile.bankDetails?.approvedAt || null,
+        rejectionReason: profile.bankDetails?.rejectionReason || '',
+        verificationHistory: profile.bankDetails?.verificationHistory || [],
+      },
       additionalPaymentMethods: settings.additionalPaymentMethods || [],
       paymentOtpLimit: Number(settings.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES),
       hasQrImage: Boolean(qrDataUrl || qrImageUrl),
@@ -399,7 +412,9 @@ class PaymentsService {
     const paymentOtpLimit = payload.paymentOtpLimit === undefined
       ? Number(current.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES)
       : Number(payload.paymentOtpLimit);
+    const storedBankDetails = profile.bankDetails?.toObject?.() || profile.bankDetails || {};
     const bankDetails = {
+      ...storedBankDetails,
       accountHolderName: String(payload.accountHolderName || originalBankDetails.accountHolderName).trim(),
       bankName: String(payload.bankName || originalBankDetails.bankName).trim(),
       accountNumber: String(payload.accountNumber || originalBankDetails.accountNumber).trim(),
@@ -407,7 +422,25 @@ class PaymentsService {
       branch: String(payload.branch || originalBankDetails.branch).trim(),
     };
     const bankDetailsChanged = BANK_DETAIL_FIELDS.some((field) => bankDetails[field] !== originalBankDetails[field]);
-    bankDetails.isVerified = !bankDetailsChanged && await isBankDetailsVerified(profile, originalBankDetails);
+    if (bankDetailsChanged) {
+      bankDetails.isVerified = false;
+      bankDetails.verificationStatus = 'PENDING';
+      bankDetails.submittedAt = new Date();
+      bankDetails.approvedAt = undefined;
+      bankDetails.approvedBy = undefined;
+      bankDetails.rejectionReason = '';
+      bankDetails.verificationHistory = [
+        ...(bankDetails.verificationHistory || []),
+        {
+          status: 'PENDING',
+          changedBy: actor._id,
+          changedAt: new Date(),
+          accountNumberLast4: bankDetails.accountNumber.slice(-4),
+        },
+      ];
+    } else {
+      bankDetails.isVerified = await isBankDetailsVerified(profile, originalBankDetails);
+    }
     const additionalPaymentMethods = bankDetails.isVerified ? requestedAdditionalPaymentMethods : [];
 
     if (upiId && !UPI_ID_PATTERN.test(upiId)) {
@@ -427,6 +460,16 @@ class PaymentsService {
         'Enter a valid account holder name, bank name, 9–18 digit account number, IFSC code, and branch name.',
         'INVALID_BANK_DETAILS'
       );
+    }
+    const confirmedAccountNumber = String(payload.confirmAccountNumber || '').trim();
+    if (confirmedAccountNumber && confirmedAccountNumber !== bankDetails.accountNumber) {
+      throw new BadRequestError('Account numbers do not match.', 'BANK_ACCOUNT_CONFIRMATION_MISMATCH');
+    }
+    if (
+      bankDetails.accountNumber !== originalBankDetails.accountNumber
+      && confirmedAccountNumber !== bankDetails.accountNumber
+    ) {
+      throw new BadRequestError('Confirm the account number before submitting bank details.', 'BANK_ACCOUNT_CONFIRMATION_REQUIRED');
     }
     if (qrPaymentsEnabled && !file && !(await hasQrImage(current.qrImagePath))) {
       throw new BadRequestError('Upload a QR image before enabling QR payments.', 'QR_IMAGE_REQUIRED');
@@ -516,6 +559,77 @@ class PaymentsService {
     return this.getSettings(wholesalerId);
   }
 
+  static async submitBankDetails(wholesalerId, payload, actor, req) {
+    const profile = await getProfile(wholesalerId);
+    const bankDetails = normalizeBankDetails(payload);
+    const confirmedAccountNumber = String(payload.confirmAccountNumber || '').trim();
+    if (!hasValidBankDetails(bankDetails)) {
+      throw new BadRequestError(
+        'Enter a valid account holder name, bank name, 9–18 digit account number, IFSC code, and branch name.',
+        'INVALID_BANK_DETAILS'
+      );
+    }
+    const originalBankDetails = await getBankDetails(profile);
+    if (
+      confirmedAccountNumber && bankDetails.accountNumber !== confirmedAccountNumber
+    ) {
+      throw new BadRequestError('Account number and confirmation do not match.', 'BANK_ACCOUNT_CONFIRMATION_MISMATCH');
+    }
+    if (
+      bankDetails.accountNumber !== originalBankDetails.accountNumber &&
+      bankDetails.accountNumber !== confirmedAccountNumber
+    ) {
+      throw new BadRequestError('Confirm the new account number before submitting.', 'BANK_ACCOUNT_CONFIRMATION_REQUIRED');
+    }
+
+    const storedBankDetails = profile.bankDetails?.toObject?.() || profile.bankDetails || {};
+    const changed = BANK_DETAIL_FIELDS.some((field) =>
+      bankDetails[field] !== String(originalBankDetails[field] || '').trim()
+    );
+    const currentStatus = storedBankDetails.verificationStatus || 'NOT_SUBMITTED';
+    const legacyVerified = !['PENDING', 'REJECTED'].includes(currentStatus) &&
+      await isBankDetailsVerified(profile, { ...storedBankDetails, ...bankDetails });
+
+    if (!changed && (currentStatus === 'APPROVED' || legacyVerified)) {
+      return this.getSettings(wholesalerId);
+    }
+    if (!changed && currentStatus === 'PENDING') {
+      return this.getSettings(wholesalerId);
+    }
+
+    const now = new Date();
+    profile.bankDetails = {
+      ...storedBankDetails,
+      ...bankDetails,
+      isVerified: false,
+      verificationStatus: 'PENDING',
+      submittedAt: now,
+      approvedAt: undefined,
+      approvedBy: undefined,
+      rejectionReason: '',
+      verificationHistory: [
+        ...(storedBankDetails.verificationHistory || []),
+        {
+          status: 'PENDING',
+          changedBy: actor._id,
+          changedAt: now,
+          accountNumberLast4: bankDetails.accountNumber.slice(-4),
+        },
+      ],
+    };
+    await profile.save();
+    await AuditService.log({
+      actorId: actor._id,
+      actorRole: actor.role,
+      action: 'BANK_DETAILS_SUBMITTED',
+      entityType: 'WholesalerBankDetails',
+      entityId: profile.userId,
+      after: { verificationStatus: 'PENDING', submittedAt: now },
+      req,
+    });
+    return this.getSettings(wholesalerId);
+  }
+
   static async resolveWholesalerProfile(retailerId, requestedWholesalerId = null) {
     let wholesalerUserId = null;
     if (requestedWholesalerId) {
@@ -577,7 +691,10 @@ class PaymentsService {
       upiId: upiIdIsValid ? settings.upiId : '',
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
       paymentMethods: getEnabledPaymentMethods(settings, bankDetailsVerified),
-      bankDetailsStatus: getBankDetailsStatus(bankDetails, bankDetailsVerified),
+      bankDetailsStatus: getBankDetailsStatus({
+        ...bankDetails,
+        verificationStatus: profile.bankDetails?.verificationStatus,
+      }, bankDetailsVerified),
       bankDetails: bankDetailsVerified
         ? { ...bankDetails, accountNumber: maskAccountNumber(bankDetails.accountNumber) }
         : null,

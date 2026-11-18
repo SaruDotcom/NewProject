@@ -154,6 +154,26 @@ const wholesalerProfileSchema = new mongoose.Schema(
       bankName: { type: String, default: '' },
       branch: { type: String, default: '' },
       isVerified: { type: Boolean, default: false },
+      verificationStatus: {
+        type: String,
+        enum: ['NOT_SUBMITTED', 'PENDING', 'APPROVED', 'REJECTED'],
+        default: 'NOT_SUBMITTED',
+      },
+      submittedAt: { type: Date },
+      approvedAt: { type: Date },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      rejectionReason: { type: String, default: '' },
+      verificationHistory: [{
+        status: {
+          type: String,
+          enum: ['PENDING', 'APPROVED', 'REJECTED'],
+          required: true,
+        },
+        changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        changedAt: { type: Date, default: Date.now },
+        rejectionReason: { type: String, default: '' },
+        accountNumberLast4: { type: String, default: '' },
+      }],
     },
     kycStatus: {
       type: String,

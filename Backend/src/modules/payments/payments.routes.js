@@ -38,6 +38,7 @@ const wholesalerRoutes = express.Router();
 wholesalerRoutes.use(authenticate, authorize(ROLES.WHOLESALER));
 wholesalerRoutes.get('/payment-settings', controller.getSettings);
 wholesalerRoutes.patch('/payment-settings', identityUploadRateLimiter, imageUpload.single('qrImage'), controller.updateSettings);
+wholesalerRoutes.patch('/bank-details', identityUploadRateLimiter, controller.submitBankDetails);
 wholesalerRoutes.get('/payment-reports', controller.listWholesalerReports);
 wholesalerRoutes.post('/payment-reports/:reportId/approval-otp', identityUploadRateLimiter, controller.requestApprovalOtp);
 wholesalerRoutes.patch('/payment-reports/:reportId', controller.reviewReport);

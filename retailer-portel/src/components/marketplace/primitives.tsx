@@ -126,6 +126,7 @@ export function ProductCard({
 }) {
   const { wishlist, toggleWishlist, addToCart, addRecentlyViewed } = useStore();
   const isWishlisted = wishlist.includes(product.id);
+  const [addingToCart, setAddingToCart] = useState(false);
   const discount =
     product.mrp > product.price && product.mrp > 0
       ? Math.round((1 - product.price / product.mrp) * 100)
@@ -138,51 +139,56 @@ export function ProductCard({
   };
 
   const productImg = getProductImage();
+  const description = product.description?.trim() || product.category;
+
+  const handleAddToCart = async () => {
+    if (addingToCart || product.stock <= 0) return;
+    setAddingToCart(true);
+    try {
+      await addToCart(product.id);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
 
   if (list) {
     return (
-      <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-600/30 hover:shadow-md sm:flex-row">
+      <article className="group relative flex h-full flex-col overflow-hidden rounded-md border border-slate-200/80 bg-white transition-colors duration-150 hover:border-slate-300 sm:flex-row">
         {/* Product Image */}
         <Link
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="relative flex aspect-[4/5] w-full shrink-0 items-center justify-center overflow-hidden bg-slate-50 p-3 cursor-pointer sm:w-40"
+          className="relative flex aspect-[3/4] w-full shrink-0 self-start items-center justify-center overflow-hidden bg-slate-50 cursor-pointer sm:w-40"
         >
           {productImg ? (
             <ProductImage
               src={productImg}
               alt={product.name}
-              className="size-full object-contain"
-              placeholderClassName="rounded-lg border-0 bg-transparent"
+              className="size-full object-cover object-center"
+              placeholderClassName="rounded-none border-0 bg-transparent p-0"
             />
           ) : (
             <ProductVisual index={product.image} name={product.name} className="size-full bg-transparent" />
           )}
 
           {/* Small Stock Availability Badge */}
-          <div className="absolute left-2.5 top-2.5">
+          <div className="absolute left-1.5 top-1.5">
             {product.stock > 0 ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-2xs dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                <span className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
+              <span className="inline-flex items-center gap-1 rounded-sm bg-white/95 px-1.5 py-1 text-[9px] font-semibold leading-none text-emerald-800 shadow-sm">
+                <span className="size-1.5 rounded-full bg-emerald-600" />
                 In Stock
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60 shadow-2xs dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+              <span className="inline-flex rounded-sm bg-white/95 px-1.5 py-1 text-[9px] font-semibold leading-none text-rose-700 shadow-sm">
                 Out of Stock
               </span>
             )}
           </div>
 
-          {/* Discount Pill */}
-          {discount > 0 && (
-            <span className="absolute bottom-2.5 left-2.5 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-2xs">
-              {discount}% OFF
-            </span>
-          )}
           {product.rating > 0 && (
             <span
-              className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-slate-700 shadow-sm"
+              className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-0.5 rounded-sm bg-white/95 px-1.5 py-1 text-[9px] font-semibold text-slate-700 shadow-sm"
               aria-label={`Rated ${product.rating} out of 5`}
             >
               <Star className="size-3 fill-amber-400 text-amber-400" />
@@ -195,7 +201,7 @@ export function ProductCard({
         <button
           type="button"
           aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-          className="absolute right-3 top-3 z-10 size-8.5 rounded-full border border-border/80 bg-background/90 backdrop-blur-xs flex items-center justify-center text-muted-foreground hover:text-rose-600 hover:border-rose-300 shadow-2xs transition-all cursor-pointer active:scale-90"
+          className="absolute right-1.5 top-1.5 z-10 grid size-7 place-items-center rounded-full bg-white/95 text-slate-600 shadow-sm transition-colors hover:text-rose-600 sm:left-32 sm:right-auto"
           onClick={(e) => {
             e.stopPropagation();
             toggleWishlist(product.id);
@@ -205,50 +211,56 @@ export function ProductCard({
         </button>
 
         {/* Content Body */}
-        <div className="flex min-w-0 flex-1 flex-col justify-between p-3 sm:p-4">
+        <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-3">
           <div>
-            <p className="mb-1 h-4 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              {product.category}
-            </p>
             <Link
               to="/products/$productId"
               params={{ productId: product.id }}
               onClick={() => addRecentlyViewed(product.id)}
-              className="block min-h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-emerald-600"
+              className="block min-h-9 line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
               title={product.name}
             >
               {product.name}
             </Link>
+            <p className="mt-0.5 line-clamp-1 min-h-4 text-[10px] leading-4 text-slate-500 sm:text-xs" title={description}>
+              {description}
+            </p>
 
             {/* Selling Price */}
-            <div className="mt-2 flex min-h-7 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <strong className="text-sm font-black text-ink sm:text-lg">{money(product.price)}</strong>
-              {discount > 0 && <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>}
-              {discount > 0 && <span className="text-[11px] font-bold text-emerald-700">{discount}% off</span>}
+            <div className="mt-1 flex min-h-5 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <strong className="text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
+              {discount > 0 && <span className="text-[10px] leading-4 text-slate-500 line-through">{money(product.mrp)}</span>}
+              {discount > 0 && <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>}
             </div>
           </div>
 
           {/* Action Buttons: View Details & Add to Cart */}
-          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-border/60">
+          <div className="mt-auto grid grid-cols-2 gap-1.5 pt-2">
             <Button
               asChild
               variant="outline"
               size="sm"
-              className="h-9 w-full sm:flex-1 rounded-lg font-semibold text-xs border-border/90 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 gap-1.5 transition-colors cursor-pointer whitespace-nowrap px-3"
+              className="h-8 min-w-0 w-full rounded border-slate-200 px-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 sm:text-xs"
             >
-              <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="inline-flex items-center justify-center gap-1.5 w-full min-w-0">
-                <Visibility className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">View Details</span>
+              <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="inline-flex w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap">
+                <Visibility className="size-3.5 shrink-0" />
+                <span>Details</span>
               </Link>
             </Button>
             <Button
-              disabled={product.stock <= 0}
+              disabled={product.stock <= 0 || addingToCart}
               size="sm"
-              className="h-9 w-full sm:flex-1 rounded-lg bg-green-600 px-2 font-semibold text-[11px] text-white shadow-2xs transition-all hover:bg-green-700 active:scale-95 cursor-pointer sm:px-3 sm:text-xs"
-              onClick={() => addToCart(product.id)}
+              className="h-8 min-w-0 w-full rounded bg-emerald-700 px-1 text-[10px] font-semibold text-white hover:bg-emerald-800 sm:text-xs"
+              onClick={() => void handleAddToCart()}
+              aria-busy={addingToCart}
             >
-              <ShoppingCart className="size-3.5 shrink-0" />
-              <span className="truncate">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
+              {addingToCart ? (
+                <span aria-hidden="true" className="size-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <ShoppingCart className="size-3.5 shrink-0" />
+              )}
+              <span className="whitespace-nowrap sm:hidden">{product.stock > 0 ? "Add" : "Sold out"}</span>
+              <span className="hidden whitespace-nowrap sm:inline">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
             </Button>
           </div>
         </div>
@@ -258,48 +270,42 @@ export function ProductCard({
 
   // Grid Card: Amazon & Myntra Clean Minimal Design
   return (
-    <article className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-600/30 hover:shadow-md">
+    <article className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-md border border-slate-200/80 bg-white transition-colors duration-150 hover:border-slate-300">
       {/* Product Image Area */}
       <Link
         to="/products/$productId"
         params={{ productId: product.id }}
         onClick={() => addRecentlyViewed(product.id)}
-        className="relative flex aspect-[4/5] w-full items-center justify-center overflow-hidden bg-slate-50 p-3 cursor-pointer"
+        className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden bg-slate-50 cursor-pointer"
       >
         {productImg ? (
           <ProductImage
             src={productImg}
             alt={product.name}
-            className="size-full object-contain"
-            placeholderClassName="rounded-lg border-0 bg-transparent"
+            className="size-full object-cover object-center"
+            placeholderClassName="rounded-none border-0 bg-transparent p-0"
           />
         ) : (
           <ProductVisual index={product.image} name={product.name} className="size-full bg-transparent" />
         )}
 
         {/* Small Stock Availability Badge */}
-        <div className="absolute left-2.5 top-2.5 z-10 pointer-events-none">
+        <div className="pointer-events-none absolute left-1.5 top-1.5 z-10">
           {product.stock > 0 ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-2xs dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-              <span className="size-1.5 rounded-full bg-emerald-600 animate-pulse" />
+            <span className="inline-flex items-center gap-1 rounded-sm bg-white/95 px-1.5 py-1 text-[9px] font-semibold leading-none text-emerald-800 shadow-sm">
+              <span className="size-1.5 rounded-full bg-emerald-600" />
               In Stock
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/60 shadow-2xs dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+            <span className="inline-flex rounded-sm bg-white/95 px-1.5 py-1 text-[9px] font-semibold leading-none text-rose-700 shadow-sm">
               Out of Stock
             </span>
           )}
         </div>
 
-        {/* Discount Pill */}
-        {discount > 0 && (
-          <span className="absolute bottom-2.5 left-2.5 z-10 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-2xs pointer-events-none">
-            {discount}% OFF
-          </span>
-        )}
         {product.rating > 0 && (
           <span
-            className="absolute bottom-2.5 right-2.5 z-10 inline-flex items-center gap-1 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-slate-700 shadow-sm pointer-events-none"
+            className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 inline-flex items-center gap-0.5 rounded-sm bg-white/95 px-1.5 py-1 text-[9px] font-semibold text-slate-700 shadow-sm"
             aria-label={`Rated ${product.rating} out of 5`}
           >
             <Star className="size-3 fill-amber-400 text-amber-400" />
@@ -312,65 +318,70 @@ export function ProductCard({
       <button
         type="button"
         aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-        className="absolute right-2.5 top-2.5 z-20 size-8.5 rounded-full border border-border/80 bg-background/90 backdrop-blur-xs flex items-center justify-center text-muted-foreground hover:text-rose-600 hover:border-rose-300 shadow-2xs transition-all cursor-pointer active:scale-90"
+        className="absolute right-1.5 top-1.5 z-20 grid size-7 place-items-center rounded-full bg-white/95 text-slate-600 shadow-sm transition-colors hover:text-rose-600"
         onClick={(e) => {
           e.stopPropagation();
           toggleWishlist(product.id);
         }}
       >
-        <Favorite className={cn("size-4 transition-colors", isWishlisted ? "fill-rose-600 text-rose-600" : "text-muted-foreground")} />
+        <Favorite className={cn("size-4", isWishlisted ? "fill-rose-600 text-rose-600" : "text-slate-600")} />
       </button>
 
       {/* Product Details (Clean & Minimal) */}
-      <div className="flex flex-1 flex-col p-3 sm:p-4">
-        <p className="mb-1 h-4 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-          {product.category}
-        </p>
+      <div className="flex flex-1 flex-col p-2">
         {/* Product Name */}
         <Link
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="block min-h-10 line-clamp-2 text-sm font-bold leading-snug text-ink transition-colors hover:text-emerald-600"
+          className="block min-h-9 line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
           title={product.name}
         >
           {product.name}
         </Link>
+        <p className="mt-0.5 line-clamp-1 min-h-4 text-[10px] leading-4 text-slate-500 sm:text-xs" title={description}>
+          {description}
+        </p>
 
-        {/* Selling Price */}
-        <div className="mt-2 flex min-h-7 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <strong className="text-sm sm:text-lg font-black text-ink">{money(product.price)}</strong>
-          {discount > 0 && <span className="text-xs text-muted-foreground line-through">{money(product.mrp)}</span>}
-          {discount > 0 && <span className="text-[11px] font-bold text-emerald-700">{discount}% off</span>}
+        <div className="mt-1 flex min-h-5 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <strong className="text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
+          {discount > 0 && <span className="text-[10px] leading-4 text-slate-500 line-through">{money(product.mrp)}</span>}
+          {discount > 0 && <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>}
         </div>
 
         {/* Pinned Action Buttons: View Details & Add to Cart */}
-        <div className="mt-auto grid grid-cols-2 gap-1.5 sm:gap-2 pt-2.5 sm:pt-3 border-t border-border/50">
+        <div className="mt-auto grid grid-cols-2 gap-1.5 pt-2">
           <Button
             asChild
             variant="outline"
             size="sm"
-            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg font-semibold text-[11px] sm:text-xs border-border/80 hover:bg-muted/70 hover:text-ink hover:border-emerald-600/40 !gap-1 sm:!gap-1.5 transition-colors !px-1.5 sm:!px-2 cursor-pointer"
+            className="h-8 min-w-0 w-full rounded border-slate-200 px-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 sm:text-xs"
           >
             <Link
               to="/products/$productId"
               params={{ productId: product.id }}
               onClick={() => addRecentlyViewed(product.id)}
-              className="inline-flex items-center justify-center gap-1 sm:gap-1.5 w-full min-w-0 text-center"
+              className="inline-flex w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap"
             >
-              <Visibility className="!size-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate">Details</span>
+              <Visibility className="size-3.5 shrink-0" />
+              <span>Details</span>
             </Link>
           </Button>
 
           <Button
-            disabled={product.stock <= 0}
+            disabled={product.stock <= 0 || addingToCart}
             size="sm"
-            className="h-8.5 sm:h-9 min-w-0 w-full rounded-lg bg-green-600 px-1.5 font-semibold text-[11px] text-white shadow-2xs !gap-1 sm:!gap-1.5 transition-all hover:bg-green-700 active:scale-95 sm:!px-2 sm:text-xs cursor-pointer"
-            onClick={() => addToCart(product.id)}
+            className="h-8 min-w-0 w-full rounded bg-emerald-700 px-1 text-[10px] font-semibold text-white hover:bg-emerald-800 sm:text-xs"
+            onClick={() => void handleAddToCart()}
+            aria-busy={addingToCart}
           >
-            <ShoppingCart className="!size-3.5 shrink-0" />
-            <span className="truncate">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
+            {addingToCart ? (
+              <span aria-hidden="true" className="size-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <ShoppingCart className="size-3.5 shrink-0" />
+            )}
+            <span className="whitespace-nowrap sm:hidden">{product.stock > 0 ? "Add" : "Sold out"}</span>
+            <span className="hidden whitespace-nowrap sm:inline">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
           </Button>
         </div>
       </div>
@@ -392,7 +403,7 @@ export function ProductGrid({
   const gridClassName = list
     ? cn("grid grid-cols-1 gap-3", className)
     : cn(
-        "grid auto-rows-fr grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5",
+        "grid auto-rows-fr grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 lg:gap-4 xl:grid-cols-5",
         className,
       );
 
