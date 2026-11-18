@@ -1,6 +1,6 @@
 import { Link } from "@/lib/router";
 import { useState, useEffect } from "react";
-import { Favorite, ShoppingCart, Star, LocationOn, Verified, Remove, Add, Inventory2, ArrowRight, LocalShipping, VerifiedUser, Delete, WarningAmber, Visibility } from "@mui/icons-material";
+import { Favorite, ShoppingCart, Star, LocationOn, Verified, Remove, Add, Inventory2, ArrowRight, LocalShipping, VerifiedUser, Delete, WarningAmber } from "@mui/icons-material";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -211,13 +211,13 @@ export function ProductCard({
         </button>
 
         {/* Content Body */}
-        <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-3">
+        <div className="flex min-w-0 flex-1 flex-col px-2 pb-2 pt-1.5 sm:px-3 sm:pb-3 sm:pt-1.5">
           <div>
             <Link
               to="/products/$productId"
               params={{ productId: product.id }}
               onClick={() => addRecentlyViewed(product.id)}
-              className="block min-h-9 line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
+              className="line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
               title={product.name}
             >
               {product.name}
@@ -234,23 +234,11 @@ export function ProductCard({
             </div>
           </div>
 
-          {/* Action Buttons: View Details & Add to Cart */}
-          <div className="mt-auto grid grid-cols-2 gap-1.5 pt-2">
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="h-8 min-w-0 w-full rounded border-slate-200 px-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 sm:text-xs"
-            >
-              <Link to="/products/$productId" params={{ productId: product.id }} onClick={() => addRecentlyViewed(product.id)} className="inline-flex w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap">
-                <Visibility className="size-3.5 shrink-0" />
-                <span>Details</span>
-              </Link>
-            </Button>
+          <div className="mt-auto pt-2">
             <Button
               disabled={product.stock <= 0 || addingToCart}
               size="sm"
-              className="h-8 min-w-0 w-full rounded bg-emerald-700 px-1 text-[10px] font-semibold text-white hover:bg-emerald-800 sm:text-xs"
+              className="h-9 w-full min-w-0 justify-start gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800"
               onClick={() => void handleAddToCart()}
               aria-busy={addingToCart}
             >
@@ -259,8 +247,7 @@ export function ProductCard({
               ) : (
                 <ShoppingCart className="size-3.5 shrink-0" />
               )}
-              <span className="whitespace-nowrap sm:hidden">{product.stock > 0 ? "Add" : "Sold out"}</span>
-              <span className="hidden whitespace-nowrap sm:inline">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
+              <span className="whitespace-nowrap">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
             </Button>
           </div>
         </div>
@@ -328,13 +315,13 @@ export function ProductCard({
       </button>
 
       {/* Product Details (Clean & Minimal) */}
-      <div className="flex flex-1 flex-col p-2">
+      <div className="flex flex-1 flex-col px-2 pb-2 pt-1.5">
         {/* Product Name */}
         <Link
           to="/products/$productId"
           params={{ productId: product.id }}
           onClick={() => addRecentlyViewed(product.id)}
-          className="block min-h-9 line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
+          className="line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
           title={product.name}
         >
           {product.name}
@@ -349,29 +336,11 @@ export function ProductCard({
           {discount > 0 && <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>}
         </div>
 
-        {/* Pinned Action Buttons: View Details & Add to Cart */}
-        <div className="mt-auto grid grid-cols-2 gap-1.5 pt-2">
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="h-8 min-w-0 w-full rounded border-slate-200 px-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 sm:text-xs"
-          >
-            <Link
-              to="/products/$productId"
-              params={{ productId: product.id }}
-              onClick={() => addRecentlyViewed(product.id)}
-              className="inline-flex w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap"
-            >
-              <Visibility className="size-3.5 shrink-0" />
-              <span>Details</span>
-            </Link>
-          </Button>
-
+        <div className="mt-auto pt-2">
           <Button
             disabled={product.stock <= 0 || addingToCart}
             size="sm"
-            className="h-8 min-w-0 w-full rounded bg-emerald-700 px-1 text-[10px] font-semibold text-white hover:bg-emerald-800 sm:text-xs"
+            className="h-9 w-full min-w-0 justify-start gap-2 rounded-md bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800"
             onClick={() => void handleAddToCart()}
             aria-busy={addingToCart}
           >
@@ -380,8 +349,7 @@ export function ProductCard({
             ) : (
               <ShoppingCart className="size-3.5 shrink-0" />
             )}
-            <span className="whitespace-nowrap sm:hidden">{product.stock > 0 ? "Add" : "Sold out"}</span>
-            <span className="hidden whitespace-nowrap sm:inline">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
+            <span className="whitespace-nowrap">{product.stock > 0 ? "Add to Cart" : "Out of Stock"}</span>
           </Button>
         </div>
       </div>
