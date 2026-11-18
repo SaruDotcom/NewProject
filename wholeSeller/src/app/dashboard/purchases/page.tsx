@@ -845,7 +845,7 @@ export default function PurchasesPage() {
                           });
                         }}>
                           <option value="">Select product</option>
-                          {(products as Product[]).map((product) => <option key={product.id} value={product.id}>{product.title} · stock {product.stock}</option>)}
+                          {(products as Product[]).map((product) => <option key={product.id} value={product.id}>{amount(product.costPrice)} · {product.title} · stock {product.stock}</option>)}
                         </select>
                         {!editingBill && <button type="button" onClick={() => {
                           setProductTargetIndex(index);

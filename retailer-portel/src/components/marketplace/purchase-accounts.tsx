@@ -73,7 +73,7 @@ function paymentOrderId(payment: any) {
   return linkedId(payment.orderId);
 }
 
-function paymentAmount(payment: any) {
+function getPaymentAmount(payment: any) {
   return Number.isSafeInteger(payment.amountPaise) ? payment.amountPaise / 100 : Number(payment.amount || 0);
 }
 
@@ -84,7 +84,7 @@ function paymentAllocations(payment: any) {
       amount: Number(allocation.amountPaise || 0) / 100,
     }));
   }
-  return [{ orderId: paymentOrderId(payment), amount: paymentAmount(payment) }];
+  return [{ orderId: paymentOrderId(payment), amount: getPaymentAmount(payment) }];
 }
 
 function orderPaid(order: AccountOrder, payments: any[]) {
@@ -353,7 +353,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
       .filter((payment) => payment.isReport && ["PENDING", "PROCESSING"].includes(String(payment.status || "").toUpperCase()))
       .filter((payment) => paymentOrderId(payment) === selectedPaymentOrderId
         || (payment.creditOrderSpecific && (payment.relatedOrderIds || []).some((id: any) => linkedId(id) === selectedPaymentOrderId)))
-      .reduce((sum, payment) => sum + paymentAmount(payment), 0)
+      .reduce((sum, payment) => sum + getPaymentAmount(payment), 0)
     : 0;
   const submitableBalance = Math.max(0, selectedDue - pendingForSelectedOrder);
 
@@ -407,14 +407,14 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
   const pendingTotal = payments
     .filter((payment) => payment.isReport)
     .filter((report) => ["PENDING", "PROCESSING"].includes(String(report.status || "").toUpperCase()))
-    .reduce((sum, report) => sum + paymentAmount(report), 0);
+    .reduce((sum, report) => sum + getPaymentAmount(report), 0);
   const rejectedTotal = payments
     .filter((payment) => payment.isReport)
     .filter((report) => ["REJECTED", "FAILED"].includes(String(report.status || "").toUpperCase()))
-    .reduce((sum, report) => sum + paymentAmount(report), 0);
+    .reduce((sum, report) => sum + getPaymentAmount(report), 0);
   const advanceTotal = payments
     .filter((payment) => payment.isAdvance === true && payment.status === "PAID")
-    .reduce((sum, payment) => sum + paymentAmount(payment), 0);
+    .reduce((sum, payment) => sum + getPaymentAmount(payment), 0);
 
   const filteredOrders = orders.filter((order) => {
     if (!search.trim()) return true;
@@ -459,7 +459,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
         if (!id) return;
         const group = groupFor(id, order ? wholesalerName(order) : String(payment.wholesalerId?.businessName || payment.wholesalerId?.name || "Wholesaler"));
         const reversed = Boolean(payment.isReversal);
-        const amount = allocation.amount || paymentAmount(payment);
+        const amount = allocation.amount || getPaymentAmount(payment);
         if (reversed) {
           group.events.push({ date: payment.paidAt || payment.createdAt, type: "Payment reversal", reference: payment.transactionReference || payment._id, debit: amount, credit: 0 });
           group.due += amount;
@@ -858,7 +858,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
               <section className="rounded-2xl border bg-card p-5 shadow-sm">
                 <div><p className="text-xs font-bold uppercase tracking-wider text-primary">Payment status</p><h2 className="mt-1 text-xl font-extrabold text-ink">Payment History</h2></div>
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  {[["Paid", payments.filter((payment) => payment.status === "PAID" && !payment.isReversal).reduce((sum, payment) => sum + paymentAmount(payment), 0)], ["Pending", pendingTotal], ["Rejected", rejectedTotal], ["Advance", advanceTotal]].map(([label, amount]) => <div key={String(label)} className="rounded-xl border p-3"><span className="text-xs text-muted-foreground">{label}</span><b className="mt-1 block text-lg text-ink">{money(Number(amount))}</b></div>)}
+                  {[["Paid", payments.filter((payment) => payment.status === "PAID" && !payment.isReversal).reduce((sum, payment) => sum + getPaymentAmount(payment), 0)], ["Pending", pendingTotal], ["Rejected", rejectedTotal], ["Advance", advanceTotal]].map(([label, amount]) => <div key={String(label)} className="rounded-xl border p-3"><span className="text-xs text-muted-foreground">{label}</span><b className="mt-1 block text-lg text-ink">{money(Number(amount))}</b></div>)}
                 </div>
                 <div className="mt-5 space-y-3">
                   {payments.filter((payment) => payment.isReport).map((payment) => (
@@ -867,7 +867,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
                       return (
                     <article key={payment._id} className="rounded-xl border p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div><p className="font-bold text-ink">{money(paymentAmount(payment))} · {String(payment.paymentMethod || "UPI").replace(/_/g, " ")}</p><p className="mt-1 break-all text-xs text-muted-foreground">Ref {payment.transactionReference || "Not recorded"} · Order {payment.orderId?.orderNumber || paymentOrderId(payment)}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(payment.reportedPaymentDate || payment.createdAt, true)}{payment.notes ? ` · ${payment.notes}` : ""}</p>{payment.reviewNote && <p className="mt-2 text-xs text-rose-700">Wholesaler note: {payment.reviewNote}</p>}</div>
+                        <div><p className="font-bold text-ink">{money(getPaymentAmount(payment))} · {String(payment.paymentMethod || "UPI").replace(/_/g, " ")}</p><p className="mt-1 break-all text-xs text-muted-foreground">Ref {payment.transactionReference || "Not recorded"} · Order {payment.orderId?.orderNumber || paymentOrderId(payment)}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(payment.reportedPaymentDate || payment.createdAt, true)}{payment.notes ? ` · ${payment.notes}` : ""}</p>{payment.reviewNote && <p className="mt-2 text-xs text-rose-700">Wholesaler note: {payment.reviewNote}</p>}</div>
                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${statusStyle(payment.status)}`}>{payment.status === "PAID" ? "APPROVED" : String(payment.status || "PENDING").replace(/_/g, " ")}</span>
                       </div>
                       {(report?.screenshotAvailable || payment.screenshotAvailable) && <button type="button" onClick={() => void openPaymentProof(String(payment._id))} disabled={proofReportId === String(payment._id)} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary underline">{proofReportId === String(payment._id) ? "Opening proof…" : "View payment proof"}</button>}
@@ -938,7 +938,7 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
                   <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="bg-secondary/40 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">Product</th><th className="p-3">Description</th><th className="p-3">Qty / Unit</th><th className="p-3 text-right">Rate</th><th className="p-3 text-right">Taxable</th><th className="p-3 text-right">GST % / Amt</th><th className="p-3 text-right">Total</th></tr></thead><tbody className="divide-y">{(selectedInvoice.items || []).map((item: any, index: number) => <tr key={String(item._id || item.productId?._id || item.productId || index)}><td className="p-3 font-semibold">{item.name || "Product"}<div className="text-[10px] text-muted-foreground">HSN: {item.hsnCode || "Not recorded"}</div></td><td className="p-3 text-muted-foreground">{item.description || "Not recorded on this order"}</td><td className="p-3">{item.quantity} {item.unit || "unit not recorded"}</td><td className="p-3 text-right">{money(Number(item.pricePerUnit || 0))}</td><td className="p-3 text-right">{money(Number(item.taxableValue ?? item.subtotal ?? 0))}</td><td className="p-3 text-right">{Number(item.gstRate || 0)}% / {money(Number(item.gstAmount || 0))}</td><td className="p-3 text-right font-bold">{money(Number(item.total ?? item.subtotal ?? 0))}</td></tr>)}</tbody></table></div>
                 </article>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <article className="rounded-xl border p-4"><h3 className="text-sm font-extrabold text-ink">Payment details</h3>{invoiceReports.length ? <div className="mt-3 space-y-2">{invoiceReports.map((report) => <div key={report._id} className="flex flex-wrap justify-between gap-2 border-b pb-2 text-xs last:border-0"><span>{formatDate(report.reportedPaymentDate || report.paidAt || report.createdAt)} · {String(report.paymentMethod || "Not recorded").replace(/_/g, " ")} · Ref {report.transactionReference || "Not recorded"}</span><span className="font-bold">{money(paymentAmount(report))} · {report.status}</span>{report.screenshotAvailable && <button type="button" onClick={() => void openPaymentProof(String(report._id))} className="text-primary underline">View proof</button>}</div>)}</div> : <p className="mt-3 text-sm text-muted-foreground">No payment reports are recorded for this order.</p>}</article>
+                  <article className="rounded-xl border p-4"><h3 className="text-sm font-extrabold text-ink">Payment details</h3>{invoiceReports.length ? <div className="mt-3 space-y-2">{invoiceReports.map((report) => <div key={report._id} className="flex flex-wrap justify-between gap-2 border-b pb-2 text-xs last:border-0"><span>{formatDate(report.reportedPaymentDate || report.paidAt || report.createdAt)} · {String(report.paymentMethod || "Not recorded").replace(/_/g, " ")} · Ref {report.transactionReference || "Not recorded"}</span><span className="font-bold">{money(getPaymentAmount(report))} · {report.status}</span>{report.screenshotAvailable && <button type="button" onClick={() => void openPaymentProof(String(report._id))} className="text-primary underline">View proof</button>}</div>)}</div> : <p className="mt-3 text-sm text-muted-foreground">No payment reports are recorded for this order.</p>}</article>
                   <article className="rounded-xl border p-4"><h3 className="text-sm font-extrabold text-ink">Bill calculation</h3><dl className="mt-3 space-y-2 text-sm"><div className="flex justify-between"><dt>Subtotal</dt><dd>{money(Number(selectedInvoice.subtotal || 0))}</dd></div><div className="flex justify-between"><dt>CGST</dt><dd>{money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.cgstAmount || 0), 0))}</dd></div><div className="flex justify-between"><dt>SGST</dt><dd>{money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.sgstAmount || 0), 0))}</dd></div><div className="flex justify-between"><dt>IGST</dt><dd>{money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.igstAmount || 0), 0))}</dd></div><div className="flex justify-between"><dt>Transport / shipping</dt><dd>{money(Number(selectedInvoice.shipping || 0))}</dd></div><div className="flex justify-between"><dt>Loading / unloading</dt><dd>Not recorded</dd></div><div className="flex justify-between"><dt>Discount</dt><dd>− {money(Number(selectedInvoice.discount || 0))}</dd></div><div className="flex justify-between border-t pt-2 font-extrabold"><dt>Grand total</dt><dd>{money(orderTotal(selectedInvoice))}</dd></div><div className="flex justify-between text-emerald-700"><dt>Amount paid</dt><dd>{money(orderPaid(selectedInvoice, payments))}</dd></div><div className="flex justify-between font-bold text-amber-800"><dt>Remaining balance</dt><dd>{money(paymentDue(selectedInvoice, payments, returns))}</dd></div></dl></article>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2"><article className="rounded-xl border p-4"><h3 className="text-xs font-bold uppercase text-muted-foreground">Retailer details</h3><p className="mt-2 font-bold">{invoice?.buyer?.businessName || "Retailer"}</p><p className="mt-1 text-xs text-muted-foreground">{formatAddress(invoice?.buyer?.address)}</p><p className="mt-1 text-xs text-muted-foreground">Contact: {invoice?.buyer?.phone || invoice?.buyer?.email || "Not provided"} · GSTIN: {invoice?.buyer?.gstin || "Not provided"}</p></article><article className="rounded-xl border p-4"><h3 className="text-xs font-bold uppercase text-muted-foreground">Order notes</h3><p className="mt-2 whitespace-pre-wrap text-sm">{selectedInvoice.wholesalerNotes || selectedInvoice.notes || "No notes recorded"}</p></article></div>
