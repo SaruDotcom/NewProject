@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ShoppingBag,
   Clock,
@@ -20,7 +21,8 @@ import {
   Upload,
   ExternalLink,
   Download,
-  Package
+  Package,
+  MoreVertical,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import { Order, OrderStatus } from '@/lib/types';
@@ -39,6 +41,7 @@ function parseOrderDate(value: string): Date | null {
 
 export default function OrdersPage() {
   const { profile, orders, returns, updateOrderStatus, updateReturnStatus } = useWholesaler();
+  const navigate = useNavigate();
 
   // Filters State
   const [activeStatusTab, setActiveStatusTab] = useState<string>('ALL');
@@ -89,6 +92,7 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusUpdateMessage, setStatusUpdateMessage] = useState<string | null>(null);
   const [statusUpdateError, setStatusUpdateError] = useState<string | null>(null);
+  const [orderActionMessage, setOrderActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Shipping Details Modal State
@@ -257,6 +261,20 @@ export default function OrdersPage() {
     }
   };
 
+  const cancelOrderFromList = async (order: Order) => {
+    if (!window.confirm(`Cancel order ${order.orderNumber}?`)) return;
+    setOrderActionMessage(null);
+    try {
+      await updateOrderStatus(order.id, 'CANCELLED');
+      setOrderActionMessage({ type: 'success', text: `Order ${order.orderNumber} was cancelled.` });
+    } catch (error) {
+      setOrderActionMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Unable to cancel this order.',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -266,6 +284,15 @@ export default function OrdersPage() {
           <p className="text-xs text-gray-500">Track and manage retailer orders and invoices.</p>
         </div>
       </div>
+
+      {orderActionMessage && (
+        <div
+          role={orderActionMessage.type === 'error' ? 'alert' : 'status'}
+          className={`rounded-xl border px-4 py-3 text-sm font-semibold ${orderActionMessage.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}
+        >
+          {orderActionMessage.text}
+        </div>
+      )}
 
       {/* Filters Bar: Status Tabs, Date Range & Search */}
       <div className="p-4 bg-white rounded-2xl border border-tradeflow-gray-200 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-xs">
@@ -364,7 +391,7 @@ export default function OrdersPage() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full text-left text-xs min-w-[700px]">
+            <table className="w-full text-left text-xs min-w-[760px]">
               <thead>
                 <tr className="border-b border-tradeflow-gray-200 text-gray-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Order ID</th>
@@ -373,7 +400,8 @@ export default function OrdersPage() {
                   <th className="pb-3">Quantity</th>
                   <th className="pb-3">Total Amount</th>
                   <th className="pb-3">Status</th>
-                  <th className="pb-3 text-right">Date</th>
+                  <th className="pb-3">Date</th>
+                  <th className="pb-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-tradeflow-gray-200">
@@ -406,8 +434,70 @@ export default function OrdersPage() {
                       <td className="py-4">
                         {renderStatusBadge(order.status)}
                       </td>
-                      <td className="py-4 text-right text-gray-400 font-mono">
+                      <td className="py-4 text-gray-400 font-mono">
                         {order.createdAt}
+                      </td>
+                      <td className="py-3 text-right" onClick={(event) => event.stopPropagation()}>
+                        <details className="relative inline-block text-left">
+                          <summary
+                            aria-label={`Actions for order ${order.orderNumber}`}
+                            className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg text-gray-500 hover:bg-tradeflow-gray-100 hover:text-tradeflow-navy"
+                          >
+                            <MoreVertical className="h-5 w-5" />
+                          </summary>
+                          <div role="menu" className="absolute right-0 z-30 mt-1 min-w-44 rounded-xl border border-tradeflow-gray-200 bg-white p-1.5 text-left shadow-xl">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                navigate(`/dashboard/orders/${encodeURIComponent(order.id)}`);
+                              }}
+                              className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-tradeflow-gray-50"
+                            >
+                              View Details
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                navigate(`/dashboard/orders/${encodeURIComponent(order.id)}?print=1`);
+                              }}
+                              className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-tradeflow-gray-50"
+                            >
+                              Print
+                            </button>
+                            {order.status !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setStatusUpdateMessage(null);
+                                  setStatusUpdateError(null);
+                                  setSelectedOrder(order);
+                                }}
+                                className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-tradeflow-gray-50"
+                              >
+                                Update Status
+                              </button>
+                            )}
+                            {!['CANCELLED', 'DELIVERED', 'SHIPPED', 'DISPATCHED'].includes(order.status) && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void cancelOrderFromList(order);
+                                }}
+                                className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50"
+                              >
+                                Cancel Order
+                              </button>
+                            )}
+                          </div>
+                        </details>
                       </td>
                     </tr>
                   );

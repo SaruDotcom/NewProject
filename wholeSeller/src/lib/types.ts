@@ -144,6 +144,86 @@ export interface Order {
   items: OrderItem[];
 }
 
+export interface OrderDetailsAddress {
+  street?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  country?: string;
+}
+
+export interface OrderDetailsParty {
+  id?: string;
+  name?: string;
+  businessName?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  address?: OrderDetailsAddress | string;
+}
+
+export interface OrderDetailsItem {
+  _id?: string;
+  product?: {
+    id?: string;
+    name?: string;
+    sku?: string;
+    imageUrl?: string;
+  };
+  productName?: string;
+  name?: string;
+  sku?: string;
+  imageUrl?: string;
+  quantity: number;
+  pricePerUnit?: number;
+  totalPrice?: number;
+}
+
+export interface OrderDetailsRecord {
+  id?: string;
+  orderNumber: string;
+  orderStatus?: string;
+  status?: string;
+  paymentStatus?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  items?: OrderDetailsItem[];
+  retailer?: OrderDetailsParty;
+  retailerId?: OrderDetailsParty | string;
+  wholesaler?: OrderDetailsParty;
+  shippingAddress?: OrderDetailsAddress;
+  billingAddress?: OrderDetailsAddress;
+  subtotal?: number;
+  tax?: number;
+  shipping?: number;
+  discount?: number;
+  grandTotal?: number;
+  totalAmount?: number;
+  notes?: string;
+  wholesalerNotes?: string;
+  cancellationReason?: string;
+  cancellationNote?: string;
+  shippingDetails?: ShippingDetails | null;
+  statusTimeline?: Array<{ status?: string; timestamp?: string; note?: string }>;
+}
+
+export interface OrderDetailsResponse {
+  order: OrderDetailsRecord;
+  payment?: {
+    amount?: number;
+    paymentMethod?: string;
+    method?: string;
+    status?: string;
+    transactionReference?: string;
+    createdAt?: string;
+  } | null;
+  timeline?: Array<{ status?: string; createdAt?: string; note?: string }>;
+  totals?: { itemsCount?: number; totalQuantity?: number; totalAmount?: number };
+}
+
 export interface ReturnItem {
   productId: string;
   name: string;

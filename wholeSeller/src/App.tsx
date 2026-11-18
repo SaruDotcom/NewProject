@@ -12,6 +12,7 @@ const RetailersPage = lazy(() => import('./app/dashboard/retailers/page'));
 const RetailerDetailPage = lazy(() => import('./app/dashboard/retailers/RetailerDetailPage'));
 const ReviewsPage = lazy(() => import('./app/dashboard/reviews/page'));
 const OrdersPage = lazy(() => import('./app/dashboard/orders/page'));
+const OrderDetailsPage = lazy(() => import('./app/dashboard/orders/OrderDetailsPage'));
 const AnalyticsPage = lazy(() => import('./app/dashboard/analytics/page'));
 const ReportsPage = lazy(() => import('./app/dashboard/reports/page'));
 const SubscriptionPage = lazy(() => import('./app/dashboard/subscription/page'));
@@ -104,6 +105,7 @@ export function App() {
           <Route path="reviews" element={<ReviewsPage />} />
           <Route path="banner-slides" element={<BannerSlidesPage />} />
           <Route path="orders" element={<OrdersPage />} />
+          <Route path="orders/:orderId" element={<OrderDetailsPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="credit-policy" element={<CreditPolicyPage />} />

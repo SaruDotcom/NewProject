@@ -1,4 +1,5 @@
 import { getWholesalerId, queryClient, wholesalerQueryKeys } from '@/lib/query-client';
+import type { OrderDetailsResponse } from '@/lib/types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
 
@@ -1071,6 +1072,9 @@ export const api = {
   // Orders
   getOrders: () =>
     request<{ success: boolean; data: any }>('/orders', { method: 'GET' }),
+
+  getOrderById: (id: string) =>
+    request<{ success: boolean; data: OrderDetailsResponse }>(`/orders/${encodeURIComponent(id)}`, { method: 'GET' }),
 
   updateOrderStatus: (id: string, status: string, payload?: { note?: string; cancellationReason?: string; cancellationNote?: string; shippingDetails?: any }) =>
     request<{ success: boolean; data: any }>(`/orders/${id}/status`, {
