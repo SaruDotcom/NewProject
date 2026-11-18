@@ -1687,8 +1687,8 @@ export default function ProductsPage() {
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <input value={hsnCode} onChange={(event) => setHsnCode(event.target.value)} placeholder="HSN Code" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
-                  <input type="number" min={0} value={cgst} onChange={(event) => handleSplitTaxChange('cgst', event.target.value === '' ? '' : Number(event.target.value))} placeholder="CGST %" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
-                  <input type="number" min={0} value={sgst} onChange={(event) => handleSplitTaxChange('sgst', event.target.value === '' ? '' : Number(event.target.value))} placeholder="SGST %" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
+                  <input type="number" min={0} step="any" inputMode="decimal" value={cgst} onChange={(event) => handleSplitTaxChange('cgst', event.target.value === '' ? '' : Number(event.target.value))} placeholder="CGST %" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
+                  <input type="number" min={0} step="any" inputMode="decimal" value={sgst} onChange={(event) => handleSplitTaxChange('sgst', event.target.value === '' ? '' : Number(event.target.value))} placeholder="SGST %" className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2" />
                   <select value={igst} onChange={(event) => handleIgstChange(event.target.value === '' ? '' : Number(event.target.value))} className="rounded-xl border border-tradeflow-gray-200 bg-white px-3 py-2">
                     <option value="">IGST %</option>{[0, 5, 12, 18, 28].map((rate) => <option key={rate} value={rate}>{rate}%</option>)}
                   </select>
