@@ -47,6 +47,38 @@ const normalizeOrderAddress = (address = {}) => ({
   phone: address.phone || '',
 });
 
+const shippingReferencePattern = /^(?=.*\d)[A-Z0-9][A-Z0-9 ./-]{2,49}$/i;
+
+function normalizeShippingDetails(details) {
+  const courierName = String(details.courierName || '').trim();
+  const biltyNumber = String(details.biltyNumber || '').trim();
+  const trackingNumber = String(details.trackingNumber || '').trim();
+  const shippingNotes = String(details.shippingNotes || '').trim();
+  const biltyUrl = String(details.biltyUrl || '').trim();
+  const biltyFileName = String(details.biltyFileName || '').trim();
+
+  if (courierName.length > 120 || /[\u0000-\u001f\u007f]/.test(courierName)) {
+    throw new BadRequestError('Transport / Courier Company Name must be 120 characters or fewer.', 'INVALID_SHIPPING_COURIER');
+  }
+  if (biltyNumber && !shippingReferencePattern.test(biltyNumber)) {
+    throw new BadRequestError('Bilty / LR Number must be 3–50 characters, include a digit, and use only letters, numbers, spaces, dots, slashes, or hyphens.', 'INVALID_BILTY_NUMBER');
+  }
+  if (trackingNumber && !shippingReferencePattern.test(trackingNumber)) {
+    throw new BadRequestError('Tracking Number must be 3–50 characters, include a digit, and use only letters, numbers, spaces, dots, slashes, or hyphens.', 'INVALID_TRACKING_NUMBER');
+  }
+  if (shippingNotes.length > 1000) {
+    throw new BadRequestError('Shipping notes must be 1,000 characters or fewer.', 'INVALID_SHIPPING_NOTES');
+  }
+  if (biltyFileName.length > 255 || biltyUrl.length > 2048) {
+    throw new BadRequestError('Shipping document details exceed the allowed length.', 'INVALID_SHIPPING_DOCUMENT');
+  }
+  if (biltyUrl && !/^https?:\/\//i.test(biltyUrl)) {
+    throw new BadRequestError('Shipping document URL must use HTTP or HTTPS.', 'INVALID_SHIPPING_DOCUMENT_URL');
+  }
+
+  return { ...details, courierName, biltyNumber, trackingNumber, shippingNotes, biltyUrl, biltyFileName };
+}
+
 class OrderService {
   /**
    * Retailer creates new B2B order with authoritative price calculation & inventory reservation
@@ -791,7 +823,7 @@ class OrderService {
     if (normalizedStatus === ORDER_STATUS.SHIPPED) {
       const incoming = shippingDetails || {};
       const existing = (order.shippingDetails && order.shippingDetails.toObject) ? order.shippingDetails.toObject() : (order.shippingDetails || {});
-      const mergedShipping = {
+      const mergedShipping = normalizeShippingDetails({
         courierName: incoming.courierName !== undefined ? String(incoming.courierName).trim() : (existing.courierName || ''),
         biltyNumber: incoming.biltyNumber !== undefined ? String(incoming.biltyNumber).trim() : (existing.biltyNumber || ''),
         trackingNumber: incoming.trackingNumber !== undefined ? String(incoming.trackingNumber).trim() : (existing.trackingNumber || ''),
@@ -801,7 +833,7 @@ class OrderService {
         biltyFileName: incoming.biltyFileName !== undefined ? incoming.biltyFileName : (existing.biltyFileName || ''),
         shippingNotes: incoming.shippingNotes !== undefined ? incoming.shippingNotes : (existing.shippingNotes || ''),
         shippedAt: existing.shippedAt || new Date(),
-      };
+      });
 
       if (!mergedShipping.courierName) {
         throw new BadRequestError('Transport / Courier Company Name is required to mark order as Shipped', 'SHIPPING_COURIER_REQUIRED');
@@ -813,10 +845,10 @@ class OrderService {
       order.shippingDetails = mergedShipping;
     } else if (shippingDetails && typeof shippingDetails === 'object') {
       const existing = (order.shippingDetails && order.shippingDetails.toObject) ? order.shippingDetails.toObject() : (order.shippingDetails || {});
-      order.shippingDetails = {
+      order.shippingDetails = normalizeShippingDetails({
         ...existing,
         ...shippingDetails,
-      };
+      });
     }
 
     if (previousStatus === normalizedStatus && !shippingDetails) {

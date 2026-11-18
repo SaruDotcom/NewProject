@@ -39,6 +39,12 @@ function parseOrderDate(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+const shippingReferencePattern = /^(?=.*\d)[A-Z0-9][A-Z0-9 ./-]{2,49}$/i;
+
+function isValidShippingReference(value: string) {
+  return shippingReferencePattern.test(value.trim());
+}
+
 export default function OrdersPage() {
   const { profile, orders, returns, updateOrderStatus, updateReturnStatus } = useWholesaler();
   const navigate = useNavigate();
@@ -211,20 +217,42 @@ export default function OrdersPage() {
       setShippingFormError('Transport / Courier Company Name is required.');
       return;
     }
-    if (!shippingForm.biltyNumber.trim() && !shippingForm.trackingNumber.trim()) {
+    const biltyNumber = shippingForm.biltyNumber.trim();
+    const trackingNumber = shippingForm.trackingNumber.trim();
+    if (!biltyNumber && !trackingNumber) {
       setShippingFormError('Bilty / LR Number or Tracking Number is required.');
+      return;
+    }
+    if (shippingForm.courierName.trim().length > 120) {
+      setShippingFormError('Transport / Courier Company Name must be 120 characters or fewer.');
+      return;
+    }
+    if ((biltyNumber && !isValidShippingReference(biltyNumber)) ||
+      (trackingNumber && !isValidShippingReference(trackingNumber))) {
+      setShippingFormError('Enter a valid Bilty / LR or tracking number (3–50 letters, digits, spaces, dots, slashes, or hyphens; include at least one digit).');
+      return;
+    }
+    if (shippingForm.shippingNotes.length > 1000) {
+      setShippingFormError('Shipping notes must be 1,000 characters or fewer.');
       return;
     }
 
     setIsUpdatingStatus(true);
     setShippingFormError(null);
+    const shippingDetails = {
+      ...shippingForm,
+      courierName: shippingForm.courierName.trim(),
+      biltyNumber,
+      trackingNumber,
+      shippingNotes: shippingForm.shippingNotes.trim(),
+    };
     try {
-      await updateOrderStatus(selectedOrder.id, 'SHIPPED', shippingForm);
+      await updateOrderStatus(selectedOrder.id, 'SHIPPED', shippingDetails);
       setSelectedOrder((current) => current ? {
         ...current,
         status: 'SHIPPED',
-        trackingNumber: shippingForm.trackingNumber || shippingForm.biltyNumber,
-        shippingDetails: shippingForm,
+        trackingNumber: trackingNumber || biltyNumber,
+        shippingDetails,
       } : current);
       setStatusUpdateMessage('Order marked as Shipped and shipping details saved.');
       setShippingModalOpen(false);
@@ -812,6 +840,7 @@ export default function OrdersPage() {
                   </label>
                   <input
                     type="text"
+                    maxLength={120}
                     required
                     placeholder="e.g. VRL Logistics, Safechem, Delhivery, BlueDart"
                     value={shippingForm.courierName}
@@ -822,16 +851,19 @@ export default function OrdersPage() {
 
                 <div>
                   <label className="text-xs font-bold text-tradeflow-navy block mb-1">
-                    Bilty / LR Number <span className="text-red-500">*</span>
+                    Bilty / LR Number
                   </label>
                   <input
                     type="text"
+                    maxLength={50}
+                    pattern="(?=.*[0-9])[A-Za-z0-9][A-Za-z0-9 ./-]{2,49}"
+                    title="Use 3–50 letters, digits, spaces, dots, slashes, or hyphens, including at least one digit."
                     placeholder="e.g. BLT-98234 / LR-4401"
                     value={shippingForm.biltyNumber}
                     onChange={(e) => setShippingForm({ ...shippingForm, biltyNumber: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-tradeflow-gray-50 border border-tradeflow-gray-200 rounded-xl focus:outline-none focus:border-tradeflow-green font-mono"
                   />
-                  <span className="text-[10px] text-gray-400 block mt-0.5">Mandatory for transport shipments</span>
+                  <span className="text-[10px] text-gray-400 block mt-0.5">Enter a Bilty / LR number or tracking number; include at least one digit.</span>
                 </div>
 
                 <div>
@@ -840,6 +872,9 @@ export default function OrdersPage() {
                   </label>
                   <input
                     type="text"
+                    maxLength={50}
+                    pattern="(?=.*[0-9])[A-Za-z0-9][A-Za-z0-9 ./-]{2,49}"
+                    title="Use 3–50 letters, digits, spaces, dots, slashes, or hyphens, including at least one digit."
                     placeholder="e.g. TRK-77881920"
                     value={shippingForm.trackingNumber}
                     onChange={(e) => setShippingForm({ ...shippingForm, trackingNumber: e.target.value })}
@@ -932,6 +967,7 @@ export default function OrdersPage() {
                 </label>
                 <textarea
                   rows={2}
+                  maxLength={1000}
                   placeholder="e.g. Driver contact: 9876543210, 4 cartons packed with tamper-evident tape."
                   value={shippingForm.shippingNotes}
                   onChange={(e) => setShippingForm({ ...shippingForm, shippingNotes: e.target.value })}

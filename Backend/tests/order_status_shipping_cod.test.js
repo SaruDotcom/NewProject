@@ -278,6 +278,37 @@ describe('Order Status Flow, Shipping Details & COD Disabled', () => {
       expect(dbOrder.shippingDetails.biltyUrl).toBe('https://cdn.example.com/bilty/doc-123.pdf');
     });
 
+    it('should accept common Bilty formats and reject references without digits', async () => {
+      const validRes = await request(app)
+        .patch(`/api/v1/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({
+          status: 'SHIPPED',
+          shippingDetails: {
+            courierName: 'Local Transport',
+            biltyNumber: 'BLT-897657',
+            trackingNumber: 'TRK 657890987',
+          },
+        });
+
+      expect(validRes.status).toBe(200);
+      expect(validRes.body.data.shippingDetails.biltyNumber).toBe('BLT-897657');
+
+      const invalidRes = await request(app)
+        .patch(`/api/v1/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${wholesalerToken}`)
+        .send({
+          status: 'SHIPPED',
+          shippingDetails: {
+            courierName: 'Local Transport',
+            biltyNumber: 'BLT-INVALID',
+          },
+        });
+
+      expect(invalidRes.status).toBe(400);
+      expect(invalidRes.body.code).toBe('INVALID_BILTY_NUMBER');
+    });
+
     it('should update status to DELIVERED and maintain saved shipping details', async () => {
       // 1. Mark as Shipped first
       await request(app)

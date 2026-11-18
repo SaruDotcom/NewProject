@@ -52,14 +52,14 @@ const statusTimelineSchema = new mongoose.Schema(
 
 const shippingDetailsSchema = new mongoose.Schema(
   {
-    courierName: { type: String, default: '' },
-    biltyNumber: { type: String, default: '' },
-    trackingNumber: { type: String, default: '' },
+    courierName: { type: String, default: '', trim: true, maxlength: 120 },
+    biltyNumber: { type: String, default: '', trim: true, maxlength: 50 },
+    trackingNumber: { type: String, default: '', trim: true, maxlength: 50 },
     shippingDate: { type: Date, default: null },
     estimatedDeliveryDate: { type: Date, default: null },
-    biltyUrl: { type: String, default: '' },
-    biltyFileName: { type: String, default: '' },
-    shippingNotes: { type: String, default: '' },
+    biltyUrl: { type: String, default: '', maxlength: 2048 },
+    biltyFileName: { type: String, default: '', trim: true, maxlength: 255 },
+    shippingNotes: { type: String, default: '', trim: true, maxlength: 1000 },
     shippedAt: { type: Date, default: null },
   },
   { _id: false }

@@ -937,7 +937,7 @@ export default function PurchasesPage() {
         </div>}
         <footer className="flex flex-wrap justify-end gap-3 border-t border-stone-100 pt-4">
           <button type="button" onClick={() => { setBillForm(null); setEditingBill(null); }} className={`${buttonClass} border border-stone-200 bg-white text-stone-700 hover:bg-stone-50`}>Cancel</button>
-          <button type="submit" disabled={saving || !suppliers.length || !products.length} className={`${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`}>
+          <button type="submit" disabled={saving || (formMode === 'FULL' && (!suppliers.length || !products.length))} className={`${buttonClass} bg-emerald-700 text-white hover:bg-emerald-800`}>
             {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {editingBill ? 'Save changes' : 'Save purchase'}
           </button>
