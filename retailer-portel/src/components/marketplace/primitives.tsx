@@ -213,25 +213,28 @@ export function ProductCard({
         {/* Content Body */}
         <div className="flex min-w-0 flex-1 flex-col px-2 pb-2 pt-1.5 sm:px-3 sm:pb-3 sm:pt-1.5">
           <div>
-            <Link
-              to="/products/$productId"
-              params={{ productId: product.id }}
-              onClick={() => addRecentlyViewed(product.id)}
-              className="line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
-              title={product.name}
-            >
-              {product.name}
-            </Link>
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <strong className="shrink-0 text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
+              <Link
+                to="/products/$productId"
+                params={{ productId: product.id }}
+                onClick={() => addRecentlyViewed(product.id)}
+                className="min-w-0 line-clamp-1 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
+                title={product.name}
+              >
+                {product.name}
+              </Link>
+            </div>
             <p className="mt-0.5 line-clamp-1 min-h-4 text-[10px] leading-4 text-slate-500 sm:text-xs" title={description}>
               {description}
             </p>
 
-            {/* Selling Price */}
-            <div className="mt-1 flex min-h-5 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <strong className="text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
-              {discount > 0 && <span className="text-[10px] leading-4 text-slate-500 line-through">{money(product.mrp)}</span>}
-              {discount > 0 && <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>}
-            </div>
+            {discount > 0 && (
+              <div className="mt-0.5 flex min-h-4 items-baseline gap-x-1.5">
+                <span className="text-[10px] leading-4 text-slate-500 line-through">{money(product.mrp)}</span>
+                <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>
+              </div>
+            )}
           </div>
 
           <div className="mt-auto pt-2">
@@ -316,25 +319,28 @@ export function ProductCard({
 
       {/* Product Details (Clean & Minimal) */}
       <div className="flex flex-1 flex-col px-2 pb-2 pt-1.5">
-        {/* Product Name */}
-        <Link
-          to="/products/$productId"
-          params={{ productId: product.id }}
-          onClick={() => addRecentlyViewed(product.id)}
-          className="line-clamp-2 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
-          title={product.name}
-        >
-          {product.name}
-        </Link>
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <strong className="shrink-0 text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
+          <Link
+            to="/products/$productId"
+            params={{ productId: product.id }}
+            onClick={() => addRecentlyViewed(product.id)}
+            className="min-w-0 line-clamp-1 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
+            title={product.name}
+          >
+            {product.name}
+          </Link>
+        </div>
         <p className="mt-0.5 line-clamp-1 min-h-4 text-[10px] leading-4 text-slate-500 sm:text-xs" title={description}>
           {description}
         </p>
 
-        <div className="mt-1 flex min-h-5 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <strong className="text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
-          {discount > 0 && <span className="text-[10px] leading-4 text-slate-500 line-through">{money(product.mrp)}</span>}
-          {discount > 0 && <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>}
-        </div>
+        {discount > 0 && (
+          <div className="mt-0.5 flex min-h-4 items-baseline gap-x-1.5">
+            <span className="text-[10px] leading-4 text-slate-500 line-through">{money(product.mrp)}</span>
+            <span className="text-[10px] font-semibold leading-4 text-emerald-700">{discount}% off</span>
+          </div>
+        )}
 
         <div className="mt-auto pt-2">
           <Button
