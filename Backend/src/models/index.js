@@ -43,6 +43,8 @@ const PurchaseBill = require('./PurchaseBill');
 const PurchasePayment = require('./PurchasePayment');
 const PurchaseReturn = require('./PurchaseReturn');
 const SupplierLedgerEntry = require('./SupplierLedgerEntry');
+const WholesalerReferral = require('./WholesalerReferral');
+const WholesalerReferralCommission = require('./WholesalerReferralCommission');
 
 module.exports = {
   User,
@@ -90,4 +92,6 @@ module.exports = {
   PurchasePayment,
   PurchaseReturn,
   SupplierLedgerEntry,
+  WholesalerReferral,
+  WholesalerReferralCommission,
 };

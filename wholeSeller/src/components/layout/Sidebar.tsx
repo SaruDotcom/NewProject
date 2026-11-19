@@ -23,6 +23,7 @@ import {
   ShoppingBasket,
   Palette,
   X,
+  Gift,
 } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import BusinessLogo from '@/components/BusinessLogo';
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
   { name: 'My Reviews', path: '/dashboard/reviews', icon: Star },
   { name: 'Credit Policy', path: '/dashboard/credit-policy', icon: HandCoins, badge: 'Credit' },
   { name: 'Payment Settings', path: '/dashboard/payment-settings', icon: QrCode },
+  { name: 'Referral & Earn', path: '/dashboard/referral', icon: Gift },
   // { name: 'Store Theme', path: '/dashboard/store-theme', icon: Palette },
   { name: 'Purchase', path: '/dashboard/purchases', icon: ShoppingBasket },
    { name: 'Coupons & Offers', path: '/dashboard/coupons', icon: Ticket, badge: 'Offers' },

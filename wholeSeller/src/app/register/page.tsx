@@ -48,9 +48,14 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
   const searchParams = new URLSearchParams(window.location.search);
   const inviteToken = inviteTokenProp || searchParams.get('invite') || '';
   const refCode = searchParams.get('ref') || '';
+  const wholesalerReferralCode = searchParams.get('wholesaler_ref')?.trim().toUpperCase() || '';
   const [inviteError, setInviteError] = useState('');
   const [refValid, setRefValid] = useState(false);
   const [refError, setRefError] = useState('');
+  const [wholesalerRefValid, setWholesalerRefValid] = useState(false);
+  const [wholesalerRefChecked, setWholesalerRefChecked] = useState(!wholesalerReferralCode);
+  const [wholesalerReferrerName, setWholesalerReferrerName] = useState('');
+  const [wholesalerRefError, setWholesalerRefError] = useState('');
 
   // Form Fields State
   const [email, setEmail] = useState('');
@@ -105,6 +110,28 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
       });
     return () => { active = false; };
   }, [refCode]);
+
+  useEffect(() => {
+    if (!wholesalerReferralCode) return;
+    let active = true;
+    setWholesalerRefChecked(false);
+    api.validateWholesalerReferralCode(wholesalerReferralCode)
+      .then((response) => {
+        if (!active) return;
+        setWholesalerRefValid(Boolean(response?.data?.valid));
+        setWholesalerReferrerName(response?.data?.businessName || '');
+        setWholesalerRefError(response?.data?.valid ? '' : 'This wholesaler referral link is not valid.');
+      })
+      .catch((error: Error) => {
+        if (!active) return;
+        setWholesalerRefValid(false);
+        setWholesalerRefError(error.message || 'This wholesaler referral link is not valid.');
+      })
+      .finally(() => {
+        if (active) setWholesalerRefChecked(true);
+      });
+    return () => { active = false; };
+  }, [wholesalerReferralCode]);
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -169,6 +196,13 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
       setErrors((prev) => ({ ...prev, form: refError }));
       return;
     }
+    if (wholesalerReferralCode && (!wholesalerRefChecked || !wholesalerRefValid)) {
+      setErrors((prev) => ({
+        ...prev,
+        form: wholesalerRefError || 'Please wait while we validate the wholesaler referral link.',
+      }));
+      return;
+    }
 
     submissionInProgress.current = true;
     setIsSubmitting(true);
@@ -183,6 +217,7 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
         email,
         phone,
         inviteToken: inviteToken || undefined,
+        wholesalerReferralCode: wholesalerRefValid ? wholesalerReferralCode : undefined,
         ref: refValid && refCode ? refCode : undefined,
         ...attribution,
       }, password);
@@ -276,6 +311,14 @@ export function RegisterForm({ onGoToLogin, inviteToken: inviteTokenProp, embedd
                 <p className="font-bold">Invalid or Inactive Registration Link</p>
                 <p className="mt-0.5">{refError}</p>
               </div>
+            </div>
+          )}
+
+          {wholesalerReferralCode && (
+            <div className={`mb-5 rounded-xl border p-3 text-xs ${wholesalerRefValid ? 'border-tradeflow-green/30 bg-tradeflow-green/10 text-tradeflow-navy' : wholesalerRefError ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+              {wholesalerRefValid
+                ? `You are referred by ${wholesalerReferrerName || 'a ThokStore wholesaler'}.`
+                : wholesalerRefError || 'Validating wholesaler referral link...'}
             </div>
           )}
 

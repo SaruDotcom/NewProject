@@ -18,6 +18,11 @@ router.get('/analytics', adminController.getAnalytics);
 
 // Bank details are reviewed separately from KYC and require Superadmin privileges.
 router.get('/bank-details', authorize(ROLES.SUPER_ADMIN), adminController.getBankDetailsSubmissions);
+router.get(
+  '/bank-details/:wholesalerId',
+  authorize(ROLES.SUPER_ADMIN),
+  adminController.getBankDetailsSubmission
+);
 router.patch(
   '/bank-details/:wholesalerId/approve',
   authorize(ROLES.SUPER_ADMIN),

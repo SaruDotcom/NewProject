@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.js",
     "create:superadmin": "node scripts/createSuperAdmin.js",
     "seed": "node scripts/seedDevelopmentData.js",
+    "backfill:wholesaler-referral-codes": "node scripts/backfill-wholesaler-referral-codes.js",
     "clean:demo": "node scripts/cleanup-demo-data.js",
     "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles --forceExit",
     "test:watch": "cross-env NODE_ENV=test jest --watch",

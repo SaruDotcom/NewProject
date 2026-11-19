@@ -21,6 +21,7 @@ import {
   Headphones,
   LayoutDashboard,
   Landmark,
+  Gift,
   Menu,
   MessageSquareText,
   Moon,
@@ -75,7 +76,8 @@ const nav = [
   { label: "Wholesalers", href: "/wholesalers", icon: Building2 },
   { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
   { label: "KYC", href: "/kyc", icon: FileCheck2 },
-  { label: "Bank Verification", href: "/bank-details", icon: Landmark },
+  { label: "Bank Details Verification", href: "/bank-details", icon: Landmark },
+  { label: "Referral & Commission Management", href: "/commissions", icon: Gift },
   // { label: "Retailers", href: "/retailers", icon: Store },
   // { label: "Relationships", href: "/relationships", icon: Waypoints },
   // { label: "Products", href: "/products", icon: PackageSearch },
@@ -123,7 +125,7 @@ export function AdminShell({ children }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const visibleNav = adminUser?.role === "SUPER_ADMIN"
     ? nav
-    : nav.filter((item) => item.href !== "/bank-details");
+    : nav.filter((item) => !["/bank-details", "/commissions"].includes(item.href));
   const current = visibleNav.find((item) =>
     item.href === "/" ? pathname === "/" : pathname.startsWith(item.href),
   );

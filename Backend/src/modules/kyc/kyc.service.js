@@ -9,7 +9,7 @@ const {
   Order,
   AuditLog,
 } = require('../../models');
-const { KYC_STATUS, AUDIT_ACTION, ROLES } = require('../../config/constants');
+const { KYC_STATUS, AUDIT_ACTION, ROLES, USER_STATUS } = require('../../config/constants');
 const {
   BadRequestError,
   NotFoundError,
@@ -22,6 +22,7 @@ const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
 const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
 const logger = require('../../config/logger');
+const WholesalerReferralProgramService = require('../referrals/wholesaler-referral-program.service');
 
 const maskAccountNumber = (accountNumber) => {
   const value = String(accountNumber || '');
@@ -436,7 +437,12 @@ class KycService {
       }
     );
 
-    await User.findByIdAndUpdate(application.wholesalerId, { status: 'ACTIVE' });
+    const wholesalerUser = await User.findById(application.wholesalerId).select('status').lean();
+    if (!wholesalerUser) throw new NotFoundError('Wholesaler account not found');
+    if (![USER_STATUS.BLOCKED, USER_STATUS.SUSPENDED].includes(wholesalerUser.status)) {
+      await User.findByIdAndUpdate(application.wholesalerId, { status: USER_STATUS.ACTIVE });
+    }
+    await WholesalerReferralProgramService.onKycApproved(application.wholesalerId, adminUser, req);
 
     await AuditService.log({
       actorId: adminUser._id,
@@ -494,6 +500,7 @@ class KycService {
       { userId: application.wholesalerId },
       { kycStatus: KYC_STATUS.REJECTED }
     );
+    await WholesalerReferralProgramService.onKycRejected(application.wholesalerId, reason, adminUser, req);
 
     await AuditService.log({
       actorId: adminUser._id,

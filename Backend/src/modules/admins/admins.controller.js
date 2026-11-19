@@ -26,6 +26,16 @@ class AdminController {
     return ApiResponse.success(res, data, 'Bank details submissions retrieved');
   });
 
+  getBankDetailsSubmission = asyncHandler(async (req, res) => {
+    const data = await AdminService.getBankDetailsSubmission(
+      req.params.wholesalerId,
+      req.user,
+      req
+    );
+    res.set('Cache-Control', 'no-store');
+    return ApiResponse.success(res, data, 'Bank details retrieved');
+  });
+
   reviewBankDetails = asyncHandler(async (req, res) => {
     const data = await AdminService.reviewBankDetails(
       req.params.wholesalerId,

@@ -19,6 +19,7 @@ const auditRoutes = require('../modules/audit/audit.routes');
 const reportRoutes = require('../modules/reports/reports.routes');
 const couponRoutes = require('../modules/coupons/coupons.routes');
 const referralRoutes = require('../modules/referrals/referrals.routes');
+const wholesalerReferralProgramRoutes = require('../modules/referrals/wholesaler-referral-program.routes');
 
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
@@ -59,7 +60,9 @@ router.use('/wholesaler/subscription', subscriptionRoutes.wholesalerRoutes);
 // Auth module
 router.use('/auth', authRoutes);
 router.use('/referral', referralRoutes.publicRoutes);
+router.use('/wholesaler-referral', wholesalerReferralProgramRoutes.publicRoutes);
 router.use('/invites', wholesalerInviteRoutes.publicRouter);
+router.use('/admin/referral-program', wholesalerReferralProgramRoutes.adminRoutes);
 
 // Super Admin Core Modules
 router.use('/admin/wholesalers', wholesalerRoutes);
@@ -86,6 +89,7 @@ router.use('/wholesaler/products', productRoutes);
 router.use('/wholesaler/kyc', kycRoutes);
 router.use('/wholesaler/invite-links', invitationRoutes);
 router.use('/wholesaler/referral', referralRoutes.wholesalerRoutes);
+router.use('/wholesaler/referral-program', wholesalerReferralProgramRoutes.wholesalerRoutes);
 router.use('/wholesaler/khata-book', khataBookRoutes);
 router.use('/wholesaler/purchases', purchaseRoutes);
 router.get(

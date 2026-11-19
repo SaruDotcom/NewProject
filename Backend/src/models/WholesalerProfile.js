@@ -70,6 +70,28 @@ const wholesalerProfileSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
+    wholesalerReferralCode: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    referredByWholesalerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
+    wholesalerReferralCodeUsed: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      default: '',
+    },
+    wholesalerReferralAt: {
+      type: Date,
+    },
     retailerSignupsEnabled: {
       type: Boolean,
       default: true,

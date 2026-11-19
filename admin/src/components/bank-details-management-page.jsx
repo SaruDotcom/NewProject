@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Clock3, Landmark, RefreshCw, X } from "lucide-react";
+import { Check, Clock3, Eye, Landmark, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +22,7 @@ function formatDate(value) {
 }
 
 export function BankDetailsManagementPage() {
-  useAdminBreadcrumb("Bank Verification");
+  useAdminBreadcrumb("Bank Details Verification");
   const [status, setStatus] = useState("PENDING");
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +30,10 @@ export function BankDetailsManagementPage() {
   const [rejecting, setRejecting] = useState(null);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [selectedDetails, setSelectedDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
 
   const loadSubmissions = useCallback(async () => {
     setLoading(true);
@@ -45,6 +49,21 @@ export function BankDetailsManagementPage() {
     }
   }, [status]);
 
+  const viewDetails = async (item) => {
+    setSelectedSubmission(item);
+    setSelectedDetails(null);
+    setDetailsError("");
+    setDetailsLoading(true);
+    try {
+      const response = await api.get(`/admin/bank-details/${encodeURIComponent(item.wholesalerId)}`);
+      setSelectedDetails(response?.data ?? response);
+    } catch (detailError) {
+      setDetailsError(detailError instanceof Error ? detailError.message : "Unable to load bank details.");
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadSubmissions();
   }, [loadSubmissions]);
@@ -55,6 +74,8 @@ export function BankDetailsManagementPage() {
       const path = `/admin/bank-details/${encodeURIComponent(item.wholesalerId)}/${action.toLowerCase()}`;
       await apiPatch(path, action === "REJECT" ? { reason: rejectionReason } : {});
       setRejecting(null);
+      setSelectedSubmission(null);
+      setSelectedDetails(null);
       setReason("");
       toast.success(action === "APPROVE" ? "Bank details approved." : "Bank details rejected.");
       await loadSubmissions();
@@ -117,76 +138,73 @@ export function BankDetailsManagementPage() {
         />
       )}
 
-      <div className="space-y-4">
-        {submissions.map((item) => {
-          const details = item.bankDetails || {};
-          const history = details.verificationHistory || [];
-          const pending = details.verificationStatus === "PENDING";
-          return (
-            <article key={item.wholesalerId} className="rounded-xl border bg-card p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">{item.businessName || item.wholesalerName}</h2>
-                  <p className="text-sm text-muted-foreground">{item.wholesalerName} · {item.email}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">KYC status: {item.kycStatus}</p>
-                </div>
-                <StatusBadge status={details.verificationStatus} />
-              </div>
-
-              <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div><dt className="text-xs text-muted-foreground">Account holder</dt><dd className="mt-1 font-medium">{details.accountHolderName || "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Bank name</dt><dd className="mt-1 font-medium">{details.bankName || "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Account number</dt><dd className="mt-1 font-mono font-medium">{details.accountNumber || "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">IFSC code</dt><dd className="mt-1 font-medium">{details.ifscCode || "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Branch</dt><dd className="mt-1 font-medium">{details.branch || "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Submitted</dt><dd className="mt-1 font-medium">{formatDate(details.submittedAt)}</dd></div>
-              </dl>
-
-              {details.rejectionReason && (
-                <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                  Previous rejection reason: {details.rejectionReason}
-                </p>
-              )}
-
-              {history.length > 0 && (
-                <details className="mt-4">
-                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                    <Clock3 className="size-4" /> Verification history ({history.length})
-                  </summary>
-                  <ol className="mt-3 space-y-2 border-l pl-4 text-sm">
-                    {history.slice().reverse().map((entry, index) => (
-                      <li key={`${entry.status}-${entry.changedAt}-${index}`} className="text-muted-foreground">
-                        <span className="font-medium text-foreground">{entry.status}</span>
-                        {" · "}{formatDate(entry.changedAt)}
-                        {entry.rejectionReason && <span> · {entry.rejectionReason}</span>}
-                        {entry.accountNumberLast4 && <span> · Account ending {entry.accountNumberLast4}</span>}
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-              )}
-
-              {pending && (
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <Button disabled={saving} onClick={() => void review(item, "APPROVE")}>
-                    <Check className="mr-2 size-4" /> Approve
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    disabled={saving}
-                    onClick={() => {
-                      setRejecting(item);
-                      setReason("");
-                    }}
-                  >
-                    <X className="mr-2 size-4" /> Reject
-                  </Button>
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+      {!loading && !error && submissions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+          <table className="w-full min-w-[1180px] border-collapse text-left text-sm">
+            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Wholesaler</th>
+                <th className="px-4 py-3 font-semibold">Business Name</th>
+                <th className="px-4 py-3 font-semibold">Bank Name</th>
+                <th className="px-4 py-3 font-semibold">Account Holder</th>
+                <th className="px-4 py-3 font-semibold">Account Number</th>
+                <th className="px-4 py-3 font-semibold">IFSC Code</th>
+                <th className="px-4 py-3 font-semibold">Branch</th>
+                <th className="px-4 py-3 font-semibold">Submitted</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {submissions.map((item) => {
+                const details = item.bankDetails || {};
+                const pending = details.verificationStatus === "PENDING";
+                return (
+                  <tr key={item.wholesalerId}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{item.wholesalerName}</p>
+                      <p className="text-xs text-muted-foreground">{item.email}</p>
+                    </td>
+                    <td className="px-4 py-3">{item.businessName || "—"}</td>
+                    <td className="px-4 py-3">{details.bankName || "—"}</td>
+                    <td className="px-4 py-3">{details.accountHolderName || "—"}</td>
+                    <td className="px-4 py-3 font-mono">{details.accountNumber || "—"}</td>
+                    <td className="px-4 py-3 font-mono">{details.ifscCode || "—"}</td>
+                    <td className="px-4 py-3">{details.branch || "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(details.submittedAt)}</td>
+                    <td className="px-4 py-3"><StatusBadge status={details.verificationStatus} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => void viewDetails(item)}>
+                          <Eye className="mr-1.5 size-4" /> View Details
+                        </Button>
+                        {pending && (
+                          <>
+                            <Button size="sm" disabled={saving} onClick={() => void review(item, "APPROVE")}>
+                              <Check className="mr-1.5 size-4" /> Approve
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={saving}
+                              onClick={() => {
+                                setRejecting(item);
+                                setReason("");
+                              }}
+                            >
+                              <X className="mr-1.5 size-4" /> Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <Dialog open={Boolean(rejecting)} onOpenChange={(open) => !open && setRejecting(null)}>
         <DialogContent>
@@ -214,6 +232,70 @@ export function BankDetailsManagementPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(selectedSubmission)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedSubmission(null);
+            setSelectedDetails(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Submitted bank details</DialogTitle>
+            <DialogDescription>
+              Sensitive information is shown only in this Superadmin review view.
+            </DialogDescription>
+          </DialogHeader>
+          {detailsLoading && <p role="status" className="text-sm text-muted-foreground">Loading details…</p>}
+          {detailsError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{detailsError}</p>}
+          {selectedDetails && (
+            <>
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <p className="font-semibold">{selectedDetails.wholesalerName}</p>
+                <p className="text-sm text-muted-foreground">
+                  {selectedDetails.businessName || "Business name not provided"} · KYC status: {selectedDetails.kycStatus}
+                </p>
+              </div>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div><dt className="text-xs text-muted-foreground">Account holder</dt><dd className="mt-1 font-medium">{selectedDetails.bankDetails?.accountHolderName || "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Bank name</dt><dd className="mt-1 font-medium">{selectedDetails.bankDetails?.bankName || "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Account number</dt><dd className="mt-1 break-all font-mono font-medium">{selectedDetails.bankDetails?.accountNumber || "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">IFSC code</dt><dd className="mt-1 font-medium">{selectedDetails.bankDetails?.ifscCode || "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Branch</dt><dd className="mt-1 font-medium">{selectedDetails.bankDetails?.branch || "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Submitted</dt><dd className="mt-1 font-medium">{formatDate(selectedDetails.bankDetails?.submittedAt)}</dd></div>
+              </dl>
+              {selectedDetails.bankDetails?.rejectionReason && (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                  Rejection reason: {selectedDetails.bankDetails.rejectionReason}
+                </p>
+              )}
+              {(selectedDetails.bankDetails?.verificationHistory || []).length > 0 && (
+                <details>
+                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                    <Clock3 className="size-4" /> Verification history ({selectedDetails.bankDetails.verificationHistory.length})
+                  </summary>
+                  <ol className="mt-3 space-y-2 border-l pl-4 text-sm">
+                    {selectedDetails.bankDetails.verificationHistory.slice().reverse().map((entry, index) => (
+                      <li key={`${entry.status}-${entry.changedAt}-${index}`} className="text-muted-foreground">
+                        <span className="font-medium text-foreground">{entry.status}</span>
+                        {" · "}{formatDate(entry.changedAt)}
+                        {entry.rejectionReason && <span> · {entry.rejectionReason}</span>}
+                        {entry.accountNumberLast4 && <span> · Account ending {entry.accountNumberLast4}</span>}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+            </>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedSubmission(null)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

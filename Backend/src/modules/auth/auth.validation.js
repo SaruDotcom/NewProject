@@ -96,6 +96,7 @@ const registerSchema = Joi.object({
     .try(Joi.boolean(), Joi.string().valid('true', 'false'))
     .optional(),
   referralCode: Joi.string().optional().allow('', null).trim().max(32),
+  wholesalerReferralCode: Joi.string().optional().allow('', null).trim().uppercase().max(12),
   inviteToken: Joi.string().optional().trim().pattern(/^[a-f0-9]{64}$/i),
   ref: Joi.string().optional().trim().max(64).allow('', null),
   adminCode: Joi.string().optional().trim().max(64).allow('', null),

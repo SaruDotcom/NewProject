@@ -8,6 +8,7 @@ const {
   RetailerProfile,
   WholesalerRetailerRelationship,
   AuditLog,
+  Notification,
 } = require('../src/models');
 const {
   ROLES,
@@ -160,7 +161,15 @@ describe('Separate wholesaler bank details verification', () => {
     expect(pendingQueue.status).toBe(200);
     expect(pendingQueue.headers['cache-control']).toBe('no-store');
     expect(pendingQueue.body.data).toHaveLength(1);
-    expect(pendingQueue.body.data[0].bankDetails.accountNumber).toBe(bankDetails.accountNumber);
+    expect(pendingQueue.body.data[0].bankDetails.accountNumber).toBe('••••••••9012');
+
+    const detailResponse = await request(app)
+      .get(`/api/v1/admin/bank-details/${wholesaler._id}`)
+      .set('Authorization', `Bearer ${superadminToken}`);
+    expect(detailResponse.status).toBe(200);
+    expect(detailResponse.headers['cache-control']).toBe('no-store');
+    expect(detailResponse.body.data.bankDetails.accountNumber).toBe(bankDetails.accountNumber);
+    expect(detailResponse.body.data.kycStatus).toBe(KYC_STATUS.APPROVED);
 
     const stored = await WholesalerProfile.findById(profile._id);
     expect(stored.kycStatus).toBe(KYC_STATUS.APPROVED);
@@ -184,6 +193,13 @@ describe('Separate wholesaler bank details verification', () => {
     expect(approvedOptions.body.data.paymentMethods).toContain('NET_BANKING');
     expect(approvedOptions.body.data.bankDetails.accountNumber).not.toBe(bankDetails.accountNumber);
     expect(approvedOptions.body.data.bankDetails.accountNumber.endsWith('9012')).toBe(true);
+
+    const duplicateApproval = await request(app)
+      .patch(`/api/v1/admin/bank-details/${wholesaler._id}/approve`)
+      .set('Authorization', `Bearer ${superadminToken}`)
+      .send({});
+    expect(duplicateApproval.status).toBe(400);
+    expect(duplicateApproval.body.code).toBe('BANK_DETAILS_NOT_PENDING');
   });
 
   it('persists rejection reasons and permits a corrected resubmission without another KYC application', async () => {
@@ -228,6 +244,45 @@ describe('Separate wholesaler bank details verification', () => {
       'PENDING',
     ]);
     expect(await KycApplication.countDocuments({ wholesalerId: wholesaler._id })).toBe(0);
+  });
+
+  it('notifies the wholesaler when bank details are rejected', async () => {
+    await request(app)
+      .patch('/api/v1/wholesaler/bank-details')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send(bankDetails)
+      .expect(200);
+
+    await request(app)
+      .patch(`/api/v1/admin/bank-details/${wholesaler._id}/reject`)
+      .set('Authorization', `Bearer ${superadminToken}`)
+      .send({ reason: 'Correct the account holder name.' })
+      .expect(200);
+
+    const notification = await Notification.findOne({
+      recipientId: wholesaler._id,
+      title: 'Bank details rejected',
+    });
+    expect(notification).toBeDefined();
+    expect(notification.message).toContain('Correct the account holder name.');
+  });
+
+  it('requires Superadmin authorization to reveal full bank details', async () => {
+    await request(app)
+      .patch('/api/v1/wholesaler/bank-details')
+      .set('Authorization', `Bearer ${wholesalerToken}`)
+      .send(bankDetails)
+      .expect(200);
+
+    const deniedList = await request(app)
+      .get('/api/v1/admin/bank-details')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deniedList.status).toBe(403);
+
+    const deniedDetails = await request(app)
+      .get(`/api/v1/admin/bank-details/${wholesaler._id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deniedDetails.status).toBe(403);
   });
 
   it('preserves existing approved details until a wholesaler changes them', async () => {

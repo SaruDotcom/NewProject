@@ -464,8 +464,14 @@ export default function PaymentSettingsPage() {
                   <div className="rounded-lg bg-tradeflow-green/10 p-2 text-tradeflow-green"><CreditCard className="h-4 w-4" /></div>
                   <h2 className="font-bold text-tradeflow-navy">Bank Account Details</h2>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${bankDetailsVerified ? 'bg-emerald-50 text-emerald-700' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {bankDetailsVerified ? 'Approved' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'Rejected' : savedBankDetails?.verificationStatus === 'PENDING' ? 'Pending review' : 'Not submitted'}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${savedBankDetails?.verificationStatus === 'APPROVED' || bankDetailsVerified ? 'bg-emerald-50 text-emerald-700' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {savedBankDetails?.verificationStatus === 'APPROVED' || bankDetailsVerified
+                    ? 'Approved'
+                    : savedBankDetails?.verificationStatus === 'REJECTED'
+                      ? 'Rejected'
+                      : savedBankDetails?.verificationStatus === 'PENDING'
+                        ? 'Pending Verification'
+                        : 'Not Submitted'}
                 </span>
               </div>
               {hasSavedBankDetails && savedBankDetails ? (
@@ -487,8 +493,12 @@ export default function PaymentSettingsPage() {
               {!bankDetailsVerified && (
                 <p className="mt-3 text-xs text-amber-700">
                   {savedBankDetails?.verificationStatus === 'PENDING'
-                    ? 'Your bank details are awaiting Superadmin review. Bank transfer remains disabled.'
-                    : 'Bank transfer is available after your bank details and KYC are approved.'}
+                    ? 'Your bank details are waiting for Superadmin approval.'
+                    : savedBankDetails?.verificationStatus === 'REJECTED'
+                      ? 'Update your bank details and resubmit them for Superadmin approval.'
+                      : savedBankDetails?.verificationStatus === 'APPROVED'
+                        ? 'Your bank details have been approved. Bank payments remain disabled until your KYC is approved.'
+                        : 'Submit your bank details for Superadmin approval. Bank Transfer will remain disabled until approval.'}
                 </p>
               )}
               <button

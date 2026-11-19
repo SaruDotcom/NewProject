@@ -110,6 +110,7 @@ export interface WholesalerAccountRegistration {
   businessType?: string;
   registrationNumber?: string;
   inviteToken?: string;
+  wholesalerReferralCode?: string;
   ref?: string;
   adminCode?: string;
   utmSource?: string;
@@ -822,6 +823,7 @@ export const WholesalerProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         gstin: '',
         gstStatus: 'UNREGISTERED',
         inviteToken: data.inviteToken,
+        wholesalerReferralCode: data.wholesalerReferralCode,
         ref: data.ref,
         adminCode: data.adminCode,
         utmSource: data.utmSource,

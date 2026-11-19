@@ -22,6 +22,7 @@ const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
 const EmailOtpService = require('../../services/emailOtp.service');
 const ReferralService = require('../referrals/referrals.service');
+const WholesalerReferralProgramService = require('../referrals/wholesaler-referral-program.service');
 const WholesalerInvitesService = require('../wholesaler-invites/wholesalerInvites.service');
 const { RetailerIdentityService } = require('../../services/retailerIdentity.service');
 const { uploadBusinessLogo, deleteUploadedProductImage } = require('../../services/cloudinary.service');
@@ -198,6 +199,7 @@ class AuthService {
       aadhaarNumber,
       identityConsent,
       referralCode,
+      wholesalerReferralCode,
       inviteToken,
       ref,
       adminCode,
@@ -212,6 +214,12 @@ class AuthService {
     const role = (rawRole || 'RETAILER').toUpperCase();
     const referral = role === ROLES.RETAILER
       ? (req?.retailerReferral || await ReferralService.resolveActiveCode(referralCode))
+      : null;
+    if (wholesalerReferralCode && role !== ROLES.WHOLESALER) {
+      throw new BadRequestError('Wholesaler referral codes can only be used for wholesaler registration.', 'INVALID_WHOLESALER_REFERRAL');
+    }
+    const wholesalerReferrer = role === ROLES.WHOLESALER && wholesalerReferralCode
+      ? await WholesalerReferralProgramService.resolveReferrer(wholesalerReferralCode)
       : null;
 
     if (![ROLES.WHOLESALER, ROLES.RETAILER].includes(role)) {
@@ -353,6 +361,9 @@ class AuthService {
           sameAsBusinessAddress: sameAsBusinessAddress !== false,
         },
         kycStatus: KYC_STATUS.SUBMITTED,
+        referredByWholesalerId: wholesalerReferrer?.user._id,
+        wholesalerReferralCodeUsed: wholesalerReferrer?.profile.wholesalerReferralCode || '',
+        wholesalerReferralAt: wholesalerReferrer ? new Date() : undefined,
         registrationSource: validatedAdminCode
           ? 'ADMIN_LINK'
           : (inviteClaim
@@ -383,6 +394,16 @@ class AuthService {
           },
         },
       });
+
+      await WholesalerReferralProgramService.ensureReferralCode(wholesalerProfile);
+      if (wholesalerReferrer) {
+        await WholesalerReferralProgramService.recordRegistration(
+          wholesalerReferrer.user._id,
+          wholesalerReferrer.profile.wholesalerReferralCode,
+          user,
+          wholesalerProfile
+        );
+      }
 
       // Create initial wallet for wholesaler
       const wallet = await Wallet.create({

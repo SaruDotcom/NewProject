@@ -697,6 +697,7 @@ export const api = {
     pickupState?: string;
     pickupPincode?: string;
     inviteToken?: string;
+    wholesalerReferralCode?: string;
     ref?: string;
     adminCode?: string;
     utmSource?: string;
@@ -731,6 +732,41 @@ export const api = {
       `/invites/validate-ref/${encodeURIComponent(code)}`,
       { method: 'GET' },
     ),
+  validateWholesalerReferralCode: (code: string) =>
+    request<{ success: boolean; data: { valid: boolean; code: string; businessName: string } }>(
+      `/wholesaler-referral/${encodeURIComponent(code)}/validate`,
+      { method: 'GET', cache: 'no-store' },
+    ),
+  getWholesalerReferralProgram: (page = 1, limit = 10) =>
+    request<{
+      success: boolean;
+      data: {
+        code: string;
+        commissionAmount: number;
+        summary: {
+          totalReferrals: number;
+          successfulReferrals: number;
+          pendingCommissions: number;
+          totalCommissionEarned: number;
+          totalCommissionPaid: number;
+          availableCommissionBalance: number;
+        };
+        referrals: Array<{
+          id: string;
+          referredWholesalerId: string;
+          wholesalerName: string;
+          referralDate: string;
+          commissionAmount: number;
+          commissionStatus: string;
+          eligibleAt: string | null;
+          approvedAt: string | null;
+          paidAt: string | null;
+          transactionReference: string;
+          rejectionReason: string;
+        }>;
+        pagination: { page: number; limit: number; total: number; totalPages: number };
+      };
+    }>(`/wholesaler/referral-program?page=${page}&limit=${limit}`, { method: 'GET', cache: 'no-store' }),
 
   getMe: (signal?: AbortSignal) =>
     request<{ success: boolean; data: any }>('/auth/me', { method: 'GET', signal }),

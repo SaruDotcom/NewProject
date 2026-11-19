@@ -61,6 +61,7 @@ function invalidateMutation(path) {
     "subscription-plan": ["subscription-plan"],
     reviews: ["reviews"],
     relationships: ["relationships"],
+    "referral-program": ["referral-program"],
   };
   const affected = rules[resource];
   if (!affected) return;

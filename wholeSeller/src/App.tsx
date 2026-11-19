@@ -24,6 +24,7 @@ const CreditPolicyPage = lazy(() => import('./app/dashboard/credit-policy/page')
 const CouponsPage = lazy(() => import('./app/dashboard/coupons/page'));
 const SupportPage = lazy(() => import('./app/dashboard/support/page'));
 const PaymentSettingsPage = lazy(() => import('./app/dashboard/payment-settings/page'));
+const ReferralPage = lazy(() => import('./app/dashboard/referral/page'));
 const PurchasesPage = lazy(() => import('./app/dashboard/purchases/page'));
 const StoreThemePage = lazy(() => import('./app/dashboard/store-theme/page'));
 
@@ -110,6 +111,7 @@ export function App() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="credit-policy" element={<CreditPolicyPage />} />
           <Route path="payment-settings" element={<PaymentSettingsPage />} />
+          <Route path="referral" element={<ReferralPage />} />
           <Route path="store-theme" element={<StoreThemePage />} />
           <Route path="khata-book" element={<Navigate to="/dashboard/purchases?tab=ledger" replace />} />
           <Route path="purchases" element={<PurchasesPage />} />
