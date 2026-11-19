@@ -20,7 +20,6 @@ import {
   FileCheck2,
   Headphones,
   LayoutDashboard,
-  Landmark,
   Gift,
   Menu,
   MessageSquareText,
@@ -76,7 +75,6 @@ const nav = [
   { label: "Wholesalers", href: "/wholesalers", icon: Building2 },
   { label: "Wholesaler Invites", href: "/wholesaler-invites", icon: Send },
   { label: "KYC", href: "/kyc", icon: FileCheck2 },
-  { label: "Bank Details Verification", href: "/bank-details", icon: Landmark },
   { label: "Referral & Commission Management", href: "/commissions", icon: Gift },
   // { label: "Retailers", href: "/retailers", icon: Store },
   // { label: "Relationships", href: "/relationships", icon: Waypoints },
@@ -125,7 +123,7 @@ export function AdminShell({ children }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const visibleNav = adminUser?.role === "SUPER_ADMIN"
     ? nav
-    : nav.filter((item) => !["/bank-details", "/commissions"].includes(item.href));
+    : nav.filter((item) => item.href !== "/commissions");
   const current = visibleNav.find((item) =>
     item.href === "/" ? pathname === "/" : pathname.startsWith(item.href),
   );

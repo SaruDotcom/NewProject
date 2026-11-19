@@ -175,7 +175,22 @@ export type ApiOrder = {
   retailerId?: string;
   grandTotal?: number;
   total?: number;
+  subtotal?: number;
+  tax?: number;
+  shipping?: number;
+  discount?: number;
   createdAt?: string;
+  shippingAddress?: {
+    street?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    contactName?: string;
+    phone?: string;
+  };
   paymentMethod?: string;
   paymentMode?: string;
   isCreditOrder?: boolean;
@@ -191,15 +206,22 @@ export type ApiOrder = {
     pricePerUnit?: number;
     price?: number;
     name?: string;
+    description?: string;
+    unit?: string;
     imageUrl?: string;
     subtotal?: number;
     total?: number;
+    taxableValue?: number;
+    discountAmount?: number;
     sku?: string;
     hsnCode?: string;
     cgst?: number | null;
     sgst?: number | null;
     igst?: number | null;
     gstAmount?: number;
+    cgstAmount?: number;
+    sgstAmount?: number;
+    igstAmount?: number;
     priceIncludesTax?: boolean;
   }>;
 };
@@ -742,7 +764,7 @@ export const api = {
       upiId: string;
       qrSessionMinutes: number;
       paymentMethods: string[];
-      bankDetailsStatus: 'NOT_ADDED' | 'INCOMPLETE' | 'UNVERIFIED' | 'VERIFIED';
+      bankDetailsStatus: 'NOT_ADDED' | 'INCOMPLETE' | 'KYC_REQUIRED' | 'VERIFIED';
       bankDetails: {
         accountHolderName: string;
         bankName: string;
@@ -761,6 +783,7 @@ export const api = {
     }>>('/retailer/payment-options/qr-session', { method: 'POST', body: JSON.stringify(wholesalerId ? { wholesalerId } : {}) }),
   createPaymentReport: (payload: {
     orderId?: string;
+    wholesalerId?: string;
     amount: string;
     transactionReference: string;
     paymentMethod?: string;
@@ -772,6 +795,7 @@ export const api = {
   }) => {
     const formData = new FormData();
     if (payload.orderId) formData.append('orderId', payload.orderId);
+    if (payload.wholesalerId) formData.append('wholesalerId', payload.wholesalerId);
     formData.append('amount', payload.amount);
     formData.append('transactionReference', payload.transactionReference);
     if (payload.paymentMethod) formData.append('paymentMethod', payload.paymentMethod);
@@ -820,7 +844,13 @@ export const api = {
     request<ApiEnvelope<any>>('/retailer/returns', { method: 'POST', body: JSON.stringify(payload) }),
 
   getOrderById: (orderId: string) =>
-    request<ApiEnvelope<{ order: any; payment?: any; invoice?: any }>>(`/retailer/orders/${orderId}`, { method: 'GET' }),
+    request<ApiEnvelope<{
+      order: any;
+      payment?: any;
+      payments?: any[];
+      totals?: { paidAmount?: number };
+      invoice?: any;
+    }>>(`/retailer/orders/${orderId}`, { method: 'GET' }),
 
   cancelOrder: (orderId: string, reason: string, note?: string) =>
     request<ApiEnvelope<any>>(`/retailer/orders/${orderId}/cancel`, {

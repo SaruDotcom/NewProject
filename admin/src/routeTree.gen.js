@@ -7,7 +7,6 @@ import { Route as rootRouteImport } from "./routes/__root";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as KycRouteImport } from "./routes/kyc";
 import { Route as KycIdRouteImport } from "./routes/kyc.$id";
-import { Route as BankDetailsRouteImport } from "./routes/bank-details";
 import { Route as LoginRouteImport } from "./routes/login";
 import { Route as AdminUsersRouteImport } from "./routes/admin-users";
 import { Route as CategoriesRouteImport } from "./routes/categories";
@@ -48,11 +47,6 @@ const LoginRoute = LoginRouteImport.update({
 const KycRoute = KycRouteImport.update({
   id: "/kyc",
   path: "/kyc",
-  getParentRoute: () => rootRouteImport,
-});
-const BankDetailsRoute = BankDetailsRouteImport.update({
-  id: "/bank-details",
-  path: "/bank-details",
   getParentRoute: () => rootRouteImport,
 });
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -233,7 +227,6 @@ const rootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   KycRoute: KycRouteWithChildren,
-  BankDetailsRoute: BankDetailsRoute,
   AdminUsersRoute: AdminUsersRoute,
   CategoriesRoute: CategoriesRoute,
   CommissionsRoute: CommissionsRoute,

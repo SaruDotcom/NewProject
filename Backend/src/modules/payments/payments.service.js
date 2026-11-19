@@ -38,7 +38,7 @@ const QR_KEY_PREFIX = 'gridfs:payment-qr:';
 const EVIDENCE_BUCKET_NAME = 'paymentEvidence';
 const EVIDENCE_KEY_PREFIX = 'gridfs:';
 const UPI_ID_PATTERN = /^[a-zA-Z0-9._-]{2,128}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
-const ADDITIONAL_PAYMENT_METHODS = ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'];
+const ADDITIONAL_PAYMENT_METHODS = ['BANK_TRANSFER', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'];
 const PAYMENT_OTP_LIMIT_RUPEES = 10000;
 const PAYMENT_OTP_TTL_MS = 5 * 60 * 1000;
 const PAYMENT_OTP_RESEND_MS = 60 * 1000;
@@ -196,6 +196,7 @@ function getEnabledPaymentMethods(settings = {}, bankDetailsVerified = false) {
       ? settings.additionalPaymentMethods
       : []
   );
+  if (bankDetailsVerified) methods.add('BANK_TRANSFER');
   if (
     settings.qrPaymentsEnabled ||
     (settings.upiIdPaymentsEnabled && UPI_ID_PATTERN.test(String(settings.upiId || '')))
@@ -208,12 +209,11 @@ function maskAccountNumber(accountNumber) {
   return value ? `••••••••${value.slice(-4)}` : '';
 }
 
-function getBankDetailsStatus(details, verified) {
+function getBankDetailsStatus(details, verified, kycApproved) {
   if (!hasAnyBankDetails(details)) return 'NOT_ADDED';
   if (!hasValidBankDetails(details)) return 'INCOMPLETE';
   if (verified) return 'VERIFIED';
-  if (['PENDING', 'REJECTED'].includes(details.verificationStatus)) return details.verificationStatus;
-  return 'UNVERIFIED';
+  return kycApproved ? 'INCOMPLETE' : 'KYC_REQUIRED';
 }
 
 function parseAdditionalPaymentMethods(value, fallback = []) {
@@ -377,14 +377,9 @@ class PaymentsService {
       bankDetails: {
         ...bankDetails,
         isVerified: bankDetailsVerified,
-        verificationStatus: bankDetailsVerified
-          ? 'APPROVED'
-          : profile.bankDetails?.verificationStatus || 'NOT_SUBMITTED',
-        submittedAt: profile.bankDetails?.submittedAt || null,
-        approvedAt: profile.bankDetails?.approvedAt || null,
-        rejectionReason: profile.bankDetails?.rejectionReason || '',
-        verificationHistory: profile.bankDetails?.verificationHistory || [],
+        verificationStatus: getBankDetailsStatus(bankDetails, bankDetailsVerified, profile.kycStatus === 'APPROVED'),
       },
+      kycApproved: profile.kycStatus === 'APPROVED',
       additionalPaymentMethods: settings.additionalPaymentMethods || [],
       paymentOtpLimit: Number(settings.paymentOtpLimit ?? PAYMENT_OTP_LIMIT_RUPEES),
       hasQrImage: Boolean(qrDataUrl || qrImageUrl),
@@ -422,24 +417,19 @@ class PaymentsService {
       branch: String(payload.branch || originalBankDetails.branch).trim(),
     };
     const bankDetailsChanged = BANK_DETAIL_FIELDS.some((field) => bankDetails[field] !== originalBankDetails[field]);
+    if (bankDetailsChanged && profile.kycStatus !== 'APPROVED') {
+      throw new ForbiddenError('KYC must be approved before adding or updating bank details.', 'KYC_APPROVAL_REQUIRED');
+    }
     if (bankDetailsChanged) {
-      bankDetails.isVerified = false;
-      bankDetails.verificationStatus = 'PENDING';
-      bankDetails.submittedAt = new Date();
+      bankDetails.isVerified = hasValidBankDetails(bankDetails);
+      bankDetails.verificationStatus = bankDetails.isVerified ? 'VERIFIED' : 'NOT_SUBMITTED';
+      bankDetails.submittedAt = undefined;
       bankDetails.approvedAt = undefined;
       bankDetails.approvedBy = undefined;
       bankDetails.rejectionReason = '';
-      bankDetails.verificationHistory = [
-        ...(bankDetails.verificationHistory || []),
-        {
-          status: 'PENDING',
-          changedBy: actor._id,
-          changedAt: new Date(),
-          accountNumberLast4: bankDetails.accountNumber.slice(-4),
-        },
-      ];
     } else {
       bankDetails.isVerified = await isBankDetailsVerified(profile, originalBankDetails);
+      bankDetails.verificationStatus = bankDetails.isVerified ? 'VERIFIED' : 'NOT_SUBMITTED';
     }
     const additionalPaymentMethods = bankDetails.isVerified ? requestedAdditionalPaymentMethods : [];
 
@@ -561,6 +551,9 @@ class PaymentsService {
 
   static async submitBankDetails(wholesalerId, payload, actor, req) {
     const profile = await getProfile(wholesalerId);
+    if (profile.kycStatus !== 'APPROVED') {
+      throw new ForbiddenError('KYC must be approved before adding or updating bank details.', 'KYC_APPROVAL_REQUIRED');
+    }
     const bankDetails = normalizeBankDetails(payload);
     const confirmedAccountNumber = String(payload.confirmAccountNumber || '').trim();
     if (!hasValidBankDetails(bankDetails)) {
@@ -586,76 +579,66 @@ class PaymentsService {
     const changed = BANK_DETAIL_FIELDS.some((field) =>
       bankDetails[field] !== String(originalBankDetails[field] || '').trim()
     );
-    const currentStatus = storedBankDetails.verificationStatus || 'NOT_SUBMITTED';
-    const legacyVerified = !['PENDING', 'REJECTED'].includes(currentStatus) &&
-      await isBankDetailsVerified(profile, { ...storedBankDetails, ...bankDetails });
-
-    if (!changed && (currentStatus === 'APPROVED' || legacyVerified)) {
+    const bankDetailsVerified = await isBankDetailsVerified(profile, { ...storedBankDetails, ...bankDetails });
+    if (!changed && bankDetailsVerified) {
+      if (storedBankDetails.verificationStatus !== 'VERIFIED' || storedBankDetails.isVerified !== true) {
+        profile.bankDetails = {
+          ...storedBankDetails,
+          ...bankDetails,
+          isVerified: true,
+          verificationStatus: 'VERIFIED',
+          submittedAt: undefined,
+          approvedAt: undefined,
+          approvedBy: undefined,
+          rejectionReason: '',
+        };
+        await profile.save();
+      }
       return this.getSettings(wholesalerId);
     }
-    if (!changed && currentStatus === 'PENDING') {
-      return this.getSettings(wholesalerId);
-    }
 
-    const now = new Date();
     profile.bankDetails = {
       ...storedBankDetails,
       ...bankDetails,
-      isVerified: false,
-      verificationStatus: 'PENDING',
-      submittedAt: now,
+      isVerified: true,
+      verificationStatus: 'VERIFIED',
+      submittedAt: undefined,
       approvedAt: undefined,
       approvedBy: undefined,
       rejectionReason: '',
-      verificationHistory: [
-        ...(storedBankDetails.verificationHistory || []),
-        {
-          status: 'PENDING',
-          changedBy: actor._id,
-          changedAt: now,
-          accountNumberLast4: bankDetails.accountNumber.slice(-4),
-        },
-      ],
     };
     await profile.save();
     await AuditService.log({
       actorId: actor._id,
       actorRole: actor.role,
-      action: 'BANK_DETAILS_SUBMITTED',
+      action: 'UPDATE',
       entityType: 'WholesalerBankDetails',
       entityId: profile.userId,
-      after: { verificationStatus: 'PENDING', submittedAt: now },
+      after: { bankDetailsSaved: true, accountNumberLast4: bankDetails.accountNumber.slice(-4) },
       req,
     });
     return this.getSettings(wholesalerId);
   }
 
   static async resolveWholesalerProfile(retailerId, requestedWholesalerId = null) {
-    let wholesalerUserId = null;
-    if (requestedWholesalerId) {
-      const isOid = mongoose.isValidObjectId(requestedWholesalerId);
-      if (isOid) {
-        const byProfile = await WholesalerProfile.findOne({
-          $or: [{ userId: requestedWholesalerId }, { _id: requestedWholesalerId }],
-        });
-        if (byProfile) {
-          wholesalerUserId = byProfile.userId;
-        } else {
-          wholesalerUserId = requestedWholesalerId;
-        }
-      }
-    }
-
     let relationship = null;
-    if (wholesalerUserId) {
+    if (requestedWholesalerId) {
+      if (!mongoose.isValidObjectId(requestedWholesalerId)) {
+        throw new BadRequestError('A valid wholesaler ID is required.', 'INVALID_WHOLESALER_ID');
+      }
+      const byProfile = await WholesalerProfile.findOne({
+        $or: [{ userId: requestedWholesalerId }, { _id: requestedWholesalerId }],
+      });
+      const wholesalerUserId = byProfile?.userId || requestedWholesalerId;
       relationship = await WholesalerRetailerRelationship.findOne({
         retailerId,
         wholesalerId: wholesalerUserId,
         status: 'ACTIVE',
       });
-    }
-
-    if (!relationship) {
+      if (!relationship) {
+        throw new ForbiddenError('You are not connected to the selected wholesaler.', 'NO_ACTIVE_WHOLESALER');
+      }
+    } else {
       relationship = await WholesalerRetailerRelationship.findOne({ retailerId, status: 'ACTIVE' });
     }
 
@@ -691,10 +674,11 @@ class PaymentsService {
       upiId: upiIdIsValid ? settings.upiId : '',
       qrSessionMinutes: Number(settings.qrSessionMinutes || 10),
       paymentMethods: getEnabledPaymentMethods(settings, bankDetailsVerified),
-      bankDetailsStatus: getBankDetailsStatus({
-        ...bankDetails,
-        verificationStatus: profile.bankDetails?.verificationStatus,
-      }, bankDetailsVerified),
+      bankDetailsStatus: getBankDetailsStatus(
+        bankDetails,
+        bankDetailsVerified,
+        profile.kycStatus === 'APPROVED',
+      ),
       bankDetails: bankDetailsVerified
         ? { ...bankDetails, accountNumber: maskAccountNumber(bankDetails.accountNumber) }
         : null,

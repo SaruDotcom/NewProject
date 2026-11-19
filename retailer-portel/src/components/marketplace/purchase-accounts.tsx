@@ -914,47 +914,177 @@ export function PurchaseAccountsPage({ initialTab = "overview" }: { initialTab?:
       {selectedOrderId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Invoice details">
           <section className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-background p-4 shadow-2xl sm:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
               <div><p className="text-xs font-bold uppercase tracking-wider text-primary">Purchase invoice</p><h2 className="mt-1 text-2xl font-extrabold text-ink">{selectedInvoice ? invoice?.number || `Order ${orderNumber(selectedInvoice)}` : "Invoice details"}</h2><p className="mt-1 text-sm text-muted-foreground">{selectedInvoice ? wholesalerName(selectedInvoice) : "Loading order…"}</p></div>
               <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={downloadInvoice} disabled={!invoice?.available}><Download className="mr-2 size-4" />Download PDF</Button><Button variant="outline" onClick={printInvoice} disabled={!invoice?.available}><Printer className="mr-2 size-4" />Print</Button><Button variant="outline" onClick={shareInvoice} disabled={!selectedInvoice}><Share2 className="mr-2 size-4" />Share</Button>              <Button variant="ghost" onClick={() => setSelectedOrderId("")}>Close</Button></div>
             </div>
             {invoiceQuery.isLoading ? <p className="py-12 text-center text-sm text-muted-foreground">Loading order and invoice data…</p> : invoiceQuery.isError ? <p role="alert" className="my-5 rounded-lg bg-destructive/5 p-4 text-sm text-destructive">{invoiceQuery.error instanceof Error ? invoiceQuery.error.message : "Unable to load invoice details."}</p> : selectedInvoice && (
-              <div id="account-invoice-print" className="mt-5 space-y-5">
+              <div id="account-invoice-print" className="mx-auto mt-5 max-w-[210mm] bg-white p-5 text-[#1d2d40] sm:p-8">
                 {!invoice?.available && <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">Invoice is not available yet. The invoice is generated from the confirmed order after it is marked delivered. Current order status: {String(selectedInvoice.orderStatus || selectedInvoice.status || "PENDING").replace(/_/g, " ")}.</p>}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <article className="rounded-xl border p-4">
-                    <h3 className="text-xs font-bold uppercase text-muted-foreground">Supplier details</h3>
-                    <div className="mt-3 flex items-center gap-3">{invoice?.seller?.logo && <img src={invoice.seller.logo} alt={`${invoice.seller.businessName} logo`} className="size-12 rounded-lg border object-contain" />}<p className="font-extrabold text-ink">{invoice?.seller?.businessName || wholesalerName(selectedInvoice)}</p></div>
-                    <p className="mt-2 text-sm text-muted-foreground">{formatAddress(invoice?.seller?.address)}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Contact: {invoice?.seller?.phone || invoice?.seller?.email || "Not provided"} · GSTIN: {invoice?.seller?.gstin || "Not provided"}</p>
-                  </article>
-                  <article className="rounded-xl border p-4">
-                    <h3 className="text-xs font-bold uppercase text-muted-foreground">Invoice / order details</h3>
-                    <dl className="mt-3 grid grid-cols-2 gap-2 text-sm"><dt>Invoice number</dt><dd className="text-right font-semibold">{invoice?.number || "Not available"}</dd><dt>Order number</dt><dd className="text-right font-semibold">{orderNumber(selectedInvoice)}</dd><dt>Invoice date</dt><dd className="text-right font-semibold">{invoice?.available ? formatDate(invoice.date) : "Not issued"}</dd><dt>Purchase date</dt><dd className="text-right font-semibold">{formatDate(selectedInvoice.createdAt)}</dd><dt>Bilty / LR number</dt><dd className="text-right font-semibold">{selectedInvoice.shippingDetails?.biltyNumber || "Not provided"}</dd><dt>Order status</dt><dd className="text-right font-semibold">{String(selectedInvoice.orderStatus || selectedInvoice.status || "PENDING").replace(/_/g, " ")}</dd><dt>Due date</dt><dd className="text-right font-semibold">{formatDate(selectedInvoice.creditDueDate)}</dd></dl>
-                  </article>
+                <header className="flex flex-wrap items-start justify-between gap-5 border-b-2 border-[#b3945a] pb-5">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <BusinessLogo logo={invoice?.seller?.logo} name={invoice?.seller?.businessName || wholesalerName(selectedInvoice)} />
+                    <div className="min-w-0">
+                      <p className="text-lg font-extrabold">{invoice?.seller?.businessName || wholesalerName(selectedInvoice)}</p>
+                      <p className="mt-1 max-w-md text-xs leading-5 text-[#657181]">{formatAddress(invoice?.seller?.address)}</p>
+                      <p className="mt-1 text-xs text-[#657181]">{invoice?.seller?.phone || invoice?.seller?.email || "Contact not provided"}{invoice?.seller?.gstin ? ` · GSTIN ${invoice.seller.gstin}` : ""}</p>
+                    </div>
+                  </div>
+                  <div className="sm:text-right">
+                    <p className="text-2xl font-black tracking-wide">TAX INVOICE</p>
+                    <p className="mt-1 font-bold text-[#9a7941]">{invoice?.number || `INV-${orderNumber(selectedInvoice)}`}</p>
+                    <p className="mt-2 text-xs text-[#657181]">Invoice date: {invoice?.available ? formatDate(invoice.date) : "Not issued"}</p>
+                    <p className="text-xs text-[#657181]">Order reference: {orderNumber(selectedInvoice)}</p>
+                  </div>
+                </header>
+
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                  <InvoiceParty
+                    title="Supplied By"
+                    name={invoice?.seller?.businessName || wholesalerName(selectedInvoice)}
+                    logo={invoice?.seller?.logo}
+                    address={invoice?.seller?.address}
+                    phone={invoice?.seller?.phone}
+                    email={invoice?.seller?.email}
+                    gstin={invoice?.seller?.gstin}
+                  />
+                  <InvoiceParty
+                    title="Billed To"
+                    name={invoice?.buyer?.businessName || "Retailer"}
+                    logo={invoice?.buyer?.logo}
+                    address={invoice?.buyer?.address}
+                    phone={invoice?.buyer?.phone}
+                    email={invoice?.buyer?.email}
+                    gstin={invoice?.buyer?.gstin}
+                  />
                 </div>
-                <article className="overflow-hidden rounded-xl border">
-                  <h3 className="border-b p-4 text-sm font-extrabold text-ink">Purchased products</h3>
-                  <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="bg-secondary/40 text-[10px] uppercase text-muted-foreground"><tr><th className="p-3">Product</th><th className="p-3">Description</th><th className="p-3">Qty / Unit</th><th className="p-3 text-right">Rate</th><th className="p-3 text-right">Taxable</th><th className="p-3 text-right">GST % / Amt</th><th className="p-3 text-right">Total</th></tr></thead><tbody className="divide-y">{(selectedInvoice.items || []).map((item: any, index: number) => <tr key={String(item._id || item.productId?._id || item.productId || index)}><td className="p-3 font-semibold">{item.name || "Product"}<div className="text-[10px] text-muted-foreground">HSN: {item.hsnCode || "Not recorded"}</div></td><td className="p-3 text-muted-foreground">{item.description || "Not recorded on this order"}</td><td className="p-3">{item.quantity} {item.unit || "unit not recorded"}</td><td className="p-3 text-right">{money(Number(item.pricePerUnit || 0))}</td><td className="p-3 text-right">{money(Number(item.taxableValue ?? item.subtotal ?? 0))}</td><td className="p-3 text-right">{Number(item.gstRate || 0)}% / {money(Number(item.gstAmount || 0))}</td><td className="p-3 text-right font-bold">{money(Number(item.total ?? item.subtotal ?? 0))}</td></tr>)}</tbody></table></div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 border-y border-[#e5e8ec] py-3 text-xs sm:grid-cols-4">
+                  <p><span className="text-[#657181]">Invoice date</span><br /><strong>{invoice?.available ? formatDate(invoice.date) : "Not issued"}</strong></p>
+                  <p><span className="text-[#657181]">Order date</span><br /><strong>{formatDate(selectedInvoice.createdAt)}</strong></p>
+                  <p><span className="text-[#657181]">Bilty / LR</span><br /><strong>{selectedInvoice.shippingDetails?.biltyNumber || "Not provided"}</strong></p>
+                  <p><span className="text-[#657181]">Order status</span><br /><strong>{String(selectedInvoice.orderStatus || selectedInvoice.status || "PENDING").replace(/_/g, " ")}</strong></p>
+                </div>
+                {selectedInvoice.shippingAddress && <section className="mt-4 border border-[#e5e8ec] p-3 text-xs">
+                  <h3 className="font-bold uppercase tracking-wide text-[#657181]">Ship To</h3>
+                  <p className="mt-1 font-semibold">{selectedInvoice.shippingAddress.contactName || invoice?.buyer?.businessName || "Retailer"}</p>
+                  <p className="mt-1 text-[#657181]">{formatAddress(selectedInvoice.shippingAddress)}</p>
+                  {selectedInvoice.shippingAddress.phone && <p className="mt-1 text-[#657181]">Phone: {selectedInvoice.shippingAddress.phone}</p>}
+                </section>}
+                <article className="mt-5 overflow-hidden border border-[#e5e8ec]">
+                  <h3 className="border-b border-[#e5e8ec] px-3 py-3 text-sm font-extrabold">Product details</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[690px] text-left text-[11px]">
+                      <thead className="bg-[#1d2d40] text-[9px] uppercase tracking-wide text-white"><tr>
+                        <th className="px-2 py-3">S.No.</th><th className="px-2 py-3">Product / SKU</th><th className="px-2 py-3 text-right">Qty</th><th className="px-2 py-3 text-right">Unit price</th><th className="px-2 py-3 text-right">Tax</th><th className="px-2 py-3 text-right">Discount</th><th className="px-2 py-3 text-right">Total</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-[#e5e8ec]">
+                        {(selectedInvoice.items || []).map((item: any, index: number) => (
+                          <tr key={String(item._id || item.productId?._id || item.productId || index)} className={index % 2 === 0 ? "bg-[#fafaf8]" : "bg-white"}>
+                            <td className="px-2 py-3">{index + 1}</td>
+                            <td className="px-2 py-3"><strong>{item.name || "Product"}</strong><div className="mt-1 text-[9px] text-[#657181]">SKU: {item.sku || "—"}{item.hsnCode ? ` · HSN: ${item.hsnCode}` : ""}</div>{item.description && <div className="mt-1 text-[9px] text-[#657181]">{item.description}</div>}</td>
+                            <td className="px-2 py-3 text-right">{item.quantity} {item.unit || ""}</td>
+                            <td className="px-2 py-3 text-right">{money(Number(item.pricePerUnit || 0))}</td>
+                            <td className="px-2 py-3 text-right">{money(Number(item.gstAmount || 0))}</td>
+                            <td className="px-2 py-3 text-right">{money(Number(item.discountAmount || 0))}</td>
+                            <td className="px-2 py-3 text-right font-bold">{money(Number(item.total ?? item.subtotal ?? 0))}</td>
+                          </tr>
+                        ))}
+                        {!selectedInvoice.items?.length && <tr><td colSpan={7} className="px-3 py-8 text-center text-[#657181]">No product details are available for this order.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
                 </article>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <article className="rounded-xl border p-4"><h3 className="text-sm font-extrabold text-ink">Payment details</h3>{invoiceReports.length ? <div className="mt-3 space-y-2">{invoiceReports.map((report) => <div key={report._id} className="flex flex-wrap justify-between gap-2 border-b pb-2 text-xs last:border-0"><span>{formatDate(report.reportedPaymentDate || report.paidAt || report.createdAt)} · {String(report.paymentMethod || "Not recorded").replace(/_/g, " ")} · Ref {report.transactionReference || "Not recorded"}</span><span className="font-bold">{money(getPaymentAmount(report))} · {report.status}</span>{report.screenshotAvailable && <button type="button" onClick={() => void openPaymentProof(String(report._id))} className="text-primary underline">View proof</button>}</div>)}</div> : <p className="mt-3 text-sm text-muted-foreground">No payment reports are recorded for this order.</p>}</article>
-                  <article className="rounded-xl border p-4"><h3 className="text-sm font-extrabold text-ink">Bill calculation</h3><dl className="mt-3 space-y-2 text-sm"><div className="flex justify-between"><dt>Subtotal</dt><dd>{money(Number(selectedInvoice.subtotal || 0))}</dd></div><div className="flex justify-between"><dt>CGST</dt><dd>{money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.cgstAmount || 0), 0))}</dd></div><div className="flex justify-between"><dt>SGST</dt><dd>{money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.sgstAmount || 0), 0))}</dd></div><div className="flex justify-between"><dt>IGST</dt><dd>{money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.igstAmount || 0), 0))}</dd></div><div className="flex justify-between"><dt>Transport / shipping</dt><dd>{money(Number(selectedInvoice.shipping || 0))}</dd></div><div className="flex justify-between"><dt>Loading / unloading</dt><dd>Not recorded</dd></div><div className="flex justify-between"><dt>Discount</dt><dd>− {money(Number(selectedInvoice.discount || 0))}</dd></div><div className="flex justify-between border-t pt-2 font-extrabold"><dt>Grand total</dt><dd>{money(orderTotal(selectedInvoice))}</dd></div><div className="flex justify-between text-emerald-700"><dt>Amount paid</dt><dd>{money(orderPaid(selectedInvoice, payments))}</dd></div><div className="flex justify-between font-bold text-amber-800"><dt>Remaining balance</dt><dd>{money(paymentDue(selectedInvoice, payments, returns))}</dd></div></dl></article>
+
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                  <article className="border border-[#e5e8ec] p-4">
+                    <h3 className="text-sm font-extrabold">Payment information</h3>
+                    {invoiceReports.length ? <div className="mt-3 space-y-3">{invoiceReports.map((report) => <div key={report._id} className="border-b border-[#e5e8ec] pb-2 text-xs last:border-0"><p>{formatDate(report.reportedPaymentDate || report.paidAt || report.createdAt)} · {String(report.paymentMethod || "Not recorded").replace(/_/g, " ")}</p><p className="mt-1 text-[#657181]">Reference: {report.transactionReference || "Not recorded"} · {report.status}</p><p className="mt-1 font-bold">{money(getPaymentAmount(report))}</p>{report.screenshotAvailable && <button type="button" onClick={() => void openPaymentProof(String(report._id))} className="mt-1 text-[#9a7941] underline print:hidden">View proof</button>}</div>)}</div> : <p className="mt-3 text-xs text-[#657181]">No payment records are available.</p>}
+                  </article>
+                  <article className="border border-[#e5e8ec] p-4">
+                    <h3 className="text-sm font-extrabold">Invoice summary</h3>
+                    <dl className="mt-3 space-y-2 text-xs">
+                      <InvoiceTotal label="Subtotal" amount={money(Number(selectedInvoice.subtotal || 0))} />
+                      <InvoiceTotal label="Discount" amount={`− ${money(Number(selectedInvoice.discount || 0))}`} />
+                      <InvoiceTotal label="Taxable amount" amount={money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.taxableValue ?? item.subtotal ?? 0), 0))} />
+                      <InvoiceTotal label="CGST" amount={money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.cgstAmount || 0), 0))} />
+                      <InvoiceTotal label="SGST" amount={money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.sgstAmount || 0), 0))} />
+                      <InvoiceTotal label="IGST" amount={money((selectedInvoice.items || []).reduce((sum: number, item: any) => sum + Number(item.igstAmount || 0), 0))} />
+                      <InvoiceTotal label="Shipping charges" amount={money(Number(selectedInvoice.shipping || 0))} />
+                      <InvoiceTotal label="Grand total" amount={money(orderTotal(selectedInvoice))} strong />
+                      <InvoiceTotal label="Amount paid" amount={money(orderPaid(selectedInvoice, payments))} />
+                      <InvoiceTotal label="Outstanding amount" amount={money(paymentDue(selectedInvoice, payments, returns))} strong />
+                    </dl>
+                  </article>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2"><article className="rounded-xl border p-4"><h3 className="text-xs font-bold uppercase text-muted-foreground">Retailer details</h3><p className="mt-2 font-bold">{invoice?.buyer?.businessName || "Retailer"}</p><p className="mt-1 text-xs text-muted-foreground">{formatAddress(invoice?.buyer?.address)}</p><p className="mt-1 text-xs text-muted-foreground">Contact: {invoice?.buyer?.phone || invoice?.buyer?.email || "Not provided"} · GSTIN: {invoice?.buyer?.gstin || "Not provided"}</p></article><article className="rounded-xl border p-4"><h3 className="text-xs font-bold uppercase text-muted-foreground">Order notes</h3><p className="mt-2 whitespace-pre-wrap text-sm">{selectedInvoice.wholesalerNotes || selectedInvoice.notes || "No notes recorded"}</p></article></div>
+                <footer className="mt-6 border-t border-[#e5e8ec] pt-3 text-center text-[10px] text-[#657181]">Thank you for your business.</footer>
               </div>
             )}
           </section>
         </div>
       )}
-      <style>{`@media print { body * { visibility: hidden !important; } #account-invoice-print, #account-invoice-print * { visibility: visible !important; } #account-invoice-print { position: absolute; inset: 0; width: 100%; padding: 18px; background: white; } }`}</style>
+      <style>{`@page { size: A4; margin: 12mm; } @media print { body * { visibility: hidden !important; } #account-invoice-print, #account-invoice-print * { visibility: visible !important; } #account-invoice-print { position: absolute; inset: 0; width: 100%; max-width: none; margin: 0; padding: 0; background: white; box-shadow: none; } #account-invoice-print article, #account-invoice-print table, #account-invoice-print tr { break-inside: avoid; } #account-invoice-print table { width: 100%; min-width: 0; font-size: 8pt; } #account-invoice-print th, #account-invoice-print td { padding: 5px 4px; } }`}</style>
     </main>
   );
 }
 
 function formatAddress(address: any) {
+  if (typeof address === "string" && address.trim()) return address;
   if (!address || typeof address !== "object") return "Address not provided";
   const values = [address.street, address.addressLine2, address.city, address.state, address.pincode, address.country]
     .filter((value) => typeof value === "string" && value.trim());
   return values.length ? values.join(", ") : "Address not provided";
+}
+
+function BusinessLogo({ logo, name }: { logo?: string | undefined; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden border border-[#e5e8ec] bg-[#fafaf8]">
+      {logo && !failed
+        ? <img src={logo} alt={`${name} business logo`} className="size-full object-contain p-1" onError={() => setFailed(true)} />
+        : <span className="px-1 text-center text-xs font-bold tracking-wide text-[#657181]">{name.slice(0, 2).toUpperCase()}</span>}
+    </div>
+  );
+}
+
+function InvoiceParty({
+  title,
+  name,
+  logo,
+  address,
+  phone,
+  email,
+  gstin,
+}: {
+  title: string;
+  name: string;
+  logo?: string | undefined;
+  address?: any;
+  phone?: string;
+  email?: string;
+  gstin?: string;
+}) {
+  return (
+    <article className="border border-[#e5e8ec] p-3">
+      <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7941]">{title}</h3>
+      <div className="mt-3 flex items-start gap-3">
+        <BusinessLogo logo={logo} name={name} />
+        <div className="min-w-0 text-xs">
+          <p className="font-bold">{name}</p>
+          <p className="mt-1 leading-5 text-[#657181]">{formatAddress(address)}</p>
+          {(phone || email) && <p className="mt-1 text-[#657181]">{phone || email}{phone && email ? ` · ${email}` : ""}</p>}
+          <p className="mt-1 text-[#657181]">GSTIN: {gstin || "Not applicable"}</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function InvoiceTotal({ label, amount, strong = false }: { label: string; amount: string; strong?: boolean }) {
+  return (
+    <div className={`flex justify-between gap-3 ${strong ? "border-t border-[#e5e8ec] pt-2 font-extrabold text-[#1d2d40]" : "text-[#657181]"}`}>
+      <dt>{label}</dt>
+      <dd className="text-right">{amount}</dd>
+    </div>
+  );
 }

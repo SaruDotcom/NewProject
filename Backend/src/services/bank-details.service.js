@@ -1,5 +1,3 @@
-const { KycApplication } = require('../models');
-
 const BANK_DETAIL_FIELDS = ['accountHolderName', 'bankName', 'accountNumber', 'ifscCode', 'branch'];
 const ACCOUNT_HOLDER_PATTERN = /^[\p{L}][\p{L}\s.'-]{1,99}$/u;
 const BANK_NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\s&.'()-]{1,99}$/u;
@@ -27,39 +25,16 @@ function hasValidBankDetails(details = {}) {
     BRANCH_PATTERN.test(normalized.branch);
 }
 
-function bankDetailsMatch(left = {}, right = {}) {
-  const normalizedLeft = normalizeBankDetails(left);
-  const normalizedRight = normalizeBankDetails(right);
-  return BANK_DETAIL_FIELDS.every((field) => normalizedLeft[field] === normalizedRight[field]);
-}
-
 async function isBankDetailsVerified(profile, details = profile?.bankDetails || {}) {
-  if (!profile || profile.kycStatus !== 'APPROVED' || profile.isVerified !== true || !hasValidBankDetails(details)) {
-    return false;
-  }
-
-  const verificationStatus = details.verificationStatus ?? profile.bankDetails?.verificationStatus;
-  const legacyVerified = details.isVerified ?? profile.bankDetails?.isVerified;
-  if (verificationStatus === 'APPROVED') return true;
-  if (['PENDING', 'REJECTED'].includes(verificationStatus)) return false;
-  if (legacyVerified !== true) return false;
-
-  // Preserve accounts approved through the previous KYC-matching workflow.
-  const approvedApplication = await KycApplication.findOne({
-    wholesalerId: profile.userId,
-    status: 'APPROVED',
-  }).select('bankDetails').lean();
-
   return Boolean(
-    approvedApplication &&
-    hasValidBankDetails(approvedApplication.bankDetails) &&
-    bankDetailsMatch(details, approvedApplication.bankDetails)
+    profile &&
+    profile.kycStatus === 'APPROVED' &&
+    hasValidBankDetails(details)
   );
 }
 
 module.exports = {
   BANK_DETAIL_FIELDS,
-  bankDetailsMatch,
   hasAnyBankDetails,
   hasValidBankDetails,
   isBankDetailsVerified,

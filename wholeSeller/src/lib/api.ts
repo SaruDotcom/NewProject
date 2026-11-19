@@ -1112,6 +1112,18 @@ export const api = {
   getOrderById: (id: string) =>
     request<{ success: boolean; data: OrderDetailsResponse }>(`/orders/${encodeURIComponent(id)}`, { method: 'GET' }),
 
+  downloadOrderInvoice: async (id: string): Promise<Blob> => {
+    const token = getAuthToken();
+    const response = await fetch(buildApiUrl(`/orders/${encodeURIComponent(id)}/invoice`), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message || 'Unable to download this invoice.');
+    }
+    return response.blob();
+  },
+
   updateOrderStatus: (id: string, status: string, payload?: { note?: string; cancellationReason?: string; cancellationNote?: string; shippingDetails?: any }) =>
     request<{ success: boolean; data: any }>(`/orders/${id}/status`, {
       method: 'PATCH',

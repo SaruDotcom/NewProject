@@ -12,6 +12,7 @@ router.use(authenticate);
 router.get('/', orderController.listOrders);
 
 // Get single order
+router.get('/:id/invoice', authorize(ROLES.RETAILER, ROLES.WHOLESALER), orderController.downloadInvoice);
 router.get('/:id', orderController.getOrderById);
 
 // Retailer create order (with idempotency support)

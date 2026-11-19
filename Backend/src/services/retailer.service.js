@@ -18,6 +18,7 @@ const RetailerRepository = require('../repositories/retailer.repository');
 const ProductRepository = require('../repositories/product.repository');
 const OrderRepository = require('../repositories/order.repository');
 const OrderService = require('../modules/orders/orders.service');
+const InvoiceService = require('../modules/orders/invoice.service');
 const InvitationService = require('../modules/invitations/invitations.service');
 const WalletService = require('./wallet.service');
 const SupportService = require('../modules/support/support.service');
@@ -927,17 +928,63 @@ class RetailerService {
       throw new NotFoundError('Order not found or does not belong to you');
     }
     const wholesalerId = order.wholesalerId?._id || order.wholesalerId;
-    const [payment, sellerProfile, sellerUser, retailerProfile, retailerUser] = await Promise.all([
-      Payment.findOne({ orderId: order._id, retailerId }).select('-screenshotPath').lean(),
+    const [payments, sellerProfile, sellerUser, retailerProfile, retailerUser] = await Promise.all([
+      Payment.find({ orderId: order._id, retailerId })
+        .select('amount amountPaise status paymentMethod transactionReference reportedPaymentDate paidAt createdAt orderAllocations isReversal reversesPaymentId')
+        .sort({ createdAt: -1 })
+        .lean(),
       WholesalerProfile.findOne({ userId: wholesalerId }).select('businessName businessLogoUrl address gstin').lean(),
       User.findById(wholesalerId).select('name email phone').lean(),
-      RetailerProfile.findOne({ userId: retailerId }).select('businessName ownerName address gstin').lean(),
+      RetailerProfile.findOne({ userId: retailerId }).select('businessName ownerName address gstin shopPhoto').lean(),
       User.findById(retailerId).select('name email phone').lean(),
     ]);
+    const payment = payments[0] || null;
     const invoiceAvailable = order.orderStatus === 'DELIVERED';
+    const buyerLogo = await InvoiceService.getRetailerLogoUrl(retailerProfile);
+    const grandTotal = Number(order.grandTotal || 0);
+    const reversedPaymentIds = new Set(
+      payments.filter((entry) => entry.isReversal).map((entry) => String(entry.reversesPaymentId))
+    );
+    const paidAmount = order.isCreditOrder
+      ? Number(order.creditPaidAmount || 0)
+      : Number.isSafeInteger(order.directPaidPaise)
+        ? order.directPaidPaise / 100
+        : order.paymentStatus === 'PAID' && reversedPaymentIds.size === 0
+          ? grandTotal
+          : payments.reduce((sum, entry) => {
+            if (entry.status !== 'PAID' || entry.isReversal || reversedPaymentIds.has(String(entry._id))) return sum;
+            if (entry.orderAllocations?.length) {
+              return sum + entry.orderAllocations
+                .filter((allocation) => String(allocation.orderId) === String(order._id))
+                .reduce((amount, allocation) => amount + Number(allocation.amountPaise || 0), 0) / 100;
+            }
+            return sum + (Number.isSafeInteger(entry.amountPaise)
+              ? entry.amountPaise / 100
+              : Number(entry.amount || 0));
+          }, 0);
     return {
       order,
-      payment,
+      payment: payment ? {
+        amount: payment.amount,
+        amountPaise: payment.amountPaise,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        transactionReference: payment.transactionReference,
+        reportedPaymentDate: payment.reportedPaymentDate,
+        paidAt: payment.paidAt,
+        createdAt: payment.createdAt,
+      } : null,
+      payments: payments.map((entry) => ({
+        amount: entry.amount,
+        amountPaise: entry.amountPaise,
+        status: entry.status,
+        paymentMethod: entry.paymentMethod,
+        transactionReference: entry.transactionReference,
+        reportedPaymentDate: entry.reportedPaymentDate,
+        paidAt: entry.paidAt,
+        createdAt: entry.createdAt,
+      })),
+      totals: { paidAmount: Math.min(grandTotal, paidAmount) },
       invoice: {
         available: invoiceAvailable,
         number: invoiceAvailable ? `INV-${order.orderNumber}` : null,
@@ -952,6 +999,7 @@ class RetailerService {
         },
         buyer: {
           businessName: retailerProfile?.businessName || retailerProfile?.ownerName || retailerUser?.name || '',
+          logo: buyerLogo,
           phone: order.billingAddress?.phone || order.shippingAddress?.phone || retailerUser?.phone || '',
           email: retailerUser?.email || '',
           address: order.billingAddress || order.shippingAddress || retailerProfile?.address || {},

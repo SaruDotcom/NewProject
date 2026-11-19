@@ -2,6 +2,7 @@ const OrderService = require('./orders.service');
 const ApiResponse = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 const { parsePagination } = require('../../utils/pagination');
+const InvoiceService = require('./invoice.service');
 
 class OrderController {
   // Retailer places order
@@ -31,8 +32,20 @@ class OrderController {
 
   // Get order by ID
   getOrderById = asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
     const data = await OrderService.getOrderById(req.params.id, req.user);
     return ApiResponse.success(res, data, 'Order details retrieved');
+  });
+
+  downloadInvoice = asyncHandler(async (req, res) => {
+    const invoice = await InvoiceService.createOrderInvoice(req.params.id, req.user);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${invoice.filename}"`,
+      'Content-Length': invoice.buffer.length,
+      'Cache-Control': 'private, no-store',
+    });
+    return res.status(200).send(invoice.buffer);
   });
 
   // Update order status (Super Admin / Wholesaler)

@@ -16,6 +16,7 @@ const {
 const { parsePagination } = require('../../utils/pagination');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
+const { hasValidBankDetails } = require('../../services/bank-details.service');
 
 const SETTINGS_KEY = 'WHOLESALER_REFERRAL_PROGRAM';
 const DEFAULT_COMMISSION_AMOUNT = 300;
@@ -491,13 +492,10 @@ class WholesalerReferralProgramService {
         const referringProfile = profileByUser.get(String(referringUser._id));
         const referredProfile = profileByUser.get(String(referredUser._id));
         const bank = referringProfile?.bankDetails || {};
-        const bankApproved = (
+        const bankDetailsAvailable = (
           referringProfile?.kycStatus === KYC_STATUS.APPROVED
           && referringUser.status === USER_STATUS.ACTIVE
-          && bank.verificationStatus === 'APPROVED'
-          && bank.isVerified === true
-          && Boolean(bank.approvedAt && bank.approvedBy)
-          && Boolean(bank.accountHolderName && bank.bankName && bank.accountNumber && bank.ifscCode)
+          && hasValidBankDetails(bank)
         );
         return {
           id: String(commission._id),
@@ -515,11 +513,11 @@ class WholesalerReferralProgramService {
           commissionAmount: commission.amount,
           commissionStatus: commission.status,
           paymentDetails: {
-            bankApproved,
-            bankName: bankApproved ? bank.bankName || '' : '',
-            accountNumber: bankApproved ? maskAccountNumber(bank.accountNumber) : '',
-            ifscCode: bankApproved ? bank.ifscCode || '' : '',
-            branch: bankApproved ? bank.branch || '' : '',
+            bankDetailsAvailable,
+            bankName: bankDetailsAvailable ? bank.bankName || '' : '',
+            accountNumber: bankDetailsAvailable ? maskAccountNumber(bank.accountNumber) : '',
+            ifscCode: bankDetailsAvailable ? bank.ifscCode || '' : '',
+            branch: bankDetailsAvailable ? bank.branch || '' : '',
           },
           transactionReference: commission.transactionReference || '',
           paymentDate: commission.paidAt || null,
@@ -620,16 +618,9 @@ class WholesalerReferralProgramService {
 
     const bank = profile.bankDetails || {};
     if (
-      bank.verificationStatus !== 'APPROVED'
-      || bank.isVerified !== true
-      || !bank.approvedAt
-      || !bank.approvedBy
-      || !bank.accountHolderName
-      || !bank.bankName
-      || !bank.accountNumber
-      || !bank.ifscCode
+      !hasValidBankDetails(bank)
     ) {
-      throw new ForbiddenError('Payout requires Superadmin-approved bank details for the referring wholesaler.', 'APPROVED_BANK_DETAILS_REQUIRED');
+      throw new ForbiddenError('Payout requires complete bank details and approved KYC for the referring wholesaler.', 'BANK_DETAILS_REQUIRED');
     }
 
     const updated = await WholesalerReferralCommission.findOneAndUpdate(
@@ -731,16 +722,9 @@ class WholesalerReferralProgramService {
       || user?.role !== ROLES.WHOLESALER
       || user?.status !== USER_STATUS.ACTIVE
       || user?.isDeleted
-      || bank.verificationStatus !== 'APPROVED'
-      || bank.isVerified !== true
-      || !bank.approvedAt
-      || !bank.approvedBy
-      || !bank.accountHolderName
-      || !bank.bankName
-      || !bank.accountNumber
-      || !bank.ifscCode
+      || !hasValidBankDetails(bank)
     ) {
-      throw new ForbiddenError('Only Superadmin-approved bank details can be shown for payout.', 'APPROVED_BANK_DETAILS_REQUIRED');
+      throw new ForbiddenError('Only complete bank details for an approved wholesaler can be shown for payout.', 'BANK_DETAILS_REQUIRED');
     }
 
     await AuditService.log({

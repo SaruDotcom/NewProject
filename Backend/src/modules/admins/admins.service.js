@@ -21,10 +21,9 @@ const {
   SubscriptionPayment,
 } = require('../../models');
 const { AUDIT_ACTION, NOTIFICATION_TYPE, ROLES, USER_STATUS, KYC_STATUS, ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS, RELATIONSHIP_STATUS } = require('../../config/constants');
-const { BadRequestError, ForbiddenError, NotFoundError } = require('../../utils/errors');
+const { BadRequestError, NotFoundError } = require('../../utils/errors');
 const AuditService = require('../../services/audit.service');
 const NotificationService = require('../../services/notification.service');
-const { hasValidBankDetails } = require('../../services/bank-details.service');
 
 const DASHBOARD_SUBSCRIPTION_PLAN_KEYS = [
   'WHOLESALER_MONTHLY',
@@ -34,11 +33,6 @@ const DASHBOARD_SUBSCRIPTION_PLAN_KEYS = [
   'WHOLESALER_499',
   'WHOLESALER_PRO_YEARLY',
 ];
-
-function maskAccountNumber(accountNumber) {
-  const value = String(accountNumber || '');
-  return value ? `••••••••${value.slice(-4)}` : '';
-}
 
 function addSubscriptionPeriod(date, billingPeriod) {
   const renewalDate = new Date(date);
@@ -56,169 +50,6 @@ function addSubscriptionPeriod(date, billingPeriod) {
 }
 
 class AdminService {
-  static async getBankDetailsSubmissions(status = 'PENDING') {
-    const normalizedStatus = String(status || 'PENDING').toUpperCase();
-    if (!['PENDING', 'APPROVED', 'REJECTED', 'ALL'].includes(normalizedStatus)) {
-      throw new BadRequestError('Choose a valid bank details status filter.', 'INVALID_BANK_DETAILS_STATUS');
-    }
-
-    const filter = { isDeleted: { $ne: true } };
-    if (normalizedStatus !== 'ALL') {
-      filter['bankDetails.verificationStatus'] = normalizedStatus;
-    } else {
-      filter['bankDetails.verificationStatus'] = { $in: ['PENDING', 'APPROVED', 'REJECTED'] };
-    }
-
-    const profiles = await WholesalerProfile.find(filter)
-      .select('userId businessName bankDetails kycStatus')
-      .populate('userId', 'name email')
-      .sort({ 'bankDetails.submittedAt': -1 })
-      .lean();
-
-    return profiles.map((profile) => {
-      const bankDetails = profile.bankDetails || {};
-      return {
-        wholesalerId: String(profile.userId?._id || profile.userId),
-        wholesalerName: profile.userId?.name || 'Wholesaler',
-        email: profile.userId?.email || '',
-        businessName: profile.businessName || '',
-        kycStatus: profile.kycStatus || 'DRAFT',
-        bankDetails: {
-          ...bankDetails,
-          accountNumber: maskAccountNumber(bankDetails.accountNumber),
-        },
-      };
-    });
-  }
-
-  static async getBankDetailsSubmission(wholesalerId, adminUser, req = null) {
-    if (adminUser?.role !== ROLES.SUPER_ADMIN) {
-      throw new ForbiddenError('Only a Superadmin can view full bank details.', 'SUPERADMIN_REQUIRED');
-    }
-    if (!mongoose.isValidObjectId(wholesalerId)) {
-      throw new BadRequestError('A valid wholesaler ID is required.', 'INVALID_WHOLESALER_ID');
-    }
-
-    const profile = await WholesalerProfile.findOne({
-      userId: wholesalerId,
-      isDeleted: { $ne: true },
-    })
-      .select('userId businessName bankDetails kycStatus')
-      .populate('userId', 'name email')
-      .lean();
-    if (!profile || !profile.bankDetails?.verificationStatus ||
-      profile.bankDetails.verificationStatus === 'NOT_SUBMITTED') {
-      throw new NotFoundError('Submitted bank details not found.');
-    }
-
-    await AuditService.log({
-      actorId: adminUser._id,
-      actorRole: adminUser.role,
-      action: AUDIT_ACTION.BANK_DETAILS_VIEWED,
-      entityType: 'WholesalerBankDetails',
-      entityId: wholesalerId,
-      after: { verificationStatus: profile.bankDetails.verificationStatus },
-      req,
-    });
-
-    return {
-      wholesalerId: String(profile.userId?._id || profile.userId),
-      wholesalerName: profile.userId?.name || 'Wholesaler',
-      email: profile.userId?.email || '',
-      businessName: profile.businessName || '',
-      kycStatus: profile.kycStatus || 'DRAFT',
-      bankDetails: profile.bankDetails,
-    };
-  }
-
-  static async reviewBankDetails(wholesalerId, action, input, adminUser, req = null) {
-    if (adminUser?.role !== ROLES.SUPER_ADMIN) {
-      throw new ForbiddenError('Only a Superadmin can review bank details.', 'SUPERADMIN_REQUIRED');
-    }
-    if (!mongoose.isValidObjectId(wholesalerId)) {
-      throw new BadRequestError('A valid wholesaler ID is required.', 'INVALID_WHOLESALER_ID');
-    }
-    if (!['APPROVE', 'REJECT'].includes(action)) {
-      throw new BadRequestError('Choose approve or reject for the bank details.', 'INVALID_BANK_REVIEW_ACTION');
-    }
-
-    const profile = await WholesalerProfile.findOne({ userId: wholesalerId, isDeleted: { $ne: true } });
-    if (!profile) throw new NotFoundError('Wholesaler profile not found.');
-    const details = profile.bankDetails || {};
-    if (details.verificationStatus !== 'PENDING') {
-      throw new BadRequestError('Only pending bank details can be reviewed.', 'BANK_DETAILS_NOT_PENDING');
-    }
-    if (action === 'APPROVE' && !hasValidBankDetails(details)) {
-      throw new BadRequestError('The submitted bank details are incomplete or invalid.', 'INVALID_BANK_DETAILS');
-    }
-
-    const rejectionReason = String(input?.reason || '').trim();
-    if (action === 'REJECT' && !rejectionReason) {
-      throw new BadRequestError('A rejection reason is required.', 'BANK_REJECTION_REASON_REQUIRED');
-    }
-    if (rejectionReason.length > 500) {
-      throw new BadRequestError('The rejection reason cannot exceed 500 characters.', 'BANK_REJECTION_REASON_TOO_LONG');
-    }
-
-    const now = new Date();
-    const status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
-    const updatedProfile = await WholesalerProfile.findOneAndUpdate(
-      { _id: profile._id, 'bankDetails.verificationStatus': 'PENDING' },
-      {
-        $set: {
-          'bankDetails.verificationStatus': status,
-          'bankDetails.isVerified': status === 'APPROVED',
-          'bankDetails.approvedAt': status === 'APPROVED' ? now : null,
-          'bankDetails.approvedBy': status === 'APPROVED' ? adminUser._id : null,
-          'bankDetails.rejectionReason': status === 'REJECTED' ? rejectionReason : '',
-        },
-        $push: {
-          'bankDetails.verificationHistory': {
-            status,
-            changedBy: adminUser._id,
-            changedAt: now,
-            rejectionReason: status === 'REJECTED' ? rejectionReason : '',
-            accountNumberLast4: String(details.accountNumber || '').slice(-4),
-          },
-        },
-      },
-      { new: true, runValidators: true }
-    );
-    if (!updatedProfile) {
-      throw new BadRequestError('These bank details are no longer pending review.', 'BANK_DETAILS_NOT_PENDING');
-    }
-
-    await AuditService.log({
-      actorId: adminUser._id,
-      actorRole: adminUser.role,
-      action: status === 'APPROVED'
-        ? AUDIT_ACTION.BANK_DETAILS_APPROVED
-        : AUDIT_ACTION.BANK_DETAILS_REJECTED,
-      entityType: 'WholesalerBankDetails',
-      entityId: wholesalerId,
-      before: { verificationStatus: 'PENDING' },
-      after: { verificationStatus: status, rejectionReason: details.rejectionReason },
-      req,
-    });
-
-    await NotificationService.notify({
-      recipientId: wholesalerId,
-      title: status === 'APPROVED' ? 'Bank details approved' : 'Bank details rejected',
-      message: status === 'APPROVED'
-        ? 'Your bank details have been approved. Bank payments are available when your KYC is approved.'
-        : `Your bank details were rejected. Reason: ${rejectionReason}`,
-      type: NOTIFICATION_TYPE.SYSTEM_ALERT,
-      data: { type: 'BANK_DETAILS_REVIEW', verificationStatus: status, wholesalerId: String(wholesalerId) },
-    });
-
-    return {
-      wholesalerId: String(wholesalerId),
-      verificationStatus: status,
-      reviewedAt: now,
-      rejectionReason: details.rejectionReason,
-    };
-  }
-
   /**
    * Helper to compute date range filter
    */

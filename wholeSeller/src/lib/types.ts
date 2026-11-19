@@ -152,12 +152,16 @@ export interface OrderDetailsAddress {
   state?: string;
   pincode?: string;
   country?: string;
+  contactName?: string;
+  phone?: string;
 }
 
 export interface OrderDetailsParty {
   id?: string;
   name?: string;
   businessName?: string;
+  logo?: string;
+  gstin?: string;
   email?: string;
   phone?: string;
   city?: string;
@@ -180,6 +184,17 @@ export interface OrderDetailsItem {
   quantity: number;
   pricePerUnit?: number;
   totalPrice?: number;
+  description?: string;
+  unit?: string;
+  taxableValue?: number;
+  gstRate?: number;
+  gstAmount?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  discountAmount?: number;
+  total?: number;
+  hsnCode?: string;
 }
 
 export interface OrderDetailsRecord {
@@ -202,6 +217,10 @@ export interface OrderDetailsRecord {
   discount?: number;
   grandTotal?: number;
   totalAmount?: number;
+  paymentMethod?: string;
+  isCreditOrder?: boolean;
+  creditPaidAmount?: number;
+  directPaidPaise?: number | null;
   notes?: string;
   wholesalerNotes?: string;
   cancellationReason?: string;
@@ -212,16 +231,35 @@ export interface OrderDetailsRecord {
 
 export interface OrderDetailsResponse {
   order: OrderDetailsRecord;
+  invoice?: {
+    available: boolean;
+    number?: string | null;
+    date?: string;
+    seller?: OrderDetailsParty;
+    buyer?: OrderDetailsParty;
+  };
   payment?: {
     amount?: number;
     paymentMethod?: string;
     method?: string;
     status?: string;
     transactionReference?: string;
+    transactionRef?: string;
+    paidAt?: string;
+    reportedPaymentDate?: string;
     createdAt?: string;
   } | null;
+  payments?: Array<{
+    amount?: number;
+    method?: string;
+    status?: string;
+    transactionRef?: string;
+    createdAt?: string;
+    paidAt?: string;
+    reportedPaymentDate?: string;
+  }>;
   timeline?: Array<{ status?: string; createdAt?: string; note?: string }>;
-  totals?: { itemsCount?: number; totalQuantity?: number; totalAmount?: number };
+  totals?: { itemsCount?: number; totalQuantity?: number; totalAmount?: number; paidAmount?: number };
 }
 
 export interface ReturnItem {

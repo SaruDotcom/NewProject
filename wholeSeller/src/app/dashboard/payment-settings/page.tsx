@@ -17,11 +17,9 @@ type PaymentSettings = {
     ifscCode: string;
     branch: string;
     isVerified: boolean;
-    verificationStatus: 'NOT_SUBMITTED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNVERIFIED';
-    rejectionReason: string;
-    submittedAt: string | null;
-    approvedAt: string | null;
+    verificationStatus: 'NOT_SUBMITTED' | 'INCOMPLETE' | 'KYC_REQUIRED' | 'VERIFIED';
   };
+  kycApproved: boolean;
   additionalPaymentMethods: string[];
   paymentOtpLimit: number;
   hasQrImage: boolean;
@@ -84,7 +82,7 @@ export default function PaymentSettingsPage() {
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
   const [evidenceContentType, setEvidenceContentType] = useState('');
   const savedBankDetails = settingsQuery.data?.bankDetails;
-  const bankDetailsVerified = Boolean(savedBankDetails?.isVerified);
+  const bankDetailsVerified = Boolean(settingsQuery.data?.kycApproved && savedBankDetails?.isVerified);
 
   const showMessage = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     setMessage(text);
@@ -200,7 +198,7 @@ export default function PaymentSettingsPage() {
       await queryClient.invalidateQueries({ queryKey });
       setConfirmAccountNumber('');
       setBankEditorOpen(false);
-      showMessage('Bank details submitted for Superadmin verification.', 'success');
+      showMessage('Bank details saved. Bank Transfer is enabled.', 'success');
     } catch (error) {
       showMessage(error instanceof Error ? error.message : 'Unable to submit bank details.', 'error');
     } finally {
@@ -300,7 +298,7 @@ export default function PaymentSettingsPage() {
         <div className="rounded-xl bg-tradeflow-green/10 p-3 text-tradeflow-green"><QrCode className="h-5 w-5" /></div>
         <div>
           <h1 className="text-2xl font-extrabold text-tradeflow-navy">Payment Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">Configure UPI, QR payments, and high-value payment approval. Bank details are reviewed separately.</p>
+          <p className="mt-1 text-sm text-gray-500">Configure UPI, QR payments, and bank transfer options. KYC approval is required before saving bank details.</p>
         </div>
       </header>
 
@@ -402,11 +400,7 @@ export default function PaymentSettingsPage() {
               </label>
             ))}
             <p className="text-xs text-gray-500">
-              {bankDetailsVerified
-                ? 'Bank details are approved. Select the bank payment methods you want to offer.'
-                : savedBankDetails?.verificationStatus === 'APPROVED'
-                  ? 'Bank details are approved. Bank payment methods remain disabled until your KYC is approved.'
-                  : 'Bank payments stay disabled until a Superadmin approves your bank details.'}
+              Bank Transfer is enabled automatically when KYC is approved and complete bank details are saved. Other bank methods can be selected here.
             </p>
           </fieldset>
           <label className="block text-sm font-semibold text-tradeflow-navy">
@@ -464,14 +458,14 @@ export default function PaymentSettingsPage() {
                   <div className="rounded-lg bg-tradeflow-green/10 p-2 text-tradeflow-green"><CreditCard className="h-4 w-4" /></div>
                   <h2 className="font-bold text-tradeflow-navy">Bank Account Details</h2>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${savedBankDetails?.verificationStatus === 'APPROVED' || bankDetailsVerified ? 'bg-emerald-50 text-emerald-700' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {savedBankDetails?.verificationStatus === 'APPROVED' || bankDetailsVerified
-                    ? 'Approved'
-                    : savedBankDetails?.verificationStatus === 'REJECTED'
-                      ? 'Rejected'
-                      : savedBankDetails?.verificationStatus === 'PENDING'
-                        ? 'Pending Verification'
-                        : 'Not Submitted'}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${bankDetailsVerified ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {bankDetailsVerified
+                    ? 'Bank Transfer enabled'
+                    : !settings?.kycApproved
+                      ? 'KYC approval required'
+                      : hasSavedBankDetails
+                        ? 'Incomplete bank details'
+                        : 'Not added'}
                 </span>
               </div>
               {hasSavedBankDetails && savedBankDetails ? (
@@ -485,29 +479,23 @@ export default function PaymentSettingsPage() {
               ) : (
                 <p className="mt-3 text-sm text-gray-500">No bank details have been submitted.</p>
               )}
-              {savedBankDetails?.verificationStatus === 'REJECTED' && savedBankDetails.rejectionReason && (
-                <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">
-                  Rejection reason: {savedBankDetails.rejectionReason}
-                </p>
-              )}
               {!bankDetailsVerified && (
                 <p className="mt-3 text-xs text-amber-700">
-                  {savedBankDetails?.verificationStatus === 'PENDING'
-                    ? 'Your bank details are waiting for Superadmin approval.'
-                    : savedBankDetails?.verificationStatus === 'REJECTED'
-                      ? 'Update your bank details and resubmit them for Superadmin approval.'
-                      : savedBankDetails?.verificationStatus === 'APPROVED'
-                        ? 'Your bank details have been approved. Bank payments remain disabled until your KYC is approved.'
-                        : 'Submit your bank details for Superadmin approval. Bank Transfer will remain disabled until approval.'}
+                  {!settings?.kycApproved
+                    ? 'Complete Superadmin KYC approval before adding or updating bank details.'
+                    : hasSavedBankDetails
+                      ? 'Complete all bank detail fields to enable Bank Transfer.'
+                      : 'Save complete bank details to enable Bank Transfer.'}
                 </p>
               )}
               <button
                 type="button"
+                disabled={!settings?.kycApproved}
                 onClick={() => {
                   setConfirmAccountNumber('');
                   setBankEditorOpen((open) => !open);
                 }}
-                className="mt-4 rounded-lg border border-tradeflow-navy px-4 py-2 text-sm font-bold text-tradeflow-navy"
+                className="mt-4 rounded-lg border border-tradeflow-navy px-4 py-2 text-sm font-bold text-tradeflow-navy disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Add / Update Bank Details
               </button>
@@ -519,9 +507,9 @@ export default function PaymentSettingsPage() {
         <form onSubmit={submitBankDetails} className="space-y-4 rounded-2xl border border-tradeflow-gray-200 bg-white p-5 shadow-sm">
           <div>
             <h2 className="text-lg font-bold text-tradeflow-navy">
-              {savedBankDetails?.verificationStatus === 'REJECTED' ? 'Correct and Resubmit Bank Details' : 'Add / Update Bank Details'}
+              Add / Update Bank Details
             </h2>
-            <p className="mt-1 text-sm text-gray-500">These details are stored with your wholesaler profile and reviewed separately from KYC.</p>
+            <p className="mt-1 text-sm text-gray-500">Details are saved to your wholesaler profile. Bank Transfer is enabled automatically when all fields are valid.</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {[
@@ -564,8 +552,8 @@ export default function PaymentSettingsPage() {
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={bankBusy} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
-              {bankBusy ? 'Submitting…' : savedBankDetails?.verificationStatus === 'REJECTED' ? 'Resubmit Bank Details' : 'Submit Bank Details'}
+            <button type="submit" disabled={bankBusy || !settings?.kycApproved} className="rounded-lg bg-tradeflow-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+              {bankBusy ? 'Saving…' : 'Save Bank Details'}
             </button>
             <button type="button" onClick={() => setBankEditorOpen(false)} disabled={bankBusy} className="rounded-lg border border-tradeflow-gray-200 px-4 py-2 text-sm font-semibold text-gray-700">
               Cancel

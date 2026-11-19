@@ -178,7 +178,7 @@ const wholesalerProfileSchema = new mongoose.Schema(
       isVerified: { type: Boolean, default: false },
       verificationStatus: {
         type: String,
-        enum: ['NOT_SUBMITTED', 'PENDING', 'APPROVED', 'REJECTED'],
+        enum: ['NOT_SUBMITTED', 'PENDING', 'APPROVED', 'REJECTED', 'VERIFIED'],
         default: 'NOT_SUBMITTED',
       },
       submittedAt: { type: Date },
@@ -235,7 +235,7 @@ const wholesalerProfileSchema = new mongoose.Schema(
       upiIdPaymentsEnabled: { type: Boolean, default: false },
       qrSessionMinutes: { type: Number, default: 10, min: 1, max: 60 },
       additionalPaymentMethods: {
-        type: [{ type: String, enum: ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'] }],
+        type: [{ type: String, enum: ['BANK_TRANSFER', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'] }],
         default: [],
       },
       paymentOtpLimit: { type: Number, default: 10000, min: 0 },

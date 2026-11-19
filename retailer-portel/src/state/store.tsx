@@ -189,17 +189,24 @@ export type Wholesaler = {
 export type OrderItem = {
   productId: string;
   name: string;
+  description?: string;
   sku?: string;
+  unit?: string;
   imageUrl?: string;
   quantity: number;
   pricePerUnit: number;
   subtotal: number;
   total?: number;
+  taxableValue?: number;
+  discountAmount?: number;
   hsnCode?: string;
   cgst?: number | null;
   sgst?: number | null;
   igst?: number | null;
   gstAmount?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
   priceIncludesTax?: boolean;
   product?: Product;
 };
@@ -227,6 +234,22 @@ export type Order = {
   cancellationNote?: string | undefined;
   wholesalerId: string;
   total: number;
+  subtotal?: number;
+  tax?: number;
+  shipping?: number;
+  discount?: number;
+  createdAt?: string;
+  shippingAddress?: {
+    street?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    contactName?: string;
+    phone?: string;
+  };
   items: OrderItem[];
   paymentMethod?: string | undefined;
   isCreditOrder?: boolean | undefined;
@@ -669,11 +692,18 @@ export function mapOrder(item: ApiOrder): Order {
       pricePerUnit,
       subtotal,
       total,
+      description: line.description || '',
+      unit: line.unit || '',
+      taxableValue: Number(line.taxableValue ?? subtotal),
+      discountAmount: Number(line.discountAmount || 0),
       hsnCode: line.hsnCode || '',
       cgst: line.cgst ?? null,
       sgst: line.sgst ?? null,
       igst: line.igst ?? null,
       gstAmount: Number(line.gstAmount || 0),
+      cgstAmount: Number(line.cgstAmount || 0),
+      sgstAmount: Number(line.sgstAmount || 0),
+      igstAmount: Number(line.igstAmount || 0),
       priceIncludesTax: Boolean(line.priceIncludesTax),
     };
     if (prodObj) {
@@ -704,6 +734,12 @@ export function mapOrder(item: ApiOrder): Order {
     cancellationNote: item.cancellationNote || "",
     wholesalerId,
     total: Number(item.grandTotal ?? item.total ?? (item as any).totalAmount ?? 0),
+    subtotal: Number(item.subtotal || 0),
+    tax: Number(item.tax || 0),
+    shipping: Number(item.shipping || 0),
+    discount: Number(item.discount || 0),
+    createdAt: item.createdAt,
+    shippingAddress: item.shippingAddress,
     items: mappedItems,
     paymentMethod: item.paymentMethod || item.paymentMode || (isCreditOrder ? "CREDIT" : "UPI"),
     isCreditOrder,

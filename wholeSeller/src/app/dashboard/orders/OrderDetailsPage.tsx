@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarClock, CreditCard, Package, Printer, Store, Truck } from 'lucide-react';
+import { ArrowLeft, CalendarClock, CreditCard, Download, Package, Printer, Store, Truck } from 'lucide-react';
 import { useWholesaler } from '@/context/WholesalerContext';
 import api, { resolveProductImageUrl } from '@/lib/api';
 import { wholesalerQueryKeys } from '@/lib/query-client';
@@ -15,6 +15,12 @@ const currency = new Intl.NumberFormat('en-IN', {
 
 function money(value: number | undefined) {
   return currency.format(Number(value || 0));
+}
+
+function dateOnly(value?: string) {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleDateString('en-IN', { dateStyle: 'medium' });
 }
 
 function dateTime(value?: string) {
@@ -54,6 +60,7 @@ export default function OrderDetailsPage() {
   const [searchParams] = useSearchParams();
   const { profile } = useWholesaler();
   const printStartedFor = useRef('');
+  const [downloadError, setDownloadError] = useState('');
   const query = useQuery({
     queryKey: wholesalerQueryKeys.resource(profile.id || 'unknown', 'orders', 'detail', orderId),
     queryFn: () => api.getOrderById(orderId),
@@ -66,14 +73,44 @@ export default function OrderDetailsPage() {
   const retailerAddress = retailer?.address || populatedRetailer?.address;
   const items = order?.items || [];
   const total = Number(order?.totalAmount ?? order?.grandTotal ?? response?.totals?.totalAmount ?? 0);
+  const invoiceAvailable = Boolean(response?.invoice?.available);
+  const invoiceNumber = response?.invoice?.number || `INV-${order?.orderNumber || ''}`;
+  const seller = response?.invoice?.seller || order?.wholesaler;
+  const buyer = response?.invoice?.buyer || retailer;
+  const taxTotal = items.reduce((sum, item) => sum + Number(item.gstAmount || 0), 0);
+  const taxableTotal = items.reduce((sum, item) => sum + Number(item.taxableValue ?? item.totalPrice ?? 0), 0);
+  const paidTotal = !order
+    ? 0
+    : order.isCreditOrder
+      ? Number(order.creditPaidAmount || 0)
+      : Number.isSafeInteger(order.directPaidPaise)
+        ? Number(order.directPaidPaise) / 100
+        : String(order.paymentStatus || '').toUpperCase() === 'PAID'
+        ? total
+        : Number(response?.totals?.paidAmount || 0);
   const shouldPrint = searchParams.get('print') === '1';
 
   useEffect(() => {
-    if (!shouldPrint || !order || printStartedFor.current === orderId) return;
+    if (!shouldPrint || !order || !invoiceAvailable || printStartedFor.current === orderId) return;
     printStartedFor.current = orderId;
     const timer = window.setTimeout(() => window.print(), 400);
     return () => window.clearTimeout(timer);
-  }, [order, orderId, shouldPrint]);
+  }, [order, orderId, shouldPrint, invoiceAvailable]);
+
+  const downloadInvoice = async () => {
+    setDownloadError('');
+    try {
+      const blob = await api.downloadOrderInvoice(orderId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${invoiceNumber.replace(/[^a-z0-9-]/gi, '-')}.pdf`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : 'Unable to download this invoice.');
+    }
+  };
 
   if (query.isLoading) {
     return <main className="mx-auto max-w-5xl p-4 sm:p-8" role="status">Loading order details…</main>;
@@ -92,6 +129,52 @@ export default function OrderDetailsPage() {
     );
   }
 
+  function BusinessLogo({ logo, name }: { logo?: string; name: string }) {
+    const [failed, setFailed] = useState(false);
+    return (
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border border-stone-200 bg-stone-50">
+        {logo && !failed
+          ? <img src={logo} alt={`${name} business logo`} className="h-full w-full object-contain p-1" onError={() => setFailed(true)} />
+          : <span className="px-1 text-center text-xs font-bold tracking-wide text-stone-500">{name.slice(0, 2).toUpperCase()}</span>}
+      </div>
+    );
+  }
+
+  function InvoiceParty({
+    title,
+    party,
+    fallbackName,
+  }: {
+    title: string;
+    party?: OrderDetailsParty;
+    fallbackName: string;
+  }) {
+    const name = party?.businessName || party?.name || fallbackName;
+    return (
+      <article className="border border-stone-200 p-3">
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7941]">{title}</h2>
+        <div className="mt-3 flex items-start gap-3">
+          <BusinessLogo logo={party?.logo} name={name} />
+          <div className="min-w-0 text-xs">
+            <p className="font-bold">{name}</p>
+            <p className="mt-1 leading-5 text-[#657181]">{addressText(party?.address) || 'Address not provided'}</p>
+            {(party?.phone || party?.email) && <p className="mt-1 text-[#657181]">{party.phone || party.email}{party.phone && party.email ? ` · ${party.email}` : ''}</p>}
+            <p className="mt-1 text-[#657181]">GSTIN: {party?.gstin || 'Not applicable'}</p>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  function InvoiceTotal({ label, amount, strong = false }: { label: string; amount: string; strong?: boolean }) {
+    return (
+      <div className={`flex justify-between gap-3 ${strong ? 'border-t border-stone-200 pt-2 font-extrabold text-[#1d2d40]' : 'text-[#657181]'}`}>
+        <dt>{label}</dt>
+        <dd className="text-right">{amount}</dd>
+      </div>
+    );
+  }
+
   const timeline = response.timeline?.length
     ? response.timeline
     : (order.statusTimeline || []).map((entry) => ({
@@ -105,20 +188,126 @@ export default function OrderDetailsPage() {
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
-          #order-details-print, #order-details-print * { visibility: visible !important; }
-          #order-details-print { position: absolute; inset: 0; width: 100%; max-width: none; padding: 0; }
+          #order-invoice-print, #order-invoice-print * { visibility: visible !important; }
+          #order-invoice-print { position: absolute; inset: 0; width: 100%; max-width: none; margin: 0; padding: 0; }
+          #order-invoice-print article, #order-invoice-print tr { break-inside: avoid; }
         }
+        @page { size: A4; margin: 12mm; }
       `}</style>
       <header className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <button type="button" onClick={() => navigate('/dashboard/orders')} className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50">
           <ArrowLeft className="h-4 w-4" /> Back to Orders
         </button>
-        <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">
-          <Printer className="h-4 w-4" /> Print Order
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void downloadInvoice()} disabled={!invoiceAvailable} className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50">
+            <Download className="h-4 w-4" /> Download Invoice PDF
+          </button>
+          <button type="button" onClick={() => window.print()} disabled={!invoiceAvailable} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+            <Printer className="h-4 w-4" /> Print Invoice
+          </button>
+        </div>
       </header>
 
-      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
+      {downloadError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 print:hidden">{downloadError}</p>}
+
+      <section id="order-invoice-print" className="mx-auto w-full max-w-[210mm] border border-stone-200 bg-white p-5 text-[#1d2d40] shadow-sm sm:p-8">
+        {!invoiceAvailable && <p className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 print:hidden">Invoice is available after this order is marked delivered.</p>}
+        <div className="flex flex-wrap items-start justify-between gap-5 border-b-2 border-[#b3945a] pb-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <BusinessLogo logo={seller?.logo || profile.businessLogoUrl} name={seller?.businessName || profile.businessName} />
+            <div className="min-w-0">
+              <p className="text-lg font-extrabold">{seller?.businessName || profile.businessName}</p>
+              <p className="mt-1 text-xs leading-5 text-[#657181]">{addressText(seller?.address) || [profile.streetAddress, profile.city, profile.state, profile.pincode].filter(Boolean).join(', ') || 'Business address not provided'}</p>
+              <p className="mt-1 text-xs text-[#657181]">{seller?.phone || profile.phone || 'Contact not provided'}{seller?.email || profile.email ? ` · ${seller?.email || profile.email}` : ''}{seller?.gstin || profile.gstin ? ` · GSTIN ${seller?.gstin || profile.gstin}` : ''}</p>
+            </div>
+          </div>
+          <div className="sm:text-right">
+            <p className="text-2xl font-black tracking-wide">TAX INVOICE</p>
+            <p className="mt-1 font-bold text-[#9a7941]">{invoiceNumber}</p>
+            <p className="mt-2 text-xs text-[#657181]">Invoice date: {invoiceAvailable ? dateOnly(response?.invoice?.date) : 'Not issued'}</p>
+            <p className="text-xs text-[#657181]">Order reference: {order.orderNumber}</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <InvoiceParty title="Supplied By" party={seller} fallbackName={profile.businessName} />
+          <InvoiceParty title="Billed To" party={buyer} fallbackName={buyer?.businessName || buyer?.name || 'Retailer'} />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-y border-stone-200 py-3 text-xs sm:grid-cols-4">
+          <p><span className="text-[#657181]">Invoice date</span><br /><strong>{invoiceAvailable ? dateOnly(response?.invoice?.date) : 'Not issued'}</strong></p>
+          <p><span className="text-[#657181]">Order date</span><br /><strong>{dateOnly(order.createdAt)}</strong></p>
+          <p><span className="text-[#657181]">Bilty / LR</span><br /><strong>{order.shippingDetails?.biltyNumber || 'Not provided'}</strong></p>
+          <p><span className="text-[#657181]">Status</span><br /><strong>{order.orderStatus || order.status || 'Not recorded'}</strong></p>
+        </div>
+        {order.shippingAddress && <article className="mt-4 border border-stone-200 p-3 text-xs">
+          <h2 className="font-bold uppercase tracking-wide text-[#9a7941]">Ship To</h2>
+          <p className="mt-1 font-semibold">{order.shippingAddress.contactName || buyer?.businessName || buyer?.name || 'Retailer'}</p>
+          <p className="mt-1 text-[#657181]">{addressText(order.shippingAddress)}</p>
+          {order.shippingAddress.phone && <p className="mt-1 text-[#657181]">Phone: {order.shippingAddress.phone}</p>}
+        </article>}
+
+        <article className="mt-5 overflow-hidden border border-stone-200">
+          <h2 className="border-b border-stone-200 px-3 py-3 text-sm font-extrabold">Product details</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-[11px]">
+              <thead className="bg-[#1d2d40] text-[9px] uppercase tracking-wide text-white"><tr>
+                <th className="p-2">S.No.</th><th className="p-2">Product / SKU</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Unit price</th><th className="p-2 text-right">Tax</th><th className="p-2 text-right">Discount</th><th className="p-2 text-right">Total</th>
+              </tr></thead>
+              <tbody className="divide-y divide-stone-200">
+                {items.map((item, index) => {
+                  const unitPrice = Number(item.pricePerUnit || 0);
+                  const itemTax = Number(item.gstAmount || 0);
+                  return <tr key={item.product?.id || item._id || index} className={index % 2 === 0 ? 'bg-stone-50' : 'bg-white'}>
+                    <td className="p-2">{index + 1}</td>
+                    <td className="p-2"><strong>{item.name || item.product?.name || item.productName || 'Product'}</strong><div className="mt-1 text-[9px] text-[#657181]">SKU: {item.sku || item.product?.sku || '—'}{item.hsnCode ? ` · HSN: ${item.hsnCode}` : ''}</div>{item.description && <div className="mt-1 text-[9px] text-[#657181]">{item.description}</div>}</td>
+                    <td className="p-2 text-right">{item.quantity} {item.unit || ''}</td>
+                    <td className="p-2 text-right">{money(unitPrice)}</td>
+                    <td className="p-2 text-right">{money(itemTax)}</td>
+                    <td className="p-2 text-right">{money(Number(item.discountAmount || 0))}</td>
+                    <td className="p-2 text-right font-bold">{money(Number(item.total ?? item.totalPrice ?? unitPrice * Number(item.quantity || 0)))}</td>
+                  </tr>;
+                })}
+                {!items.length && <tr><td colSpan={7} className="p-6 text-center text-[#657181]">No product details are available for this order.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <article className="border border-stone-200 p-4">
+            <h2 className="text-sm font-extrabold">Payment information</h2>
+            <dl className="mt-3 space-y-2 text-xs text-[#657181]">
+              <div className="flex justify-between gap-3"><dt>Method</dt><dd>{response.payment?.paymentMethod || response.payment?.method || order.paymentMethod || 'Not recorded'}</dd></div>
+              {response.payments?.length
+                ? response.payments.map((entry, index) => <div key={`${entry.transactionRef || 'payment'}-${entry.createdAt || index}`} className="border-t border-stone-100 pt-2">
+                  <div className="flex justify-between gap-3"><dt>Status</dt><dd>{entry.status || 'Not recorded'}</dd></div>
+                  <div className="mt-1 flex justify-between gap-3"><dt>Reference</dt><dd>{entry.transactionRef || 'Not recorded'}</dd></div>
+                  <div className="mt-1 flex justify-between gap-3"><dt>Date</dt><dd>{dateOnly(entry.paidAt || entry.reportedPaymentDate || entry.createdAt)}</dd></div>
+                  <div className="mt-1 flex justify-between gap-3"><dt>Amount</dt><dd>{money(Number(entry.amount || 0))}</dd></div>
+                </div>)
+                : <div className="flex justify-between gap-3"><dt>Status</dt><dd>{order.paymentStatus || 'Not recorded'}</dd></div>}
+            </dl>
+          </article>
+          <article className="border border-stone-200 p-4">
+            <h2 className="text-sm font-extrabold">Invoice summary</h2>
+            <dl className="mt-3 space-y-2 text-xs">
+              <InvoiceTotal label="Subtotal" amount={money(order.subtotal)} />
+              <InvoiceTotal label="Discount" amount={`−${money(order.discount)}`} />
+              <InvoiceTotal label="Taxable amount" amount={money(taxableTotal)} />
+              <InvoiceTotal label="CGST" amount={money(items.reduce((sum, item) => sum + Number(item.cgstAmount || 0), 0))} />
+              <InvoiceTotal label="SGST" amount={money(items.reduce((sum, item) => sum + Number(item.sgstAmount || 0), 0))} />
+              <InvoiceTotal label="IGST" amount={money(items.reduce((sum, item) => sum + Number(item.igstAmount || 0), 0))} />
+              <InvoiceTotal label="Tax total" amount={money(taxTotal)} />
+              <InvoiceTotal label="Shipping charges" amount={money(order.shipping)} />
+              <InvoiceTotal label="Grand total" amount={money(total)} strong />
+              <InvoiceTotal label="Amount paid" amount={money(paidTotal)} />
+              <InvoiceTotal label="Outstanding amount" amount={money(Math.max(0, total - paidTotal))} strong />
+            </dl>
+          </article>
+        </div>
+        <footer className="mt-6 border-t border-stone-200 pt-3 text-center text-[10px] text-[#657181]">Thank you for your business.</footer>
+      </section>
+
+      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm print:hidden sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-stone-100 pb-5">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">Order details</p>

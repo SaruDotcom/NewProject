@@ -272,7 +272,7 @@ export function ReferralCommissionManagementPage() {
                       {item.rejectionReason && <p className="mt-1 max-w-48 text-xs text-red-700">{item.rejectionReason}</p>}
                     </td>
                     <td className="px-3 py-3">
-                      {item.paymentDetails.bankApproved ? (
+                      {item.paymentDetails.bankDetailsAvailable ? (
                         <>
                           <p>{item.paymentDetails.bankName}</p>
                           <p className="text-xs text-muted-foreground">{item.paymentDetails.accountNumber} · {item.paymentDetails.ifscCode}</p>
@@ -280,7 +280,7 @@ export function ReferralCommissionManagementPage() {
                             <button type="button" onClick={() => void openPayment(item)} className="mt-1 text-xs font-semibold text-primary underline">View full details</button>
                           )}
                         </>
-                      ) : <span className="text-xs text-amber-700">Approved bank details required</span>}
+                      ) : <span className="text-xs text-amber-700">Complete bank details and approved KYC required</span>}
                     </td>
                     <td className="px-3 py-3">
                       <p>{date(item.paymentDate)}</p>
@@ -296,7 +296,7 @@ export function ReferralCommissionManagementPage() {
                         )}
                         {item.commissionStatus === "APPROVED" && (
                           <>
-                            <button type="button" disabled={busyId === item.id || !item.paymentDetails.bankApproved} onClick={() => void startPayout(item.id)} className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50">Start payout</button>
+                            <button type="button" disabled={busyId === item.id || !item.paymentDetails.bankDetailsAvailable} onClick={() => void startPayout(item.id)} className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50">Start payout</button>
                             <button type="button" disabled={busyId === item.id} onClick={() => { setRejectTarget(item); setRejectionReason(""); }} className="rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">Reject</button>
                           </>
                         )}
@@ -347,7 +347,7 @@ export function ReferralCommissionManagementPage() {
               <p className="mt-1 text-sm text-muted-foreground">Transfer {money(paymentTarget.commissionAmount)} to the approved account. Record payment only after your bank confirms success.</p>
             </div>
             {loadingBankDetails ? (
-              <p className="rounded-lg bg-muted p-4 text-sm">Loading approved bank details…</p>
+              <p className="rounded-lg bg-muted p-4 text-sm">Loading bank details…</p>
             ) : bankDetails ? (
               <dl className="grid grid-cols-2 gap-3 rounded-lg bg-muted p-4 text-sm">
                 <dt className="text-muted-foreground">Account holder</dt><dd className="font-semibold">{bankDetails.accountHolderName}</dd>

@@ -222,7 +222,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     });
   });
 
-  test('enabled bank methods show bank details and accept cheque reports', async () => {
+  test('complete KYC-approved bank details enable Bank Transfer and accept bank payment reports', async () => {
     const bankDetails = {
       accountHolderName: 'Omni Supplies',
       bankName: 'Example Bank',
@@ -264,7 +264,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     const options = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
-    expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['UPI', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE']));
+    expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['UPI', 'BANK_TRANSFER', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE']));
     expect(options.body.data.bankDetailsStatus).toBe('VERIFIED');
     expect(options.body.data.bankDetails).toMatchObject({
       accountHolderName: 'Omni Supplies',
@@ -308,6 +308,27 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(evidence.headers['content-type']).toContain('application/pdf');
     expect(evidence.body.subarray(0, 5).toString()).toBe('%PDF-');
     expect(savedReport.screenshotPath).toMatch(/^gridfs:[a-f0-9]{24}$/i);
+
+    const bankTransferOrder = await request(app)
+      .post('/api/v1/retailer/checkout')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        paymentMethod: 'BANK_TRANSFER',
+        items: [{ productId: product._id, quantity: 10 }],
+        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+      });
+    expect(bankTransferOrder.status).toBe(201);
+    const bankTransferReport = await request(app)
+      .post('/api/v1/retailer/payments/reports')
+      .set('Authorization', `Bearer ${retailerToken}`)
+      .send({
+        orderId: bankTransferOrder.body.data.order._id,
+        amount: '2360',
+        paymentMethod: 'BANK_TRANSFER',
+        transactionReference: 'BANK-TRANSFER-10001',
+      });
+    expect(bankTransferReport.status).toBe(201);
+    expect(bankTransferReport.body.data.paymentMethod).toBe('BANK_TRANSFER');
 
     const missingLegacyReport = await Payment.create({
       orderId: checkout.body.data.order._id,
@@ -381,12 +402,14 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(profile.bankDetails.accountNumber).toBe(originalBankDetails.accountNumber);
   });
 
-  test('unverified or invalid bank details are not shared with retailers', async () => {
+  test('incomplete bank details do not enable Bank Transfer or expose account data', async () => {
     const emptyOptions = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
     expect(emptyOptions.body.data.bankDetailsStatus).toBe('NOT_ADDED');
     expect(emptyOptions.body.data.bankDetails).toBeNull();
+    expect(emptyOptions.body.data.paymentMethods).toContain('UPI');
+    expect(emptyOptions.body.data.paymentMethods).not.toContain('BANK_TRANSFER');
 
     await request(app)
       .patch('/api/v1/wholesaler/profile')
@@ -405,55 +428,28 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('branch', 'Bengaluru Main');
     expect(invalid.status).toBe(400);
 
-    const saved = await request(app)
-      .patch('/api/v1/wholesaler/payment-settings')
-      .set('Authorization', `Bearer ${wholesalerToken}`)
-      .field('accountHolderName', 'Omni Supplies')
-      .field('bankName', 'Example Bank')
-      .field('accountNumber', '123456789012')
-      .field('confirmAccountNumber', '123456789012')
-      .field('ifscCode', 'EXAM0001234')
-      .field('branch', 'Bengaluru Main')
-      .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CHEQUE']));
-    expect(saved.status).toBe(200);
-    expect(saved.body.data.bankDetails).toMatchObject({
-      accountHolderName: 'Omni Supplies',
-      bankName: 'Example Bank',
-      accountNumber: '123456789012',
-      ifscCode: 'EXAM0001234',
-      branch: 'Bengaluru Main',
-      isVerified: false,
-    });
-    expect(saved.body.data.additionalPaymentMethods).toEqual([]);
-    const savedProfile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
-    expect(savedProfile.bankDetails.accountNumber).toBe('123456789012');
-    const refreshedSettings = await request(app)
-      .get('/api/v1/wholesaler/payment-settings')
-      .set('Authorization', `Bearer ${wholesalerToken}`);
-    expect(refreshedSettings.body.data.bankDetails.accountNumber).toBe('123456789012');
-
-    const unverifiedOptions = await request(app)
-      .get('/api/v1/retailer/payment-options')
-      .set('Authorization', `Bearer ${retailerToken}`);
-    expect(unverifiedOptions.body.data.bankDetailsStatus).toBe('PENDING');
-    expect(unverifiedOptions.body.data.bankDetails).toBeNull();
-    expect(unverifiedOptions.body.data.paymentMethods).not.toContain('CHEQUE');
     await WholesalerProfile.updateOne(
       { userId: wholesalerUser._id },
-      { $set: { 'paymentSettings.additionalPaymentMethods': ['CHEQUE'] } }
+      {
+        $set: {
+          'bankDetails.accountHolderName': 'Omni Supplies',
+          'bankDetails.bankName': 'Example Bank',
+          'bankDetails.accountNumber': '123456789012',
+          'bankDetails.ifscCode': '',
+          'bankDetails.branch': 'Bengaluru Main',
+        },
+      }
     );
-    const checkout = await request(app)
-      .post('/api/v1/retailer/checkout')
-      .set('Authorization', `Bearer ${retailerToken}`)
-      .send({
-        paymentMethod: 'CHEQUE',
-        items: [{ productId: product._id, quantity: 10 }],
-        shippingAddress: { addressLine1: '10 Main Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
-      });
-    expect(checkout.status).toBe(400);
+    const incompleteOptions = await request(app)
+      .get('/api/v1/retailer/payment-options')
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(incompleteOptions.body.data.bankDetailsStatus).toBe('INCOMPLETE');
+    expect(incompleteOptions.body.data.bankDetails).toBeNull();
+    expect(incompleteOptions.body.data.paymentMethods).toContain('UPI');
+    expect(incompleteOptions.body.data.paymentMethods).not.toContain('BANK_TRANSFER');
   });
 
-  test('KYC approval alone does not approve bank details or enable bank methods', async () => {
+  test('approved KYC and complete bank details enable Bank Transfer without another approval', async () => {
     const bankDetails = {
       accountHolderName: 'Omni Supplies',
       bankName: 'Example Bank',
@@ -487,15 +483,16 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('branch', bankDetails.branch)
       .field('additionalPaymentMethods', JSON.stringify(['NET_BANKING', 'CHEQUE']));
     expect(verifiedSave.status).toBe(200);
-    expect(verifiedSave.body.data.bankDetails.isVerified).toBe(false);
-    expect(verifiedSave.body.data.additionalPaymentMethods).toEqual([]);
+    expect(verifiedSave.body.data.bankDetails.isVerified).toBe(true);
+    expect(verifiedSave.body.data.bankDetails.verificationStatus).toBe('VERIFIED');
+    expect(verifiedSave.body.data.additionalPaymentMethods).toEqual(['NET_BANKING', 'CHEQUE']);
 
     const options = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
     expect(options.body.data.paymentMethods).toContain('UPI');
-    expect(options.body.data.paymentMethods).not.toContain('NET_BANKING');
-    expect(options.body.data.bankDetails).toBeNull();
+    expect(options.body.data.paymentMethods).toEqual(expect.arrayContaining(['BANK_TRANSFER', 'NET_BANKING', 'CHEQUE']));
+    expect(options.body.data.bankDetails.accountNumber).toBe('••••••••9012');
 
     const changedSave = await request(app)
       .patch('/api/v1/wholesaler/payment-settings')
@@ -508,8 +505,9 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('branch', bankDetails.branch)
       .field('additionalPaymentMethods', JSON.stringify(['CHEQUE']));
     expect(changedSave.status).toBe(200);
-    expect(changedSave.body.data.bankDetails.isVerified).toBe(false);
-    expect(changedSave.body.data.additionalPaymentMethods).toEqual([]);
+    expect(changedSave.body.data.bankDetails.isVerified).toBe(true);
+    expect(changedSave.body.data.bankDetails.verificationStatus).toBe('VERIFIED');
+    expect(changedSave.body.data.additionalPaymentMethods).toEqual(['CHEQUE']);
   });
 
   test('payment QR uploads persist in private GridFS and remain available on reload', async () => {
@@ -620,7 +618,7 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     }
   });
 
-  test('changing a verified bank account removes retailer visibility until reverified', async () => {
+  test('changing bank details keeps transfer enabled after approved KYC validates the new details', async () => {
     await KycApplication.create({
       wholesalerId: wholesalerUser._id,
       pan: 'AAACP1234F',
@@ -657,13 +655,15 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
       .field('ifscCode', 'EXAM0001234')
       .field('branch', 'Bengaluru Main');
     expect(saved.status).toBe(200);
-    expect(saved.body.data.bankDetails.isVerified).toBe(false);
+    expect(saved.body.data.bankDetails.isVerified).toBe(true);
+    expect(saved.body.data.bankDetails.verificationStatus).toBe('VERIFIED');
 
     const options = await request(app)
       .get('/api/v1/retailer/payment-options')
       .set('Authorization', `Bearer ${retailerToken}`);
-    expect(options.body.data.bankDetailsStatus).toBe('PENDING');
-    expect(options.body.data.bankDetails).toBeNull();
+    expect(options.body.data.bankDetailsStatus).toBe('VERIFIED');
+    expect(options.body.data.paymentMethods).toContain('BANK_TRANSFER');
+    expect(options.body.data.bankDetails.accountNumber).toBe('••••••••9013');
   });
 
   test('payment settings reject malformed bank fields and UPI IDs', async () => {
@@ -799,6 +799,10 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     });
     expect((await Payment.findById(report.body.data._id)).status).toBe(PAYMENT_STATUS.PAID);
     expect((await Order.findById(checkout.body.data.order._id)).paymentStatus).toBe(PAYMENT_STATUS.PENDING);
+    const orderDetails = await request(app)
+      .get(`/api/v1/retailer/orders/${checkout.body.data.order._id}`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(orderDetails.body.data.totals.paidAmount).toBe(0);
 
     const duplicate = await request(app)
       .post(`/api/v1/wholesaler/payment-reports/${report.body.data._id}/reverse`)
@@ -835,6 +839,35 @@ describe('Orders, Inventory Reservation & Payments Test Suite', () => {
     expect(invoice.headers['content-type']).toContain('application/pdf');
     expect(invoice.body.subarray(0, 5).toString()).toBe('%PDF-');
     expect(invoice.headers['content-disposition']).toContain(`INV-${checkout.body.data.order.orderNumber}.pdf`);
+
+    const wholesalerInvoice = await request(app)
+      .get(`/api/v1/orders/${orderId}/invoice`)
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(wholesalerInvoice.status).toBe(200);
+    expect(wholesalerInvoice.headers['content-type']).toContain('application/pdf');
+    expect(wholesalerInvoice.body.subarray(0, 5).toString()).toBe('%PDF-');
+
+    const orderDetails = await request(app)
+      .get(`/api/v1/orders/${orderId}`)
+      .set('Authorization', `Bearer ${wholesalerToken}`);
+    expect(orderDetails.body.data.invoice).toMatchObject({
+      available: true,
+      number: `INV-${checkout.body.data.order.orderNumber}`,
+    });
+    expect(orderDetails.body.data.invoice.seller.businessName).toBe('Omni Supplies');
+    expect(orderDetails.body.data.invoice.buyer.businessName).toBe('Rohan Tech Shop');
+
+    const retailerOrderDetails = await request(app)
+      .get(`/api/v1/retailer/orders/${orderId}`)
+      .set('Authorization', `Bearer ${retailerToken}`);
+    expect(retailerOrderDetails.status).toBe(200);
+    expect(retailerOrderDetails.body.data.invoice).toMatchObject({
+      available: true,
+      number: `INV-${checkout.body.data.order.orderNumber}`,
+      seller: { businessName: 'Omni Supplies' },
+      buyer: { businessName: 'Rohan Tech Shop' },
+    });
+    expect(retailerOrderDetails.headers['cache-control']).toContain('no-store');
   });
 
   test('wholesaler status updates persist canonically and are returned to the retailer', async () => {

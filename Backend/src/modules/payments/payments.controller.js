@@ -18,7 +18,7 @@ module.exports = {
   submitBankDetails: asyncHandler(async (req, res) => {
     const settings = await PaymentsService.submitBankDetails(req.user._id, req.body, req.user, req);
     res.set('Cache-Control', 'no-store');
-    return ApiResponse.success(res, settings, 'Bank details submitted for verification');
+    return ApiResponse.success(res, settings, 'Bank details saved');
   }),
 
   getRetailerOptions: asyncHandler(async (req, res) => {

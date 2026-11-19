@@ -20,39 +20,6 @@ class AdminController {
     return ApiResponse.success(res, data, 'Relationships retrieved successfully');
   });
 
-  getBankDetailsSubmissions = asyncHandler(async (req, res) => {
-    const data = await AdminService.getBankDetailsSubmissions(req.query.status);
-    res.set('Cache-Control', 'no-store');
-    return ApiResponse.success(res, data, 'Bank details submissions retrieved');
-  });
-
-  getBankDetailsSubmission = asyncHandler(async (req, res) => {
-    const data = await AdminService.getBankDetailsSubmission(
-      req.params.wholesalerId,
-      req.user,
-      req
-    );
-    res.set('Cache-Control', 'no-store');
-    return ApiResponse.success(res, data, 'Bank details retrieved');
-  });
-
-  reviewBankDetails = asyncHandler(async (req, res) => {
-    const data = await AdminService.reviewBankDetails(
-      req.params.wholesalerId,
-      req.params.action.toUpperCase(),
-      req.body,
-      req.user,
-      req
-    );
-    return ApiResponse.success(
-      res,
-      data,
-      data.verificationStatus === 'APPROVED'
-        ? 'Bank details approved'
-        : 'Bank details rejected'
-    );
-  });
-
   createRelationship = asyncHandler(async (req, res) => {
     const data = await AdminService.createRelationship(req.body);
     return ApiResponse.success(res, data, 'Relationship created successfully', 201);

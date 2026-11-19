@@ -23,6 +23,7 @@ import {
   Copy,
   ExternalLink,
   Download,
+  Printer,
   Truck,
   PackageCheck,
 } from "lucide-react";
@@ -70,9 +71,7 @@ function getApiErrorCode(error: unknown): string | undefined {
 }
 
 function getBankDetailsStatusMessage(status?: string): string {
-  if (status === "PENDING") return "Wholesaler bank details are awaiting Superadmin approval.";
-  if (status === "REJECTED") return "Wholesaler bank details are unavailable while they are being corrected.";
-  if (status === "UNVERIFIED") return "Bank details are awaiting verification.";
+  if (status === "KYC_REQUIRED") return "Bank Transfer is unavailable until the wholesaler's KYC is approved.";
   if (status === "INCOMPLETE") return "Bank details are incomplete.";
   return "Bank Details Not Added";
 }
@@ -213,7 +212,7 @@ export function DashboardPage() {
                 <strong className="mt-1 block text-lg font-extrabold text-primary">{money(creditInfo.availableCredit)}</strong>
               </div>
             </div>
-            {outstanding > 0 && <CreditRepaymentPanel outstanding={outstanding} />}
+            {outstanding > 0 && <CreditRepaymentPanel outstanding={outstanding} wholesalerId={creditInfo.wholesalerId} />}
           </section>
         )}
 
@@ -250,7 +249,7 @@ export function DashboardPage() {
   );
 }
 
-function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
+function CreditRepaymentPanel({ outstanding, wholesalerId }: { outstanding: number; wholesalerId?: string }) {
   const { currentUser } = useStore();
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
@@ -264,9 +263,9 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const paymentOptionsQuery = useQuery({
-    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "payment-options"),
-    queryFn: async () => (await api.getRetailerPaymentOptions()).data,
-    enabled: Boolean(currentUser?.id),
+    queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", `payment-options-${wholesalerId || "default"}`),
+    queryFn: async () => (await api.getRetailerPaymentOptions(wholesalerId)).data,
+    enabled: Boolean(currentUser?.id && wholesalerId),
     staleTime: 0,
     gcTime: 0,
   });
@@ -317,6 +316,7 @@ function CreditRepaymentPanel({ outstanding }: { outstanding: number }) {
     try {
       await api.createPaymentReport({
         type: "CREDIT_REPAYMENT",
+        wholesalerId,
         amount: numericAmount.toFixed(2),
         transactionReference: reference.trim(),
         paymentMethod,
@@ -761,13 +761,22 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
     queryKey: retailerQueryKeys.resource(currentUser?.id || "unknown", "order-detail", orderId),
     queryFn: async () => {
       const response = await api.getOrderById(encodeURIComponent(orderId));
-      const rawOrder = response?.data?.order;
-      return rawOrder ? mapOrder(rawOrder) : null;
+      const data = response?.data;
+      const rawOrder = data?.order;
+      return rawOrder ? {
+        order: mapOrder(rawOrder),
+        invoice: data.invoice,
+        payment: data.payment,
+        payments: data.payments,
+        totals: data.totals,
+      } : null;
     },
     enabled: Boolean(currentUser?.id && orderId),
     refetchInterval: 30000,
+    gcTime: 4 * 60 * 1000,
   });
-  const order = orderQuery.data ?? orders.find((candidate) => String(candidate.id) === String(orderId) || String(candidate.orderNumber) === String(orderId));
+  const invoiceData = orderQuery.data?.invoice;
+  const order = orderQuery.data?.order ?? orders.find((candidate) => String(candidate.id) === String(orderId) || String(candidate.orderNumber) === String(orderId));
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnReason, setReturnReason] = useState("");
   const [returnNote, setReturnNote] = useState("");
@@ -800,6 +809,14 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
 
   const wholesalerName = linkedWholesaler?.name || linkedWholesaler?.businessName || "Connected wholesaler";
   const returnReq = (returns || []).find((r: any) => String(r.orderId) === String(order.id) || String(r.orderId?._id) === String(order.id));
+  const invoiceAvailable = Boolean(invoiceData?.available);
+  const invoiceNumber = invoiceData?.number || `INV-${order.orderNumber || order.id}`;
+  const invoiceSeller = invoiceData?.seller;
+  const invoiceBuyer = invoiceData?.buyer;
+  const invoiceItems = order.items || [];
+  const invoicePaid = Number(orderQuery.data?.totals?.paidAmount || 0);
+  const invoiceTax = invoiceItems.reduce((sum, item) => sum + Number(item.gstAmount || 0), 0);
+  const invoiceTaxable = invoiceItems.reduce((sum, item) => sum + Number(item.taxableValue ?? item.subtotal ?? 0), 0);
 
   const handleDownloadInvoice = async () => {
     setDownloadingInvoice(true);
@@ -810,7 +827,7 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
       anchor.href = url;
       anchor.download = `INV-${order.orderNumber || order.id}.pdf`;
       anchor.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to download this invoice.');
     } finally {
@@ -1342,11 +1359,14 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
               <span>{order.items.length} products ({order.items.reduce((s, i) => s + i.quantity, 0)} units)</span>
               <b>{money(order.total)}</b>
             </div>
-            {order.status === "delivered" && (
-              <Button className="mt-5 w-full rounded-xl font-bold" variant="outline" onClick={() => void handleDownloadInvoice()} disabled={downloadingInvoice}>
-                {downloadingInvoice ? "Preparing invoice…" : "Download invoice"}
+            {invoiceAvailable && <div className="mt-5 grid gap-2">
+              <Button className="w-full rounded-xl font-bold" variant="outline" onClick={() => void handleDownloadInvoice()} disabled={downloadingInvoice}>
+                <Download className="mr-2 size-4" />{downloadingInvoice ? "Preparing invoice…" : "Download invoice PDF"}
               </Button>
-            )}
+              <Button className="w-full rounded-xl font-bold" variant="outline" onClick={() => window.print()}>
+                <Printer className="mr-2 size-4" />Print invoice
+              </Button>
+            </div>}
           </div>
           <div className="border bg-card p-5 rounded-2xl shadow-xs space-y-2">
             <h2 className="font-bold">Payment Information</h2>
@@ -1465,7 +1485,156 @@ export function OrderDetailsPage({ orderId }: { orderId: string }) {
           })}
         </div>
       </section>
+
+      {invoiceAvailable && <section id="retailer-order-invoice" className="mx-auto mt-8 w-full max-w-[210mm] border border-stone-200 bg-white p-5 text-[#1d2d40] shadow-sm sm:p-8">
+        <header className="flex flex-wrap items-start justify-between gap-5 border-b-2 border-[#b3945a] pb-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <InvoiceLogo logo={invoiceSeller?.logo} name={invoiceSeller?.businessName || wholesalerName} />
+            <div className="min-w-0">
+              <p className="text-lg font-extrabold">{invoiceSeller?.businessName || wholesalerName}</p>
+              <p className="mt-1 max-w-md text-xs leading-5 text-[#657181]">{formatInvoiceAddress(invoiceSeller?.address)}</p>
+              <p className="mt-1 text-xs text-[#657181]">{invoiceSeller?.phone || invoiceSeller?.email || "Contact not provided"}{invoiceSeller?.gstin ? ` · GSTIN ${invoiceSeller.gstin}` : ""}</p>
+            </div>
+          </div>
+          <div className="sm:text-right">
+            <p className="text-2xl font-black tracking-wide">TAX INVOICE</p>
+            <p className="mt-1 font-bold text-[#9a7941]">{invoiceNumber}</p>
+            <p className="mt-2 text-xs text-[#657181]">Invoice date: {formatInvoiceDate(invoiceData?.date)}</p>
+            <p className="text-xs text-[#657181]">Order reference: {order.orderNumber || order.id}</p>
+          </div>
+        </header>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <InvoicePartyCard title="Supplied By" party={invoiceSeller} fallbackName={wholesalerName} />
+          <InvoicePartyCard title="Billed To" party={invoiceBuyer} fallbackName={retailerProfile.businessName || "Retailer"} />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-y border-stone-200 py-3 text-xs sm:grid-cols-4">
+          <p><span className="text-[#657181]">Invoice date</span><br /><strong>{formatInvoiceDate(invoiceData?.date)}</strong></p>
+          <p><span className="text-[#657181]">Order date</span><br /><strong>{formatInvoiceDate(order.createdAt)}</strong></p>
+          <p><span className="text-[#657181]">Bilty / LR</span><br /><strong>{order.shippingDetails?.biltyNumber || "Not provided"}</strong></p>
+          <p><span className="text-[#657181]">Order status</span><br /><strong>{order.status}</strong></p>
+        </div>
+        {order.shippingAddress && <article className="mt-4 border border-stone-200 p-3 text-xs">
+          <h2 className="font-bold uppercase tracking-wide text-[#9a7941]">Ship To</h2>
+          <p className="mt-1 font-semibold">{order.shippingAddress.contactName || retailerProfile.businessName}</p>
+          <p className="mt-1 text-[#657181]">{formatInvoiceAddress(order.shippingAddress)}</p>
+          {order.shippingAddress.phone && <p className="mt-1 text-[#657181]">Phone: {order.shippingAddress.phone}</p>}
+        </article>}
+        <article className="mt-5 overflow-hidden border border-stone-200">
+          <h2 className="border-b border-stone-200 px-3 py-3 text-sm font-extrabold">Product details</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-[11px]">
+              <thead className="bg-[#1d2d40] text-[9px] uppercase tracking-wide text-white"><tr>
+                <th className="p-2">S.No.</th><th className="p-2">Product / SKU</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Unit price</th><th className="p-2 text-right">Tax</th><th className="p-2 text-right">Discount</th><th className="p-2 text-right">Total</th>
+              </tr></thead>
+              <tbody className="divide-y divide-stone-200">
+                {invoiceItems.map((item, index) => <tr key={`${item.productId}-${index}`} className={index % 2 === 0 ? "bg-stone-50" : "bg-white"}>
+                  <td className="p-2">{index + 1}</td>
+                  <td className="p-2"><strong>{item.name}</strong><div className="mt-1 text-[9px] text-[#657181]">SKU: {item.sku || "—"}{item.hsnCode ? ` · HSN: ${item.hsnCode}` : ""}</div>{item.description && <div className="mt-1 text-[9px] text-[#657181]">{item.description}</div>}</td>
+                  <td className="p-2 text-right">{item.quantity} {item.unit || ""}</td>
+                  <td className="p-2 text-right">{money(item.pricePerUnit)}</td>
+                  <td className="p-2 text-right">{money(item.gstAmount || 0)}</td>
+                  <td className="p-2 text-right">{money(item.discountAmount || 0)}</td>
+                  <td className="p-2 text-right font-bold">{money(item.total ?? item.subtotal)}</td>
+                </tr>)}
+                {!invoiceItems.length && <tr><td colSpan={7} className="p-6 text-center text-[#657181]">No product details are available for this order.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <article className="border border-stone-200 p-4">
+            <h2 className="text-sm font-extrabold">Payment information</h2>
+            <dl className="mt-3 space-y-2 text-xs text-[#657181]">
+              <InvoiceTotalRow label="Method" amount={String(orderQuery.data?.payment?.paymentMethod || order.paymentMethod || "Not recorded").replace(/_/g, " ")} />
+              {(orderQuery.data?.payments || []).length ? orderQuery.data.payments.map((entry: any, index: number) => (
+                <div key={`${entry.transactionReference || "payment"}-${entry.createdAt || index}`} className="border-t border-stone-100 pt-2">
+                  <InvoiceTotalRow label="Status" amount={String(entry.status || "Not recorded").replace(/_/g, " ")} />
+                  <InvoiceTotalRow label="Transaction reference" amount={entry.transactionReference || "Not recorded"} />
+                  <InvoiceTotalRow label="Payment date" amount={formatInvoiceDate(entry.paidAt || entry.reportedPaymentDate || entry.createdAt)} />
+                  <InvoiceTotalRow label="Amount" amount={money(Number(entry.amount || 0))} />
+                </div>
+              )) : <InvoiceTotalRow label="Status" amount={String(orderQuery.data?.payment?.status || "Not recorded").replace(/_/g, " ")} />}
+            </dl>
+          </article>
+          <article className="border border-stone-200 p-4">
+            <h2 className="text-sm font-extrabold">Invoice summary</h2>
+            <dl className="mt-3 space-y-2 text-xs">
+              <InvoiceTotalRow label="Subtotal" amount={money(order.subtotal || 0)} />
+              <InvoiceTotalRow label="Discount" amount={`−${money(order.discount || 0)}`} />
+              <InvoiceTotalRow label="Taxable amount" amount={money(invoiceTaxable)} />
+              <InvoiceTotalRow label="CGST" amount={money(invoiceItems.reduce((sum, item) => sum + Number(item.cgstAmount || 0), 0))} />
+              <InvoiceTotalRow label="SGST" amount={money(invoiceItems.reduce((sum, item) => sum + Number(item.sgstAmount || 0), 0))} />
+              <InvoiceTotalRow label="IGST" amount={money(invoiceItems.reduce((sum, item) => sum + Number(item.igstAmount || 0), 0))} />
+              <InvoiceTotalRow label="Tax total" amount={money(invoiceTax)} />
+              <InvoiceTotalRow label="Shipping charges" amount={money(order.shipping || 0)} />
+              <InvoiceTotalRow label="Grand total" amount={money(order.total)} strong />
+              <InvoiceTotalRow label="Amount paid" amount={money(invoicePaid)} />
+              <InvoiceTotalRow label="Outstanding amount" amount={money(Math.max(0, order.total - invoicePaid))} strong />
+            </dl>
+          </article>
+        </div>
+        <footer className="mt-6 border-t border-stone-200 pt-3 text-center text-[10px] text-[#657181]">Thank you for your business.</footer>
+      </section>}
+      <style>{`@page { size: A4; margin: 12mm; } @media print { body * { visibility: hidden !important; } #retailer-order-invoice, #retailer-order-invoice * { visibility: visible !important; } #retailer-order-invoice { position: absolute; inset: 0; width: 100%; max-width: none; margin: 0; padding: 0; background: white; box-shadow: none; } #retailer-order-invoice article, #retailer-order-invoice tr { break-inside: avoid; } #retailer-order-invoice table { width: 100%; min-width: 0; font-size: 8pt; } #retailer-order-invoice th, #retailer-order-invoice td { padding: 5px 4px; } }`}</style>
     </main>
+  );
+}
+
+function formatInvoiceAddress(address: any) {
+  if (typeof address === "string" && address.trim()) return address;
+  if (!address || typeof address !== "object") return "Address not provided";
+  const value = [
+    address.street || address.addressLine1,
+    address.addressLine2,
+    address.city,
+    address.state,
+    address.pincode,
+    address.country,
+  ].filter((part) => typeof part === "string" && part.trim());
+  return value.length ? value.join(", ") : "Address not provided";
+}
+
+function formatInvoiceDate(value?: string) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleDateString("en-IN", { dateStyle: "medium" });
+}
+
+function InvoiceLogo({ logo, name }: { logo?: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden border border-stone-200 bg-stone-50">
+      {logo && !failed
+        ? <img src={logo} alt={`${name} business logo`} className="size-full object-contain p-1" onError={() => setFailed(true)} />
+        : <span className="px-1 text-center text-xs font-bold tracking-wide text-stone-500">{name.slice(0, 2).toUpperCase()}</span>}
+    </div>
+  );
+}
+
+function InvoicePartyCard({ title, party, fallbackName }: { title: string; party?: any; fallbackName: string }) {
+  const name = party?.businessName || party?.name || fallbackName;
+  return (
+    <article className="border border-stone-200 p-3">
+      <h2 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7941]">{title}</h2>
+      <div className="mt-3 flex items-start gap-3">
+        <InvoiceLogo logo={party?.logo} name={name} />
+        <div className="min-w-0 text-xs">
+          <p className="font-bold">{name}</p>
+          <p className="mt-1 leading-5 text-[#657181]">{formatInvoiceAddress(party?.address)}</p>
+          {(party?.phone || party?.email) && <p className="mt-1 text-[#657181]">{party.phone || party.email}{party.phone && party.email ? ` · ${party.email}` : ""}</p>}
+          <p className="mt-1 text-[#657181]">GSTIN: {party?.gstin || "Not applicable"}</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function InvoiceTotalRow({ label, amount, strong = false }: { label: string; amount: string; strong?: boolean }) {
+  return (
+    <div className={`flex justify-between gap-3 ${strong ? "border-t border-stone-200 pt-2 font-extrabold text-[#1d2d40]" : "text-[#657181]"}`}>
+      <dt>{label}</dt>
+      <dd className="text-right">{amount}</dd>
+    </div>
   );
 }
 
@@ -1683,12 +1852,12 @@ export function CheckoutPage({ initialCoupon = "" }: { initialCoupon?: string })
   const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [placed, setPlaced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<"UPI" | "NET_BANKING" | "CASH_DEPOSIT" | "CHEQUE" | "CREDIT">("UPI");
+  const [paymentMode, setPaymentMode] = useState<"UPI" | "BANK_TRANSFER" | "NET_BANKING" | "CASH_DEPOSIT" | "CHEQUE" | "CREDIT">("UPI");
   const [reportedOrder, setReportedOrder] = useState<{
     id: string;
     number: string;
     amount: number;
-    paymentMethod: "UPI" | "NET_BANKING" | "CASH_DEPOSIT" | "CHEQUE";
+    paymentMethod: "UPI" | "BANK_TRANSFER" | "NET_BANKING" | "CASH_DEPOSIT" | "CHEQUE";
   } | null>(null);
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentDetails, setPaymentDetails] = useState("");

@@ -184,6 +184,7 @@ class RetailerController {
   });
 
   getOrderById = asyncHandler(async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
     const orderData = await RetailerService.getOrderById(req.user._id, req.params.id);
     return ApiResponse.success(res, orderData, 'Order details retrieved successfully');
   });

@@ -16,7 +16,6 @@ setupTestDB();
 
 describe('Wholesaler referral commission program', () => {
   let referrer;
-  let referrerProfile;
   let superadmin;
   let superadminToken;
   let adminToken;
@@ -65,7 +64,7 @@ describe('Wholesaler referral commission program', () => {
       role: ROLES.WHOLESALER,
       status: USER_STATUS.ACTIVE,
     });
-    referrerProfile = await WholesalerProfile.create({
+    await WholesalerProfile.create({
       userId: referrer._id,
       businessName: 'Referrer Supply Co.',
       kycStatus: KYC_STATUS.APPROVED,
@@ -105,7 +104,7 @@ describe('Wholesaler referral commission program', () => {
     superadminToken = superadminLogin.body.data.token;
   });
 
-  it('attributes registration, generates one commission after KYC, and records verified manual payouts', async () => {
+  it('attributes referrals after KYC and pays commissions using KYC-approved bank details', async () => {
     const referralResponse = await request(app)
       .get('/api/v1/wholesaler/referral-program')
       .set('Authorization', `Bearer ${referrer.token}`);
@@ -183,24 +182,6 @@ describe('Wholesaler referral commission program', () => {
     expect(approved.status).toBe(200);
     expect(approved.body.data.status).toBe('APPROVED');
 
-    const payoutBlocked = await request(app)
-      .patch(`/api/v1/admin/referral-program/${commissionId}/process`)
-      .set('Authorization', `Bearer ${superadminToken}`)
-      .send({});
-    expect(payoutBlocked.status).toBe(403);
-    expect(payoutBlocked.body.code).toBe('APPROVED_BANK_DETAILS_REQUIRED');
-
-    await WholesalerProfile.updateOne(
-      { _id: referrerProfile._id },
-      {
-        $set: {
-          'bankDetails.isVerified': true,
-          'bankDetails.verificationStatus': 'APPROVED',
-          'bankDetails.approvedAt': new Date(),
-          'bankDetails.approvedBy': superadmin._id,
-        },
-      }
-    );
     const payoutStarted = await request(app)
       .patch(`/api/v1/admin/referral-program/${commissionId}/process`)
       .set('Authorization', `Bearer ${superadminToken}`)

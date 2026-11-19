@@ -35,6 +35,7 @@ const WalletService = require('../../services/wallet.service');
 const env = require('../../config/env');
 const { assertWholesalerAvailable } = require('../../services/wholesaler-access.service');
 const PaymentsService = require('../payments/payments.service');
+const InvoiceService = require('./invoice.service');
 
 const normalizeOrderAddress = (address = {}) => ({
   street: address.addressLine1 || address.street || '',
@@ -93,7 +94,7 @@ class OrderService {
     if (paymentMethod === 'COD') {
       throw new BadRequestError('Cash on Delivery is unavailable. Choose direct UPI or approved credit.', 'COD_DISABLED');
     }
-    if (paymentMethod && !['UPI', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE', 'CREDIT'].includes(paymentMethod)) {
+    if (paymentMethod && !['UPI', 'BANK_TRANSFER', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE', 'CREDIT'].includes(paymentMethod)) {
       throw new BadRequestError('Choose an enabled payment method or approved credit for retailer checkout.', 'UNSUPPORTED_PAYMENT_METHOD');
     }
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -299,12 +300,14 @@ class OrderService {
 
     // Check Wholesaler minimum order value
     const wholesalerProfile = await WholesalerProfile.findOne({ userId: wholesalerId });
-    const usesBankPaymentMethod = ['NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'].includes(paymentMethod);
+    const usesBankPaymentMethod = ['BANK_TRANSFER', 'NET_BANKING', 'CASH_DEPOSIT', 'CHEQUE'].includes(paymentMethod);
     const bankDetailsVerified = usesBankPaymentMethod && wholesalerProfile
       ? await PaymentsService.hasVerifiedBankDetails(wholesalerProfile)
       : false;
+    const bankMethodEnabled = paymentMethod === 'BANK_TRANSFER' ||
+      wholesalerProfile?.paymentSettings?.additionalPaymentMethods?.includes(paymentMethod);
     if (usesBankPaymentMethod &&
-      (!wholesalerProfile?.paymentSettings?.additionalPaymentMethods?.includes(paymentMethod) || !bankDetailsVerified)) {
+      (!bankMethodEnabled || !bankDetailsVerified)) {
       throw new BadRequestError('This wholesaler has not enabled the selected payment method.', 'PAYMENT_METHOD_DISABLED');
     }
     if (wholesalerProfile?.minOrderValue && grandTotal < wholesalerProfile.minOrderValue) {
@@ -709,13 +712,42 @@ class OrderService {
       throw new ForbiddenError('You can only access orders for your wholesale store');
     }
 
-    const payment = await Payment.findOne({ orderId: order._id });
+    const [payments, sellerProfile, buyerProfile] = await Promise.all([
+      Payment.find({ orderId: order._id })
+        .select('amount amountPaise status paymentMethod transactionReference reportedPaymentDate paidAt createdAt orderAllocations isReversal reversesPaymentId')
+        .sort({ createdAt: -1 })
+        .lean(),
+      WholesalerProfile.findOne({ userId: order.wholesalerId._id }).select('businessName businessLogoUrl address gstin').lean(),
+      RetailerProfile.findOne({ userId: order.retailerId._id }).select('businessName ownerName address gstin shopPhoto').lean(),
+    ]);
+    const payment = payments[0] || null;
+    const buyerLogo = await InvoiceService.getRetailerLogoUrl(buyerProfile);
 
     const itemsCount = Array.isArray(order.items)
       ? order.items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0)
       : 0;
     const totalQuantity = itemsCount;
     const totalAmount = order.grandTotal || order.subtotal || 0;
+    const reversedPaymentIds = new Set(
+      payments.filter((entry) => entry.isReversal).map((entry) => String(entry.reversesPaymentId))
+    );
+    const paidAmount = order.isCreditOrder
+      ? Number(order.creditPaidAmount || 0)
+      : Number.isSafeInteger(order.directPaidPaise)
+        ? order.directPaidPaise / 100
+        : order.paymentStatus === 'PAID' && reversedPaymentIds.size === 0
+          ? totalAmount
+          : payments.reduce((sum, entry) => {
+            if (entry.status !== 'PAID' || entry.isReversal || reversedPaymentIds.has(String(entry._id))) return sum;
+            if (entry.orderAllocations?.length) {
+              return sum + entry.orderAllocations
+                .filter((allocation) => String(allocation.orderId) === String(order._id))
+                .reduce((amount, allocation) => amount + Number(allocation.amountPaise || 0), 0) / 100;
+            }
+            return sum + (Number.isSafeInteger(entry.amountPaise)
+              ? entry.amountPaise / 100
+              : Number(entry.amount || 0));
+          }, 0);
 
     const formattedItems = (order.items || []).map((item) => {
       const img = item.imageUrl || (Array.isArray(item.productId?.images) && item.productId.images[0]) || item.productId?.image || '';
@@ -732,6 +764,19 @@ class OrderService {
         quantity: item.quantity,
         pricePerUnit: item.pricePerUnit || item.price || 0,
         totalPrice: item.totalPrice || (item.quantity * (item.pricePerUnit || 0)),
+        name: item.name || item.productName || item.productId?.name || 'Product',
+        description: item.description || '',
+        sku: item.sku || item.productId?.sku || '',
+        unit: item.unit || '',
+        hsnCode: item.hsnCode || '',
+        taxableValue: item.taxableValue ?? item.subtotal ?? 0,
+        gstRate: item.gstRate || 0,
+        gstAmount: item.gstAmount || 0,
+        cgstAmount: item.cgstAmount || 0,
+        sgstAmount: item.sgstAmount || 0,
+        igstAmount: item.igstAmount || 0,
+        discountAmount: item.discountAmount || 0,
+        total: item.total ?? item.totalPrice ?? (item.quantity * (item.pricePerUnit || 0)),
       };
     });
 
@@ -748,32 +793,47 @@ class OrderService {
       retailer: {
         id: String(order.retailerId?._id || order.retailerId || ''),
         name: order.retailerId?.name || '',
-        businessName: order.retailerId?.businessName || order.retailerId?.name || 'Retailer',
+        businessName: buyerProfile?.businessName || buyerProfile?.ownerName || order.retailerId?.businessName || order.retailerId?.name || 'Retailer',
         email: order.retailerId?.email || '',
         phone: order.retailerId?.phone || '',
+        address: buyerProfile?.address || {},
+        gstin: buyerProfile?.gstin || '',
+        logo: buyerLogo,
         city: order.retailerId?.address?.city || '',
         state: order.retailerId?.address?.state || '',
       },
       wholesaler: {
         id: String(order.wholesalerId?._id || order.wholesalerId || ''),
         name: order.wholesalerId?.name || '',
-        businessName: order.wholesalerId?.businessName || order.wholesalerId?.name || 'Wholesaler',
+        businessName: sellerProfile?.businessName || order.wholesalerId?.businessName || order.wholesalerId?.name || 'Wholesaler',
         email: order.wholesalerId?.email || '',
         phone: order.wholesalerId?.phone || '',
+        address: sellerProfile?.address || {},
+        gstin: sellerProfile?.gstin || '',
+        logo: sellerProfile?.businessLogoUrl || '',
         city: order.wholesalerId?.address?.city || '',
         state: order.wholesalerId?.address?.state || '',
       },
       status: order.orderStatus ? order.orderStatus.toLowerCase() : 'pending',
       paymentStatus: order.paymentStatus ? order.paymentStatus.toLowerCase() : 'pending',
     };
+    const invoice = {
+      available: order.orderStatus === ORDER_STATUS.DELIVERED,
+      number: order.orderStatus === ORDER_STATUS.DELIVERED ? `INV-${order.orderNumber}` : null,
+      date: order.invoiceIssuedAt || order.updatedAt || order.createdAt,
+      seller: formattedOrder.wholesaler,
+      buyer: formattedOrder.retailer,
+    };
 
-    const formattedPayments = payment ? [{
-      amount: payment.amount,
-      method: payment.paymentMethod,
-      status: payment.status ? payment.status.toLowerCase() : 'pending',
-      transactionRef: payment.transactionReference,
-      createdAt: payment.createdAt,
-    }] : [];
+    const formattedPayments = payments.map((entry) => ({
+      amount: entry.amount,
+      method: entry.paymentMethod,
+      status: entry.status ? entry.status.toLowerCase() : 'pending',
+      transactionRef: entry.transactionReference,
+      createdAt: entry.createdAt,
+      paidAt: entry.paidAt,
+      reportedPaymentDate: entry.reportedPaymentDate,
+    }));
 
     const formattedTimeline = (order.statusTimeline || []).map((entry) => ({
       status: entry.status ? entry.status.toLowerCase() : 'pending',
@@ -783,13 +843,25 @@ class OrderService {
 
     return {
       order: formattedOrder,
-      payment: payment ? { ...payment.toObject(), method: payment.paymentMethod } : null,
+      invoice,
+      payment: payment ? {
+        amount: payment.amount,
+        amountPaise: payment.amountPaise,
+        status: payment.status,
+        paymentMethod: payment.paymentMethod,
+        method: payment.paymentMethod,
+        transactionReference: payment.transactionReference,
+        reportedPaymentDate: payment.reportedPaymentDate,
+        paidAt: payment.paidAt,
+        createdAt: payment.createdAt,
+      } : null,
       payments: formattedPayments,
       timeline: formattedTimeline,
       totals: {
         itemsCount: (order.items || []).length,
         totalQuantity,
         totalAmount,
+        paidAmount: Math.min(totalAmount, paidAmount),
       },
       allowedTransitions: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
     };

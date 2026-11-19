@@ -16,32 +16,6 @@ router.get('/dashboard/recent', adminController.getDashboardRecent);
 router.get('/dashboard', adminController.getDashboard);
 router.get('/analytics', adminController.getAnalytics);
 
-// Bank details are reviewed separately from KYC and require Superadmin privileges.
-router.get('/bank-details', authorize(ROLES.SUPER_ADMIN), adminController.getBankDetailsSubmissions);
-router.get(
-  '/bank-details/:wholesalerId',
-  authorize(ROLES.SUPER_ADMIN),
-  adminController.getBankDetailsSubmission
-);
-router.patch(
-  '/bank-details/:wholesalerId/approve',
-  authorize(ROLES.SUPER_ADMIN),
-  (req, res, next) => {
-    req.params.action = 'approve';
-    next();
-  },
-  adminController.reviewBankDetails
-);
-router.patch(
-  '/bank-details/:wholesalerId/reject',
-  authorize(ROLES.SUPER_ADMIN),
-  (req, res, next) => {
-    req.params.action = 'reject';
-    next();
-  },
-  adminController.reviewBankDetails
-);
-
 // Payments & Financials
 router.get('/payments/summary', adminController.getPaymentsSummary);
 router.get('/payments', adminController.getPayments);

@@ -382,8 +382,8 @@ describe('KYC Workflow Test Suite', () => {
     const profile = await WholesalerProfile.findOne({ userId: wholesalerUser._id });
     expect(profile.kycStatus).toBe(KYC_STATUS.APPROVED);
     expect(profile.isVerified).toBe(true);
-    expect(profile.bankDetails.isVerified).toBe(false);
-    expect(profile.bankDetails.verificationStatus).toBe('NOT_SUBMITTED');
+    expect(profile.bankDetails.isVerified).toBe(true);
+    expect(profile.bankDetails.verificationStatus).toBe('VERIFIED');
 
     // Audit log exists
     const audit = await AuditLog.findOne({ entityId: kycId, action: 'KYC_APPROVED' });

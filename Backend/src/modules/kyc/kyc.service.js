@@ -22,6 +22,7 @@ const NotificationService = require('../../services/notification.service');
 const StorageService = require('../../services/storage.service');
 const KycDocumentStorageService = require('../../services/kycDocumentStorage.service');
 const logger = require('../../config/logger');
+const { hasValidBankDetails } = require('../../services/bank-details.service');
 const WholesalerReferralProgramService = require('../referrals/wholesaler-referral-program.service');
 
 const maskAccountNumber = (accountNumber) => {
@@ -429,12 +430,21 @@ class KycService {
     });
     await application.save();
 
+    const bankDetailsVerified = hasValidBankDetails(application.bankDetails);
     await WholesalerProfile.findOneAndUpdate(
       { userId: application.wholesalerId },
       {
-        kycStatus: KYC_STATUS.APPROVED,
-        isVerified: true,
-      }
+        $set: {
+          kycStatus: KYC_STATUS.APPROVED,
+          isVerified: true,
+          'bankDetails.isVerified': bankDetailsVerified,
+          'bankDetails.verificationStatus': bankDetailsVerified ? 'VERIFIED' : 'NOT_SUBMITTED',
+          'bankDetails.submittedAt': null,
+          'bankDetails.approvedAt': null,
+          'bankDetails.approvedBy': null,
+          'bankDetails.rejectionReason': '',
+        },
+      },
     );
 
     const wholesalerUser = await User.findById(application.wholesalerId).select('status').lean();
