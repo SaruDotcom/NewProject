@@ -213,17 +213,17 @@ export function ProductCard({
         {/* Content Body */}
         <div className="flex min-w-0 flex-1 flex-col px-2 pb-2 pt-1.5 sm:px-3 sm:pb-3 sm:pt-1.5">
           <div>
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <strong className="shrink-0 text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
+            <div className="flex min-w-0 items-center justify-between gap-2">
               <Link
                 to="/products/$productId"
                 params={{ productId: product.id }}
                 onClick={() => addRecentlyViewed(product.id)}
-                className="min-w-0 line-clamp-1 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
+                className="min-w-0 flex-1 truncate text-left text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
                 title={product.name}
               >
                 {product.name}
               </Link>
+              <strong className="shrink-0 whitespace-nowrap text-right text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
             </div>
             <p className="mt-0.5 line-clamp-1 min-h-4 text-[10px] leading-4 text-slate-500 sm:text-xs" title={description}>
               {description}
@@ -319,17 +319,17 @@ export function ProductCard({
 
       {/* Product Details (Clean & Minimal) */}
       <div className="flex flex-1 flex-col px-2 pb-2 pt-1.5">
-        <div className="flex min-w-0 items-baseline gap-1.5">
-          <strong className="shrink-0 text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
+        <div className="flex min-w-0 items-center justify-between gap-2">
           <Link
             to="/products/$productId"
             params={{ productId: product.id }}
             onClick={() => addRecentlyViewed(product.id)}
-            className="min-w-0 line-clamp-1 text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
+            className="min-w-0 flex-1 truncate text-left text-xs font-semibold leading-4 text-slate-900 hover:text-emerald-700 sm:text-sm"
             title={product.name}
           >
             {product.name}
           </Link>
+          <strong className="shrink-0 whitespace-nowrap text-right text-xs font-bold leading-5 text-slate-900 sm:text-sm">{money(product.price)}</strong>
         </div>
         <p className="mt-0.5 line-clamp-1 min-h-4 text-[10px] leading-4 text-slate-500 sm:text-xs" title={description}>
           {description}

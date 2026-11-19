@@ -18,6 +18,7 @@ import {
   KeyboardArrowDown,
   Menu as MenuIcon,
   ChevronRight,
+  CheckCircle,
   LocalOffer,
   SupportAgent,
   ReceiptLong,
@@ -34,7 +35,7 @@ import { money, ThokStoreMark, WholesalerLogo } from "./primitives";
 const primary = [
   { to: "/" as const, label: "Home" },
   { to: "/products" as const, label: "Products" },
-  { to: "/categories" as const, label: "Categories" },
+  // { to: "/categories" as const, label: "Categories" },
   { to: "/coupons" as const, label: "Coupons & Offers" },
   { to: "/orders" as const, label: "My Orders" },
 ];
