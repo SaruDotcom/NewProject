@@ -25,6 +25,20 @@ function buildHref(to: string, params?: Record<string, string | number>, search?
     const queryString = query.toString();
     if (queryString) href += `?${queryString}`;
   }
+  if (typeof window !== "undefined" && href.startsWith("/") && !href.startsWith("//")) {
+    const destination = new URL(href, window.location.origin);
+    const authPaths = ["/login", "/register", "/forgot-password"];
+    if (!authPaths.includes(destination.pathname)) {
+      const referralCode =
+        new URL(window.location.href).searchParams.get("ref") ||
+        new URL(window.location.href).searchParams.get("wholesaler_ref") ||
+        "";
+      if (referralCode && !destination.searchParams.has("ref") && !destination.searchParams.has("wholesaler_ref")) {
+        destination.searchParams.set("ref", referralCode.trim().toUpperCase());
+      }
+    }
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  }
   return href;
 }
 

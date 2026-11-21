@@ -34,6 +34,12 @@ class ReferralService {
         isDeleted: { $ne: true },
       }).lean();
     }
+    if (!profile) {
+      profile = await WholesalerProfile.findOne({
+        wholesalerReferralCode: normalizedCode,
+        isDeleted: { $ne: true },
+      }).lean();
+    }
 
     if (!profile) throw this.invalidReferral();
 

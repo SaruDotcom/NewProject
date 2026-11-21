@@ -107,7 +107,9 @@ export function getStoredReferralAttribution(): ReferralAttribution | null {
 export function getReferralAttributionFromUrl(
   url: URL,
 ): ReferralAttribution | null {
-  let rawCode = url.searchParams.get("ref");
+  let rawCode =
+    url.searchParams.get("ref") ||
+    url.searchParams.get("wholesaler_ref");
   if (!rawCode) {
     const pathMatch = url.pathname.match(/^\/r\/([^/]+)\/?$/i);
     if (pathMatch) {

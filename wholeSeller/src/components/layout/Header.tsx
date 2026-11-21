@@ -5,7 +5,6 @@ import {
   Search,
   Plus,
   X,
-  ArrowRight,
   Check,
   Headphones,
   PhoneCall,
@@ -23,7 +22,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
   const { profile, notifications, markNotificationsRead } = useWholesaler();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -136,17 +134,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
           )}
         </div>
 
-        <div
-          className="relative border-l border-tradeflow-navy-hover pl-3"
-          onMouseEnter={() => setShowProfile(true)}
-          onMouseLeave={() => setShowProfile(false)}
-        >
-          <button
-            type="button"
-            onClick={() => setShowProfile((open) => !open)}
-            className="flex max-w-56 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-tradeflow-navy-hover"
-            aria-expanded={showProfile}
-            aria-label="Open business information"
+        <div className="border-l border-tradeflow-navy-hover pl-3">
+          <Link
+            to="/dashboard/profile"
+            className="flex max-w-56 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-white transition-colors hover:bg-tradeflow-navy-hover"
+            aria-label="Open business profile"
+            title="Open business profile"
           >
             <BusinessLogo
               src={profile.businessLogoUrl}
@@ -156,23 +149,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMenu, isMenuOpen }) => {
             <span className="hidden truncate text-xs font-bold text-white sm:block">
               {profile.businessName || 'Your business'}
             </span>
-          </button>
-
-          {showProfile && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl border border-[#E7E5E4] bg-white p-4 text-[#1C1917] shadow-xl">
-              <p className="truncate text-sm font-bold text-[#1C1917]">{profile.businessName || 'Business information'}</p>
-              <p className="mt-1 truncate text-xs text-[#78716C]">{profile.ownerName || 'Owner details unavailable'}</p>
-              {profile.email && <p className="mt-1 truncate text-xs text-[#78716C]">{profile.email}</p>}
-              <p className="mt-2 break-all font-mono text-[10px] text-[#A8A29E]">ID: {profile.id || 'Loading'}</p>
-              <Link
-                to="/dashboard/profile"
-                onClick={() => setShowProfile(false)}
-                className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-tradeflow-green hover:underline"
-              >
-                View business details <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          )}
+          </Link>
         </div>
       </div>
       <SuperAdminHelpModal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} />

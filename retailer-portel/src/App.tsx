@@ -134,6 +134,17 @@ function RouterView() {
     );
   }
 
+  if (path === "/register" && (url.searchParams.has("wholesaler_ref") || url.searchParams.has("ref"))) {
+    const code =
+      url.searchParams.get("wholesaler_ref") ||
+      url.searchParams.get("ref") ||
+      "";
+    const normalized = new URL("/", window.location.origin);
+    if (code) normalized.searchParams.set("ref", code.trim().toUpperCase());
+    window.history.replaceState({}, "", `${normalized.pathname}${normalized.search}`);
+    return <HomePage />;
+  }
+
   // ===== 1. Disable Retailer Landing Page =====
   // Commented out existing retailer landing page rendering without deleting its code or affecting other landing pages.
   /*
@@ -153,9 +164,6 @@ function RouterView() {
 
   // Public authentication routes
   if (/^\/r\/[^/]+$/.test(path)) {
-    return <HomePage />;
-  }
-  if (path === "/register" && url.searchParams.has("ref") && !url.searchParams.has("redirect")) {
     return <HomePage />;
   }
   const isRefPath = path === "/register";
@@ -212,8 +220,7 @@ function RouterView() {
   // Route Guard: Require authentication for all protected account/workspace pages
   if (!authenticated) {
     const searchParams = new URLSearchParams(url.search);
-    const hasRef = searchParams.has("ref") || Boolean(getStoredReferralAttribution()?.code);
-    return <AuthPage key={`${path}${url.search}`} mode={hasRef ? "register" : "login"} redirect={path} />;
+    return <AuthPage key={`${path}${url.search}`} mode="login" redirect={path} />;
   }
 
   if (!isLoading && !isBusinessSetupComplete(retailerProfile) && path !== "/profile" && path !== "/setup") {
