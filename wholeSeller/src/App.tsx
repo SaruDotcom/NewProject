@@ -91,19 +91,14 @@ function WholesalerReferralRoute() {
   const location = useLocation();
   const wholesalerRef =
     new URLSearchParams(location.search).get('wholesaler_ref')?.trim().toUpperCase() || '';
-  const retailerPortalUrl = import.meta.env.VITE_RETAILER_URL?.trim();
   const isReferralLink = Boolean(wholesalerRef);
 
   useEffect(() => {
-    if (!isReferralLink || !wholesalerRef || !retailerPortalUrl) return;
-    try {
-      const destination = new URL('/', retailerPortalUrl);
-      destination.searchParams.set('ref', wholesalerRef);
-      window.location.replace(destination.toString());
-    } catch {
-      // Keep the route on an explicit error state below instead of opening registration.
-    }
-  }, [isReferralLink, wholesalerRef, retailerPortalUrl]);
+    if (!isReferralLink || !wholesalerRef) return;
+    const landingUrl = new URL('/', window.location.origin);
+    landingUrl.searchParams.set('wholesaler_ref', wholesalerRef);
+    window.history.replaceState({}, '', `${landingUrl.pathname}${landingUrl.search}`);
+  }, [isReferralLink, wholesalerRef]);
 
   if (!isReferralLink) {
     return (
@@ -112,25 +107,10 @@ function WholesalerReferralRoute() {
       </Suspense>
     );
   }
-
-  if (!retailerPortalUrl) {
-    return (
-      <main role="alert" className="flex min-h-screen items-center justify-center p-6 text-center text-sm font-semibold text-red-700">
-        Retailer portal URL is not configured.
-      </main>
-    );
-  }
-  if (!wholesalerRef) {
-    return (
-      <main role="alert" className="flex min-h-screen items-center justify-center p-6 text-center text-sm font-semibold text-red-700">
-        This referral link is missing a valid wholesaler referral code.
-      </main>
-    );
-  }
   return (
-    <main className="flex min-h-screen items-center justify-center p-6 text-sm text-gray-600">
-      Opening the referred wholesaler storefront...
-    </main>
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <LandingPage />
+    </Suspense>
   );
 }
 

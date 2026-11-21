@@ -222,6 +222,7 @@ function LandingContent() {
   const authPopupHandled = useRef(false);
   const loggedIn = authStatus === 'loggedIn';
   const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
+  const wholesalerReferralCode = new URLSearchParams(window.location.search).get('wholesaler_ref')?.trim().toUpperCase() || '';
 
   useEffect(() => {
     let active = true;
@@ -261,7 +262,9 @@ function LandingContent() {
           clearAuthToken();
           if (active) {
             setAuthStatus('loggedOut');
-            navigate('/register', { replace: true });
+            navigate(wholesalerReferralCode
+              ? `/register?wholesaler_ref=${encodeURIComponent(wholesalerReferralCode)}`
+              : '/register', { replace: true });
           }
           return;
         }
@@ -271,7 +274,9 @@ function LandingContent() {
           else {
             clearAuthToken();
             setAuthStatus('loggedOut');
-            navigate('/register', { replace: true });
+            navigate(wholesalerReferralCode
+              ? `/register?wholesaler_ref=${encodeURIComponent(wholesalerReferralCode)}`
+              : '/register', { replace: true });
           }
         }
       })
@@ -327,6 +332,7 @@ function LandingContent() {
   useEffect(() => {
     if (authStatus !== 'loggedOut' || modalTab !== null) return;
     if (authPopupHandled.current) return;
+    if (wholesalerReferralCode) return;
     try {
       if (sessionStorage.getItem('wholesaler-auth-popup-shown') === 'true') {
         authPopupHandled.current = true;
